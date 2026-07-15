@@ -413,10 +413,14 @@ Nhật ký chính thức được lưu tại [docs/experiment_log.md](experiment
 - [x] Xây dựng tệp quản lý đường dẫn tập trung [paths.py](../src/utils/paths.py) phục vụ Dockerize.
 - [x] Thiết lập CSDL SQLite y khoa ICD-10 song ngữ và nạp luật lâm sàng từ Excel ([setup_db.py](../src/utils/setup_db.py)).
 - [x] Phát triển bộ luật kiểm duyệt lâm sàng y khoa trên bộ nhớ RAM ([clinical_validator.py](../src/validation/clinical_validator.py)) để lọc lỗi.
-- [x] Xây dựng công thức tính điểm tự chấm [metrics.py](../src/metrics.py) vượt qua 5 unit test logic.
-- [x] Phát triển công cụ CLI chạy đánh giá và chấm điểm cục bộ [evaluate.py](../src/evaluate.py).
+- [x] Xây dựng công thức tính điểm tự chấm [metrics.py](../src/metrics.py) vượt qua 7 unit test logic (đã sửa lỗi encoding).
+- [x] Phát triển công cụ CLI chạy đánh giá và chấm điểm cục bộ [evaluate.py](../src/evaluate.py) hỗ trợ `--sweep` tự động.
 - [x] Tài liệu hóa các giả định tính điểm và logic ghép cặp [eval_assumptions.md](eval_assumptions.md).
-- [ ] Baseline khung xương đã nộp thử ít nhất 1 lần, đối chiếu điểm `metrics.py` với điểm leaderboard thật, chênh lệch đã được giải thích/xử lý.
+- [x] Thiết lập tệp nhật ký thực nghiệm [experiment_log.md](experiment_log.md) để theo dõi các lượt chạy.
+- [ ] Thu thập và đóng gói CSDL RxNorm: Hoàn thành trước **17/07** (UMLS hoặc kích hoạt tự động fallback sang RxNav API/DrugBank).
+- [ ] Xây dựng bảng từ viết tắt y khoa Việt Nam và bộ quy tắc lookup mapping cứng (override) độc lập cho thuốc/bệnh tần suất cao.
+- [ ] Chạy benchmark đo trễ biên dịch động (latency of dynamic enum compilation) của XGrammar/vLLM ở tầng Reranker.
+- [ ] Baseline LLM few-shot đã nộp thử ít nhất 1 lần, đối chiếu điểm `metrics.py` với điểm leaderboard thật, chênh lệch đã được giải thích/xử lý.
 - [ ] Docker image chạy độc lập, không cần mạng, build thành công từ đầu trên máy sạch.
 - [ ] Script native (`.sh` và `.bat`) chạy được trên máy khác (không phải máy dev).
 - [ ] `check_env.py` báo lỗi rõ ràng khi thiếu GPU/CUDA.
