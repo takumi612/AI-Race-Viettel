@@ -44,11 +44,9 @@ data/dev/*
 !data/dev/.gitkeep
 
 # Dữ liệu tri thức y khoa lớn (cần download cục bộ khi chạy setup hoặc cache)
-data/kb/*.db
-data/kb/*.xlsx
-data/kb/*.zip
-data/kb/*.json
-data/kb/*.txt
+data/kb/*
+!data/kb/override_dict.json
+!data/kb/.gitkeep
 
 # Tránh đẩy file đề bài PDF lớn lên repo
 *.pdf
@@ -56,3 +54,15 @@ docs/pdf_images/
 
 # Các thư mục code tham khảo không thuộc dự án chính
 Other Source/
+
+# Dữ liệu lớn và index FAISS
+data/models/
+
+# Các file zip
+*.zip
+data/*.zip
+
+# Thư mục nháp và output phụ
+scratch/
+data/output_*/
+data/input_*/

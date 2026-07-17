@@ -21,9 +21,9 @@ import argparse
 import sys
 import io
 
-# Ép terminal Windows hiển thị UTF-8 tránh lỗi ký tự tiếng Việt
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+# Ép terminal Windows hiển thị UTF-8 tránh lỗi ký tự tiếng Việt (đã comment out để tránh lỗi trên Windows Powershell khi dùng PYTHONIOENCODING)
+# sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+# sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # Hỗ trợ import metrics.py trong cùng thư mục
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

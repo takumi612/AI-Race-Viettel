@@ -84,7 +84,9 @@ def setup_database():
                 if 3 <= len(code) <= 7 and code not in records:
                     records[code] = (code, name_vi, name_en)
 
+
     print(f"Total unique ICD-10 codes compiled: {len(records)}")
+
     
     # Tạo bảng icd10 sạch
     cursor.execute("DROP TABLE IF EXISTS icd10;")
