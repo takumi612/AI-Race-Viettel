@@ -864,7 +864,7 @@ git commit -m "feat: add adaptive clinical chunking"
 **Interfaces:**
 
 - Produces: `MentionCandidate(text, start, end, candidate_types, sources, exact)`
-- Produces: `TypeDecision(entity_type: str | None, confidence: float, scores: dict[str, float], reason: str)`
+- Produces: `TypeDecision(entity_type: str | None, confidence: float, scores: Mapping[str, float], reason: str)` with an immutable score mapping.
 - Produces: `ClinicalLexicon.load(path) -> tuple[ClinicalTerm, ...]`
 - Produces: `ContextualTypeResolver.resolve(mention, document, chunk) -> TypeDecision`
 - Changes: `BaselineExtractor(..., clinical_lexicon_path=None).extract_entities(text, chunks=None) -> list[dict]`
@@ -961,9 +961,11 @@ class MentionCandidate:
 class TypeDecision:
     entity_type: str | None
     confidence: float
-    scores: dict[str, float]
+    scores: Mapping[str, float]
     reason: str
 ```
+
+Freeze `scores` with `MappingProxyType` during construction; `frozen=True` alone does not make a nested dictionary immutable.
 
 - [ ] **Step 4: Externalize clinical lexicons with provenance**
 
