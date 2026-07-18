@@ -148,8 +148,8 @@ Thông số 384/64 là mặc định cấu hình; giá trị thực tế đượ
 
 ### 6.4. Entity-centered context
 
-- `THUỐC`: bullet/dòng chứa entity cộng section header.
-- `CHẨN_ĐOÁN` và `TRIỆU_CHỨNG`: câu chứa entity cộng tối đa một câu trước và một câu sau trong cùng section.
+- `THUỐC`: bullet/dòng chứa entity cộng section header; header có thể nằm ở chunk trước nhưng phải thuộc cùng section.
+- `CHẨN_ĐOÁN` và `TRIỆU_CHỨNG`: câu chứa entity cộng tối đa một câu lân cận trong cùng section; ưu tiên câu sau, nếu không có mới dùng câu trước.
 - `TÊN_XÉT_NGHIỆM` và `KẾT_QUẢ_XÉT_NGHIỆM`: cùng dòng hoặc cùng bullet, không mở rộng sang section khác.
 - Assertion analyzer luôn nhận section type và header để nhận diện lịch sử hoặc gia đình.
 
