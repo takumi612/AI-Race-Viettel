@@ -14,10 +14,12 @@ pip-delete-this-directory.txt
 .coverage
 htmlcov/
 .mypy_cache/
+.superpowers/
 
 # IDE / Editors
 .vscode/
 .idea/
+.worktrees/
 .obsidian/
 *.suo
 *.ntvs*
