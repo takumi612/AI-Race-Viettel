@@ -137,7 +137,7 @@ def validate_prediction(
 
 
 def validate_output_directory(
-    input_dir: str, output_dir: str, expected_ids: Iterable[int]
+    input_dir: str, output_dir: str, expected_ids: Iterable[int], db_path: str | None = None
 ) -> list[str]:
     """Validate all expected output files and collect errors across the directory."""
     errors: list[str] = []
@@ -167,7 +167,7 @@ def validate_output_directory(
         if text is not None:
             errors.extend(
                 f"{file_id}.json: {error}"
-                for error in validate_prediction(text, entities, db_path=None)
+                for error in validate_prediction(text, entities, db_path=db_path)
             )
     return errors
 

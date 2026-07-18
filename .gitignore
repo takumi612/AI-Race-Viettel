@@ -66,5 +66,7 @@ data/*.zip
 
 # Thư mục nháp và output phụ
 scratch/
+reports/*
+!reports/.gitkeep
 data/output_*/
 data/input_*/

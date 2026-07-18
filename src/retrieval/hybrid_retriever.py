@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import sys
 
 import numpy as np
@@ -201,14 +202,96 @@ class HybridRetriever:
             alpha=self.alpha,
             valid_codes=self.bm25_retriever.codes,
         )
+        candidates = self._apply_hierarchical_expansion(candidates)
         return candidates if top_k is None else candidates[:top_k]
+
+    def _hierarchical_children(self, code):
+        """Return deterministic, explicitly eligible children for one parent code."""
+        if not getattr(self, "hierarchical_expansion", False):
+            return []
+
+        table_name = getattr(self, "table_name", "icd10")
+        database_path = getattr(self.bm25_retriever, "db_path", None)
+        if not database_path:
+            return []
+
+        normalized_code = str(code).strip().upper()
+        if not normalized_code:
+            return []
+
+        try:
+            with sqlite3.connect(database_path) as connection:
+                if table_name == "icd10" and len(normalized_code) == 3:
+                    rows = connection.execute(
+                        "SELECT code, name_vi, name_en "
+                        "FROM icd10 WHERE code LIKE ?",
+                        (f"{normalized_code}.%",),
+                    ).fetchall()
+                    ranked = []
+                    for child_code, name_vi, name_en in rows:
+                        child = str(child_code or "").strip().upper()
+                        if not child:
+                            continue
+                        text = f"{name_vi or ''} {name_en or ''}".casefold()
+                        priority = 0
+                        if "không đặc hiệu" in text or "unspecified" in text:
+                            priority = 2
+                        elif "khác" in text or "other" in text:
+                            priority = 1
+                        ranked.append((priority, child))
+                    preferred = [item for item in ranked if item[0] > 0]
+                    selected = preferred or ranked
+                    return [child for _, child in sorted(selected, key=lambda item: (-item[0], item[1]))[:2]]
+
+                if table_name == "rxnorm":
+                    parent = connection.execute(
+                        "SELECT name, tty FROM rxnorm WHERE rxcui = ? LIMIT 1",
+                        (normalized_code,),
+                    ).fetchone()
+                    if not parent or parent[1] not in {"SCDC", "IN"}:
+                        return []
+                    rows = connection.execute(
+                        "SELECT rxcui FROM rxnorm "
+                        "WHERE tty = 'SCD' AND name LIKE ? ORDER BY rxcui ASC",
+                        (f"{parent[0]} %",),
+                    ).fetchall()
+                    return sorted({str(child[0]).strip().upper() for child in rows if child[0]})[:2]
+        except (OSError, sqlite3.Error) as error:
+            print(f"[WARNING] Hierarchy expansion unavailable: {error}")
+        return []
+
+    def _apply_hierarchical_expansion(self, candidates):
+        """Insert opt-in hierarchy children after their fused parent candidates."""
+        if not getattr(self, "hierarchical_expansion", False):
+            return candidates
+
+        expanded = []
+        seen_codes = set()
+        for candidate in candidates:
+            code = candidate.code
+            if code in seen_codes:
+                continue
+            expanded.append(candidate)
+            seen_codes.add(code)
+            for child_code in self._hierarchical_children(code):
+                if child_code in seen_codes:
+                    continue
+                expanded.append(
+                    RetrievedCandidate(
+                        code=child_code,
+                        fusion_score=0.0,
+                        bm25_score=0.0,
+                        semantic_score=0.0,
+                        bm25_rank=None,
+                        semantic_rank=None,
+                    )
+                )
+                seen_codes.add(child_code)
+        return expanded
 
     def retrieve(self, query, top_k=5):
         """Compatibility wrapper that returns codes instead of scored candidates."""
-        return [
-            candidate.code
-            for candidate in self.retrieve_scored(query, top_k=top_k)
-        ]
+        return [candidate.code for candidate in self.retrieve_scored(query, top_k=top_k)]
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from src.retrieval.bm25_retriever import BM25Retriever
@@ -143,3 +145,87 @@ def test_hybrid_model_failure_uses_deterministic_bm25_only_fusion():
     assert [candidate.code for candidate in scored] == ["I10", "I11"]
     assert [candidate.semantic_score for candidate in scored] == [0.0, 0.0]
     assert [candidate.fusion_score for candidate in scored] == [0.75, 0.0]
+
+
+def test_hierarchical_expansion_is_opt_in_and_deterministic(tmp_path):
+    db_path = tmp_path / "metadata.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE icd10 (code TEXT, name_vi TEXT, name_en TEXT)")
+        connection.executemany(
+            "INSERT INTO icd10 VALUES (?, ?, ?)",
+            [
+                ("A00", "Cholera", "Cholera"),
+                ("A00.1", "Cholera khác", "Other cholera"),
+                ("A00.2", "Cholera không đặc hiệu", "Unspecified cholera"),
+                ("A00.3", "Cholera cụ thể", "Specific cholera"),
+            ],
+        )
+
+    class StubBM25:
+        codes = ["A00"]
+
+        def __init__(self):
+            self.db_path = str(db_path)
+
+        def retrieve_scored(self, query, top_k):
+            return [ComponentCandidate("A00", 1.0, 0)]
+
+    def build(expand):
+        hybrid = HybridRetriever.__new__(HybridRetriever)
+        hybrid.alpha = 0.75
+        hybrid.internal_top_k = 20
+        hybrid.hierarchical_expansion = expand
+        hybrid.bm25_retriever = StubBM25()
+        hybrid.faiss_available = False
+        return hybrid
+
+    assert [item.code for item in build(False).retrieve_scored("cholera", 3)] == ["A00"]
+    assert [item.code for item in build(True).retrieve_scored("cholera", 3)] == [
+        "A00",
+        "A00.2",
+        "A00.1",
+    ]
+
+
+def test_icd_hierarchy_expansion_is_opt_in_and_deterministic(tmp_path):
+    database_path = tmp_path / "codes.db"
+    connection = sqlite3.connect(database_path)
+    connection.execute("CREATE TABLE icd10 (code TEXT, name_vi TEXT, name_en TEXT)")
+    connection.executemany(
+        "INSERT INTO icd10 VALUES (?, ?, ?)",
+        [
+            ("I10", "Tăng huyết áp", "Hypertension"),
+            ("I10.1", "Tăng huyết áp thứ phát", "Secondary hypertension"),
+            ("I10.0", "Tăng huyết áp nguyên phát", "Primary hypertension"),
+            ("Z99", "Phụ thuộc thiết bị", "Dependence on enabling machines"),
+        ],
+    )
+    connection.commit()
+    connection.close()
+
+    class StubBM25:
+        codes = ["I10", "I10.0", "I10.1", "Z99"]
+        db_path = str(database_path)
+
+        def retrieve_scored(self, query, top_k):
+            return [
+                ComponentCandidate("I10", 2.0, 0),
+                ComponentCandidate("Z99", 1.0, 1),
+            ]
+
+    def hybrid(hierarchical_expansion):
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        retriever.alpha = 0.75
+        retriever.internal_top_k = 20
+        retriever.table_name = "icd10"
+        retriever.hierarchical_expansion = hierarchical_expansion
+        retriever.bm25_retriever = StubBM25()
+        retriever.faiss_available = False
+        return retriever
+
+    assert hybrid(False).retrieve("tăng huyết áp", top_k=3) == ["I10", "Z99"]
+    assert hybrid(True).retrieve("tăng huyết áp", top_k=3) == [
+        "I10",
+        "I10.0",
+        "I10.1",
+    ]

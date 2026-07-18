@@ -1,293 +1,194 @@
-import os
-import sys
-import sqlite3
-import re
+"""Safe, injectable clinical predicates used by candidate selection."""
 
-# Thêm project root vào sys.path để hỗ trợ import src
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if PROJECT_ROOT not in sys.path:
-    sys.path.append(PROJECT_ROOT)
+from __future__ import annotations
+
+import json
+import logging
+import sqlite3
+from collections.abc import Mapping
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any
 
 from src.utils.paths import DB_PATH
 
+LOGGER = logging.getLogger(__name__)
+RULES_PATH = Path(__file__).resolve().parents[1] / "resources" / "clinical_validation_rules.json"
+
+
+def _read_rules(rules: object | None = None, rules_path: str | Path | None = None) -> Mapping[str, Any]:
+    if rules is None:
+        path = Path(rules_path) if rules_path is not None else RULES_PATH
+        with path.open("r", encoding="utf-8") as handle:
+            rules = json.load(handle)
+    elif isinstance(rules, (str, Path)):
+        with Path(rules).open("r", encoding="utf-8") as handle:
+            rules = json.load(handle)
+    elif hasattr(rules, "to_dict"):
+        rules = rules.to_dict()
+    if not isinstance(rules, Mapping):
+        raise ValueError("clinical validation rules must be a mapping or JSON path")
+    groups = rules.get("route_groups")
+    if not isinstance(groups, (list, tuple)):
+        raise ValueError("clinical validation rules require route_groups")
+    normalized = []
+    for group in groups:
+        if not isinstance(group, Mapping) or not isinstance(group.get("name"), str):
+            raise ValueError("each route group requires a name")
+        mention = group.get("mention_terms", ())
+        rxnorm = group.get("rxnorm_terms", ())
+        if not isinstance(mention, (list, tuple)) or not isinstance(rxnorm, (list, tuple)):
+            raise ValueError("route group terms must be lists")
+        if any(not isinstance(term, str) or not term.strip() for term in (*mention, *rxnorm)):
+            raise ValueError("route group terms must be non-empty strings")
+        source = group.get("source")
+        if rules.get("version") is not None and (not isinstance(source, str) or not source.strip()):
+            raise ValueError(f"missing source for route group {group['name']}")
+        normalized.append({
+            "name": group["name"],
+            "source": source or "injected",
+            "mention_terms": tuple(term.casefold() for term in mention),
+            "rxnorm_terms": tuple(term.casefold() for term in rxnorm),
+        })
+    if not normalized:
+        raise ValueError("clinical validation rules require at least one route group")
+    # The bundled resource is strict and versioned. Small injected rule objects
+    # remain intentionally lightweight for unit tests and downstream callers.
+    if rules.get("version") is not None:
+        if isinstance(rules.get("version"), bool) or not isinstance(rules.get("version"), int):
+            raise ValueError("clinical validation rules version must be an integer")
+        provenance = rules.get("provenance")
+        if not isinstance(provenance, Mapping):
+            raise ValueError("clinical validation rules require provenance")
+        for group in normalized:
+            source = provenance.get(group["name"])
+            if not isinstance(source, Mapping) or not isinstance(source.get("source"), str) or not source["source"].strip():
+                raise ValueError(f"missing source for route group {group['name']}")
+    return MappingProxyType({"route_groups": tuple(MappingProxyType(group) for group in normalized)})
+
+
+def dose_form_is_compatible(drug_text: str, rxcui_name: str, rules: object | None = None) -> bool:
+    """Return false only for an explicit route/form contradiction."""
+    if not drug_text or not rxcui_name:
+        return True
+    loaded = _read_rules(rules)
+    mention = str(drug_text).casefold()
+    rxnorm = str(rxcui_name).casefold()
+    mentioned_groups = {
+        group["name"] for group in loaded["route_groups"]
+        if any(term in mention for term in group["mention_terms"])
+    }
+    rxnorm_groups = {
+        group["name"] for group in loaded["route_groups"]
+        if any(term in rxnorm for term in group["rxnorm_terms"])
+    }
+    if not mentioned_groups or not rxnorm_groups:
+        return not mentioned_groups
+    return bool(mentioned_groups & rxnorm_groups)
+
+
 class ClinicalValidator:
-    def __init__(self, db_path=DB_PATH):
-        self.db_path = db_path
+    def __init__(
+        self,
+        db_path: str | Path = DB_PATH,
+        *,
+        load_historical_rxnorm: bool = False,
+        rules: object | None = None,
+        rules_path: str | Path | None = None,
+    ):
+        self.db_path = str(db_path)
+        if not isinstance(load_historical_rxnorm, bool):
+            raise ValueError("load_historical_rxnorm must be a boolean")
+        self.load_historical_rxnorm = load_historical_rxnorm
+        self.rules = _read_rules(rules, rules_path)
         self.load_rules()
 
-    def load_rules(self):
-        """Tải toàn bộ quy tắc từ SQLite vào bộ nhớ RAM để tối ưu hóa tốc độ."""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # 1. Luật giới tính
-        cursor.execute("SELECT code, allowed_sex FROM icd10_rules_sex;")
-        self.sex_rules = {row[0]: row[1] for row in cursor.fetchall()}
-
-        # 2. Luật độ tuổi
-        cursor.execute("SELECT code, min_days, max_days, description FROM icd10_rules_age;")
-        self.age_rules = {row[0]: (row[1], row[2], row[3]) for row in cursor.fetchall()}
-
-        # 3. Luật mã kép
-        cursor.execute("SELECT dagger_code, asterisk_code FROM icd10_rules_dual;")
-        self.dual_rules = {}
-        for dagger, asterisk in cursor.fetchall():
-            if dagger not in self.dual_rules:
-                self.dual_rules[dagger] = set()
-            self.dual_rules[dagger].add(asterisk)
-
-        # 4. Luật không được làm bệnh chính
-        cursor.execute("SELECT code FROM icd10_rules_not_primary;")
-        self.not_primary_rules = {row[0] for row in cursor.fetchall()}
-
-        # 5. Luật ánh xạ RxNorm lịch sử (nếu có bảng rxnorm_mapping)
-        self.rxnorm_mapping = {}
+    def _fetchall(self, query: str, params: tuple = ()) -> list[tuple]:
         try:
-            cursor.execute("SELECT old_cui, new_cui FROM rxnorm_mapping;")
-            for old_cui, new_cui in cursor.fetchall():
-                if new_cui not in self.rxnorm_mapping:
-                    self.rxnorm_mapping[new_cui] = []
-                self.rxnorm_mapping[new_cui].append(old_cui)
-        except Exception as e:
-            # Nếu chưa chạy setup_rxnorm.py thì bảng này chưa có, bỏ qua không lỗi
-            pass
+            with sqlite3.connect(self.db_path) as connection:
+                return connection.execute(query, params).fetchall()
+        except sqlite3.Error:
+            return []
 
-        conn.close()
-        print(f"ClinicalValidator initialized:")
-        print(f"  - Loaded {len(self.sex_rules)} sex rules.")
-        print(f"  - Loaded {len(self.age_rules)} age rules.")
-        print(f"  - Loaded {len(self.dual_rules)} dual code mapping groups.")
-        print(f"  - Loaded {len(self.not_primary_rules)} non-primary codes.")
-        print(f"  - Loaded {len(self.rxnorm_mapping)} RxNorm historical CUI mappings.")
+    def load_rules(self) -> None:
+        self.sex_rules = {row[0]: row[1] for row in self._fetchall("SELECT code, allowed_sex FROM icd10_rules_sex")}
+        self.age_rules = {row[0]: (row[1], row[2], row[3]) for row in self._fetchall("SELECT code, min_days, max_days, description FROM icd10_rules_age")}
+        self.dual_rules: dict[str, set[str]] = {}
+        for dagger, asterisk in self._fetchall("SELECT dagger_code, asterisk_code FROM icd10_rules_dual"):
+            self.dual_rules.setdefault(dagger, set()).add(asterisk)
+        self.not_primary_rules = {row[0] for row in self._fetchall("SELECT code FROM icd10_rules_not_primary")}
+        self.rxnorm_mapping: dict[str, list[str]] = {}
+        # This query is deliberately absent unless explicitly requested. The
+        # default inference path therefore performs zero historical work.
+        if self.load_historical_rxnorm:
+            for old_cui, new_cui in self._fetchall("SELECT old_cui, new_cui FROM rxnorm_mapping"):
+                self.rxnorm_mapping.setdefault(str(new_cui), []).append(str(old_cui))
 
-    def get_historical_cuis(self, rxcui):
-        """
-        Trả về danh sách các mã RxCUI lịch sử (mã cũ) tương ứng với mã hiện tại.
-        """
-        return self.rxnorm_mapping.get(str(rxcui).strip(), [])
+    def get_historical_cuis(self, rxcui: str) -> list[str]:
+        return list(self.rxnorm_mapping.get(str(rxcui).strip(), ()))
 
-    def validate_sex(self, code, patient_sex):
-        """
-        Kiểm tra xem mã bệnh có vi phạm giới tính của bệnh nhân hay không.
-        patient_sex: 'M' (Nam), 'F' (Nữ) hoặc None (nếu không xác định).
-        Trả về True nếu hợp lệ, False nếu vi phạm.
-        """
-        if not patient_sex or code not in self.sex_rules:
-            return True
-        return self.sex_rules[code] == patient_sex
+    def validate_sex(self, code: str, patient_sex: str | None) -> bool:
+        return not patient_sex or code not in self.sex_rules or self.sex_rules[code] == patient_sex
 
-    def validate_age(self, code, patient_age_days):
-        """
-        Kiểm tra xem mã bệnh có vi phạm tuổi của bệnh nhân (tính bằng ngày) hay không.
-        patient_age_days: Số ngày tuổi của bệnh nhân (hoặc None nếu không xác định).
-        """
+    def validate_age(self, code: str, patient_age_days: int | None) -> bool:
         if patient_age_days is None or code not in self.age_rules:
             return True
-        min_days, max_days, _ = self.age_rules[code]
-        return min_days <= patient_age_days <= max_days
+        minimum, maximum, _ = self.age_rules[code]
+        return minimum <= patient_age_days <= maximum
 
-    def get_rxnorm_name(self, rxcui):
-        """Truy vấn tên của RxCUI từ SQLite database."""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM rxnorm WHERE rxcui = ? LIMIT 1;", (str(rxcui).strip(),))
-        row = cursor.fetchone()
-        conn.close()
-        return row[0] if row else ""
+    def get_rxnorm_name(self, rxcui: str) -> str:
+        rows = self._fetchall("SELECT name FROM rxnorm WHERE rxcui = ? LIMIT 1", (str(rxcui).strip(),))
+        return str(rows[0][0]) if rows and rows[0][0] is not None else ""
 
-    def get_ingredients(self, rxnorm_name):
-        """Truy vấn mã IN và PIN từ tên thuốc."""
+    def get_ingredients(self, rxnorm_name: str) -> list[str]:
         if not rxnorm_name:
             return []
-        ingredients = []
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Tìm mã IN
-            cursor.execute("""
-                SELECT rxcui FROM rxnorm 
-                WHERE tty = 'IN' AND ? LIKE name || '%'
-                ORDER BY length(name) DESC LIMIT 1;
-            """, (rxnorm_name.lower(),))
-            row_in = cursor.fetchone()
-            if row_in:
-                ingredients.append(row_in[0])
-                
-            # Tìm mã PIN
-            cursor.execute("""
-                SELECT rxcui FROM rxnorm 
-                WHERE tty = 'PIN' AND ? LIKE name || '%'
-                ORDER BY length(name) DESC LIMIT 1;
-            """, (rxnorm_name.lower(),))
-            row_pin = cursor.fetchone()
-            if row_pin:
-                ingredients.append(row_pin[0])
-                
-            conn.close()
-        except Exception:
-            pass
-        return ingredients
+        result = []
+        for tty in ("IN", "PIN"):
+            rows = self._fetchall(
+                "SELECT rxcui FROM rxnorm WHERE tty = ? AND ? LIKE name || '%' ORDER BY length(name) DESC LIMIT 1",
+                (tty, rxnorm_name.lower()),
+            )
+            if rows:
+                result.append(rows[0][0])
+        return result
 
-    def validate_dose_form(self, drug_text, rxcui_name):
-        """
-        Kiểm tra xem tên dạng bào chế trong rxcui_name (tiếng Anh) có mâu thuẫn 
-        với từ chỉ dạng dùng/dạng bào chế tiếng Việt trong drug_text hay không.
-        Trả về True nếu không có mâu thuẫn (hợp lệ), False nếu mâu thuẫn rõ ràng.
-        """
-        if not drug_text or not rxcui_name:
-            return True
-            
-        drug_text_lower = drug_text.lower()
-        rxcui_name_lower = rxcui_name.lower()
-        
-        # 1. Định nghĩa các nhóm từ khóa dạng dùng tiếng Việt và dạng bào chế tiếng Anh tương ứng
-        # Nhóm Oral (uống)
-        oral_keywords_vi = ["uống", "viên", "gói", "capsule", "tablet", "nén", "nang"]
-        oral_keywords_en = ["oral", "tablet", "capsule", "packet", "pill", "lozenge"]
-        
-        # Nhóm Injectable (tiêm)
-        inj_keywords_vi = ["tiêm", "truyền", "ống", "tĩnh mạch", "bắp", "lọ tiêm", "dịch truyền"]
-        inj_keywords_en = ["injectable", "injection", "infusion", "intravenous"]
-        
-        # Nhóm Topical (bôi/ngoài da)
-        topical_keywords_vi = ["bôi", "thoa", "kem", "mỡ", "gel", "ngoài da", "xịt da"]
-        topical_keywords_en = ["topical", "cream", "ointment", "gel", "spray", "patch"]
+    def validate_dose_form(self, drug_text: str, rxcui_name: str) -> bool:
+        return dose_form_is_compatible(drug_text, rxcui_name, self.rules)
 
-        # Nhóm Inhalant (hít/xịt xông)
-        inhalant_keywords_vi = ["hít", "xịt mũi", "xịt họng", "xông", "khí dung"]
-        inhalant_keywords_en = ["inhalant", "inhalation", "nasal spray", "aerosol"]
+    @staticmethod
+    def _patient_value(patient_info: object | None, name: str, default=None):
+        if isinstance(patient_info, Mapping):
+            return patient_info.get(name, default)
+        return getattr(patient_info, name, default)
 
-        # 2. Phát hiện dạng dùng trong văn bản tiếng Việt
-        has_oral_vi = any(kw in drug_text_lower for kw in oral_keywords_vi)
-        has_inj_vi = any(kw in drug_text_lower for kw in inj_keywords_vi)
-        has_topical_vi = any(kw in drug_text_lower for kw in topical_keywords_vi)
-        has_inhalant_vi = any(kw in drug_text_lower for kw in inhalant_keywords_vi)
-        
-        # 3. Phát hiện dạng bào chế của RxCUI tiếng Anh
-        has_oral_en = any(kw in rxcui_name_lower for kw in oral_keywords_en)
-        has_inj_en = any(kw in rxcui_name_lower for kw in inj_keywords_en)
-        has_topical_en = any(kw in rxcui_name_lower for kw in topical_keywords_en)
-        has_inhalant_en = any(kw in rxcui_name_lower for kw in inhalant_keywords_en)
-        
-        # 4. Kiểm duyệt mâu thuẫn chéo (Cross-contradiction checking)
-        # Bác sĩ kê dạng uống (viên, uống) nhưng mã thuốc lại là dạng tiêm hoặc bôi ngoài da
-        if has_oral_vi and not has_oral_en:
-            if has_inj_en or has_topical_en or has_inhalant_en:
+    def is_candidate_valid(self, entity: Mapping[str, Any], code: str, patient_info: object | None = None) -> bool:
+        entity_type = str(entity.get("type", "")).upper()
+        clean_code = str(code).strip().upper()
+        if "CH" in entity_type or "DIAG" in entity_type:
+            if not self.validate_sex(clean_code, self._patient_value(patient_info, "sex")):
                 return False
-                
-        # Bác sĩ kê dạng tiêm (ống, tiêm) nhưng mã thuốc lại là dạng uống hoặc bôi ngoài da
-        if has_inj_vi and not has_inj_en:
-            if has_oral_en or has_topical_en:
+            if not self.validate_age(clean_code, self._patient_value(patient_info, "age_days")):
                 return False
-                
-        # Bác sĩ kê dạng bôi ngoài da nhưng mã thuốc lại là dạng uống hoặc tiêm
-        if has_topical_vi and not has_topical_en:
-            if has_oral_en or has_inj_en:
+        elif "THU" in entity_type or "DRUG" in entity_type or "MED" in entity_type:
+            name = self.get_rxnorm_name(clean_code)
+            if name and not self.validate_dose_form(str(entity.get("text", "")), name):
                 return False
-
-        # Bác sĩ kê dạng hít/xịt nhưng mã thuốc lại là dạng uống hoặc tiêm
-        if has_inhalant_vi and not has_inhalant_en:
-            if has_oral_en or has_inj_en:
-                return False
-                
         return True
 
-    def check_and_fix_candidates(self, entity, patient_info=None):
-        """
-        Kiểm tra danh sách candidates của một thực thể (dự đoán) và lọc bỏ các mã vi phạm.
-        patient_info: dict, ví dụ: {'sex': 'M', 'age_days': 7200} (20 tuổi)
-        """
-        if not entity.get("candidates") or entity.get("type") not in ("CHẨN_ĐOÁN", "THUỐC"):
+    def check_and_fix_candidates(self, entity: dict, patient_info: object | None = None) -> dict:
+        if not entity.get("candidates"):
             return entity
-
-        sex = patient_info.get("sex") if patient_info else None
-        age_days = patient_info.get("age_days") if patient_info else None
-
-        valid_candidates = []
-        for code in entity["candidates"]:
-            code_clean = str(code).strip().upper()
-            
-            # Nếu là chẩn đoán: Kiểm tra giới tính và độ tuổi
-            if entity["type"] == "CHẨN_ĐOÁN":
-                if not self.validate_sex(code_clean, sex):
-                    print(f"  [RULE VIOLATION] Candidate {code} rejected for patient sex {sex}")
-                    continue
-                if not self.validate_age(code_clean, age_days):
-                    print(f"  [RULE VIOLATION] Candidate {code} rejected for patient age {age_days} days")
-                    continue
-            
-            # Nếu là thuốc: Kiểm tra dạng bào chế lâm sàng
-            elif entity["type"] == "THUỐC":
-                rxcui_name = self.get_rxnorm_name(code_clean)
-                if rxcui_name:
-                    if not self.validate_dose_form(entity.get("text", ""), rxcui_name):
-                        print(f"  [CLINICAL VIOLATION] RxNorm Candidate {code} rejected due to dose form contradiction")
-                        continue
-                
-            valid_candidates.append(code)
-
-        entity["candidates"] = valid_candidates
+        entity["candidates"] = [
+            code for code in entity["candidates"]
+            if self.is_candidate_valid(entity, code, patient_info)
+        ]
         return entity
 
-    def check_dual_codes(self, entities):
-        """
-        Kiểm tra tính toàn vẹn của mã kép (Dagger/Asterisk).
-        Nếu phát hiện mã Dagger trong danh sách chẩn đoán, kiểm tra xem
-        đã có mã Asterisk tương ứng chưa. Nếu chưa có, tự động bổ sung mã Asterisk
-        đầu tiên tìm thấy vào danh sách dưới dạng một thực thể chẩn đoán phụ trùng tọa độ.
-        """
-        all_codes = set()
-        for ent in entities:
-            if ent.get("type") == "CHẨN_ĐOÁN" and ent.get("candidates"):
-                for c in ent["candidates"]:
-                    all_codes.add(str(c).strip().upper())
+    def check_dual_codes(self, entities: list[dict]) -> list[dict]:
+        # Dual-code analysis is intentionally non-mutating. Selection and
+        # output limits must remain controlled by the deterministic selector.
+        return entities
 
-        additional_entities = []
-        for ent in entities:
-            if ent.get("type") == "CHẨN_ĐOÁN" and ent.get("candidates"):
-                for c in ent["candidates"]:
-                    c_upper = str(c).strip().upper()
-                    if c_upper in self.dual_rules:
-                        required_asterisks = self.dual_rules[c_upper]
-                        # Kiểm tra xem có mã asterisk nào có mặt trong danh sách chẩn đoán chưa
-                        if not required_asterisks.intersection(all_codes):
-                            # Lấy mã Asterisk đầu tiên để bổ sung
-                            best_asterisk = sorted(list(required_asterisks))[0]
-                            asterisk_name = ""
-                            try:
-                                conn = sqlite3.connect(self.db_path)
-                                cursor = conn.cursor()
-                                cursor.execute("SELECT name_vi FROM icd10 WHERE code = ? LIMIT 1;", (best_asterisk,))
-                                row = cursor.fetchone()
-                                conn.close()
-                                asterisk_name = row[0] if row else f"Biểu hiện lâm sàng của {ent.get('text')}"
-                            except Exception:
-                                asterisk_name = f"Biểu hiện lâm sàng của {ent.get('text')}"
-                                
-                            print(f"  [CLINICAL UPDATE] Automatically adding required Asterisk code {best_asterisk} for Dagger {c_upper}")
-                            
-                            # Tạo thực thể mới trùng tọa độ với thực thể Dagger gốc
-                            new_ent = {
-                                "text": asterisk_name,
-                                "type": "CHẨN_ĐOÁN",
-                                "position": ent.get("position"),
-                                "assertions": ent.get("assertions", []),
-                                "candidates": [best_asterisk]
-                            }
-                            additional_entities.append(new_ent)
-                            all_codes.add(best_asterisk)
-                            
-        return entities + additional_entities
 
-if __name__ == "__main__":
-    # Test thử Validator
-    validator = ClinicalValidator()
-    
-    # Test case 1: Uốn ván sơ sinh (A33) chỉ dùng cho trẻ < 1 tuổi (365 ngày)
-    print("A33 check for 10yo:", validator.validate_age("A33", 3650)) # Kỳ vọng: False
-    print("A33 check for 50 days baby:", validator.validate_age("A33", 50)) # Kỳ vọng: True
-    
-    # Test case 2: Uốn ván sản khoa (A34) chỉ dùng cho Nữ
-    print("A34 check for Male:", validator.validate_sex("A34", "M")) # Kỳ vọng: False
-    print("A34 check for Female:", validator.validate_sex("A34", "F")) # Kỳ vọng: True
+__all__ = ["ClinicalValidator", "dose_form_is_compatible"]

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "provenance": {
+    "oral": {"source": "RxNorm route/form compatibility vocabulary"},
+    "injectable": {"source": "RxNorm route/form compatibility vocabulary"},
+    "topical": {"source": "RxNorm route/form compatibility vocabulary"},
+    "inhalant": {"source": "RxNorm route/form compatibility vocabulary"}
+  },
+  "route_groups": [
+    {
+      "name": "oral",
+      "source": "RxNorm route/form compatibility vocabulary",
+      "mention_terms": ["uống", "viên", "gói", "nén", "nang", "đường uống"],
+      "rxnorm_terms": ["oral", "tablet", "capsule", "packet", "pill", "lozenge"]
+    },
+    {
+      "name": "injectable",
+      "source": "RxNorm route/form compatibility vocabulary",
+      "mention_terms": ["tiêm", "truyền", "ống", "tĩnh mạch", "bắp", "lọ tiêm", "dịch truyền"],
+      "rxnorm_terms": ["injectable", "injection", "infusion", "intravenous"]
+    },
+    {
+      "name": "topical",
+      "source": "RxNorm route/form compatibility vocabulary",
+      "mention_terms": ["bôi", "thoa", "kem", "mỡ", "gel", "ngoài da", "xịt da"],
+      "rxnorm_terms": ["topical", "cream", "ointment", "gel", "spray", "patch"]
+    },
+    {
+      "name": "inhalant",
+      "source": "RxNorm route/form compatibility vocabulary",
+      "mention_terms": ["hít", "xịt mũi", "xịt họng", "xông", "khí dung"],
+      "rxnorm_terms": ["inhalant", "inhalation", "nasal spray", "aerosol"]
+    }
+  ]
+}

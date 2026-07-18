@@ -19,10 +19,11 @@ def main() -> int:
     parser.add_argument("--input", default="data/input", help="directory containing 1.txt through 100.txt")
     parser.add_argument("--output", default="data/output", help="directory containing 1.json through 100.json")
     parser.add_argument("--zip", default="output.zip", help="submission archive path")
+    parser.add_argument("--db", default=None, help="read-only metadata SQLite database for code validation")
     parser.add_argument("--validate-only", action="store_true", help="validate without writing an archive")
     args = parser.parse_args()
 
-    errors = validate_output_directory(args.input, args.output, range(1, 101))
+    errors = validate_output_directory(args.input, args.output, range(1, 101), db_path=args.db)
     if errors:
         print("Submission validation failed:", file=sys.stderr)
         for error in errors:

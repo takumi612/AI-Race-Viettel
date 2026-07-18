@@ -6,6 +6,19 @@ Hệ thống xử lý văn bản y tế tự động (Clinical NLP) phục vụ 
 
 ---
 
+## Trusted benchmark policy
+
+Configuration selection uses only trusted development IDs **101–180** with deterministic folds. IDs **1–100** are self-generated pseudo-GT and may be reported only as `untrusted`; they never select thresholds or retrieval weights. Holdout IDs **181–200** are evaluated once with a SHA-256-verified locked configuration.
+
+```bash
+python -m src.evaluation.benchmark --dev-pool --baseline --output reports/baseline-dev.json
+python -m src.evaluation.benchmark --dev-pool --alphas 0.60 0.70 0.75 0.80 0.90 --output reports/precision-first-cv.json --write-locked-config reports/locked-config.json
+python -m src.evaluation.benchmark --holdout --locked-config reports/locked-config.json --output reports/final-holdout.json
+python src/pipeline/main.py --input data/input --output data/output --config reports/locked-config.json
+```
+
+The benchmark refuses an invalid or reused holdout lock. Neural NER remains optional; the current production path uses the validated baseline extractor and precision-first selector.
+
 ## 📂 Cấu trúc dự án
 
 ```text

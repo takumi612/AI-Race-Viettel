@@ -2,8 +2,6 @@ import os
 import sys
 import json
 import glob
-import re
-import sqlite3
 
 # Thêm project root vào sys.path để hỗ trợ import chéo
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,6 +18,8 @@ from src.ner.extractor import BaselineExtractor
 from src.retrieval.normalizer import TextNormalizer
 from src.assertion.rule_based import AssertionAnalyzer
 from src.retrieval.hybrid_retriever import HybridRetriever
+from src.retrieval.candidate_selector import CandidateSelector
+from src.retrieval.types import RetrievedCandidate
 from src.validation.clinical_validator import ClinicalValidator
 from src.ranking.llm_reranker import LLMReranker
 
@@ -35,10 +35,31 @@ class BaselinePipeline:
         self.ner_extractor = BaselineExtractor()
         self.normalizer = TextNormalizer()
         self.assertion_analyzer = AssertionAnalyzer(config=self.config)
-        self.retriever = HybridRetriever(table_name="icd10")
-        self.rxnorm_retriever = HybridRetriever(table_name="rxnorm")
-        self.clinical_validator = ClinicalValidator()
-        self.llm_reranker = LLMReranker(use_llm=self.config.reranker.enabled)
+        retrieval = self.config.retrieval
+        self.retriever = HybridRetriever(
+            table_name="icd10",
+            alpha=retrieval.alpha,
+            internal_top_k=retrieval.internal_top_k,
+            hierarchical_expansion=retrieval.hierarchical_expansion,
+        )
+        self.rxnorm_retriever = HybridRetriever(
+            table_name="rxnorm",
+            alpha=retrieval.alpha,
+            internal_top_k=retrieval.internal_top_k,
+            hierarchical_expansion=retrieval.hierarchical_expansion,
+        )
+        self.clinical_validator = ClinicalValidator(
+            load_historical_rxnorm=self.config.selection.load_historical_rxnorm
+        )
+        self.candidate_selector = CandidateSelector(self.config.selection)
+        self.llm_reranker = (
+            LLMReranker(
+                use_llm=True,
+                timeout_seconds=self.config.reranker.timeout_seconds,
+            )
+            if self.config.reranker.enabled
+            else None
+        )
         
         self.override_dict = {}
         for entry in load_verified_overrides(VERIFIED_OVERRIDES_PATH):
@@ -52,14 +73,47 @@ class BaselinePipeline:
             
         print("Pipeline initialized successfully.")
 
-    def process_file(self, file_path):
+    def _select_ranked(self, entity, ranked, patient_info):
+        """Apply clinical predicates, optional LLM subset, then deterministic gates."""
+        if not hasattr(self, "candidate_selector") or not hasattr(self.clinical_validator, "is_candidate_valid"):
+            return [candidate.code for candidate in ranked]
+        entity_type = entity["type"]
+
+        def is_valid(code):
+            return self.clinical_validator.is_candidate_valid(entity, code, patient_info)
+
+        valid_ranked = [candidate for candidate in ranked if is_valid(candidate.code)]
+        llm_reranker = getattr(self, "llm_reranker", None)
+        if llm_reranker and valid_ranked:
+            selected_codes = llm_reranker.rerank(
+                entity.get("context", ""),
+                entity["text"],
+                entity_type,
+                [candidate.code for candidate in valid_ranked],
+            )
+            selected_set = set(selected_codes)
+            valid_ranked = [candidate for candidate in valid_ranked if candidate.code in selected_set]
+        return self.candidate_selector.select(entity_type, valid_ranked, is_valid)
+
+    def _select_override(self, entity, codes, patient_info):
+        ranked = [
+            RetrievedCandidate(
+                code=str(code).strip().upper(),
+                fusion_score=1.0,
+                bm25_score=1.0,
+                semantic_score=0.0,
+                bm25_rank=index,
+                semantic_rank=None,
+            )
+            for index, code in enumerate(codes)
+        ]
+        return self._select_ranked(entity, ranked, patient_info)
+
+    def process_text(self, text: str):
         """Xử lý một file văn bản lâm sàng đầu vào."""
-        filename = os.path.basename(file_path)
-        print(f"Processing: {filename}")
-        
-        with open(file_path, 'r', encoding='utf-8') as f:
-            text = f.read()
-            
+        if not isinstance(text, str):
+            raise TypeError("text must be a string")
+
         # 1. Trích xuất giới tính/độ tuổi bệnh nhân
         patient_info = self.patient_extractor.extract(text)
         print(f"  - Patient Demographics: {patient_info}")
@@ -121,42 +175,28 @@ class BaselinePipeline:
                 # 4a. Kiểm tra bảng ánh xạ cứng (Override) trước
                 override_key = normalize_override_term(expanded_text)
                 if override_key in self.override_dict.get("CHẨN_ĐOÁN", {}):
-                    candidates = self.override_dict["CHẨN_ĐOÁN"][override_key]
-                    print(f"  [OVERRIDE MATCH] Mapped diagnosis to {candidates}")
+                    override_codes = self.override_dict["CHẨN_ĐOÁN"][override_key]
+                    print(f"  [OVERRIDE MATCH] Mapped diagnosis to {override_codes}")
+                    candidates = self._select_override(processed_ent, override_codes, patient_info)
                 else:
                     # Tra cứu Hybrid (BM25s + FAISS) tìm mã ICD-10
-                    candidates = self.retriever.retrieve(expanded_text, top_k=5)
+                    if hasattr(self.retriever, "retrieve_scored") and hasattr(self, "candidate_selector"):
+                        ranked = self.retriever.retrieve_scored(
+                            expanded_text,
+                            top_k=self.config.retrieval.internal_top_k,
+                        )
                     # Xếp hạng lại bằng LLM
-                    if self.llm_reranker:
-                        candidates = self.llm_reranker.rerank(text, ent_text, ent_type, candidates)
+                        candidates = self._select_ranked(processed_ent, ranked, patient_info)
+                    else:
+                        candidates = self.retriever.retrieve(expanded_text, top_k=5)
+                        processed_ent["candidates"] = candidates
+                        processed_ent = self.clinical_validator.check_and_fix_candidates(
+                            processed_ent, patient_info
+                        )
                 
-                    # Ưu tiên các mã ICD-10 trùng khớp hoàn toàn tên gọi lên đầu
-                    exact_matches = []
-                    other_candidates = []
-                    for cand in candidates:
-                        try:
-                            conn = sqlite3.connect(self.clinical_validator.db_path)
-                            cursor = conn.cursor()
-                            cursor.execute("SELECT name_vi, name_en FROM icd10 WHERE code = ? LIMIT 1;", (cand,))
-                            row = cursor.fetchone()
-                            conn.close()
-                            if row:
-                                name_vi, name_en = row
-                                name_vi_clean = name_vi.lower().strip() if name_vi else ""
-                                name_en_clean = name_en.lower().strip() if name_en else ""
-                                clean_ent_text = ent_text.lower().strip()
-                                if name_vi_clean == clean_ent_text or name_en_clean == clean_ent_text:
-                                    exact_matches.append(cand)
-                                    continue
-                        except Exception:
-                            pass
-                        other_candidates.append(cand)
-                    candidates = exact_matches + other_candidates
-                
-                processed_ent["candidates"] = candidates[:5]
+                processed_ent["candidates"] = candidates[:2]
                 
                 # Áp dụng bộ lọc luật lâm sàng
-                processed_ent = self.clinical_validator.check_and_fix_candidates(processed_ent, patient_info)
                 
             elif ent_type == "THUỐC":
                 # Chuẩn hóa văn bản thuốc
@@ -166,10 +206,6 @@ class BaselinePipeline:
                 clean_drug_name = self.normalizer.remove_dosage(clean_text)
                 expanded_text = self.normalizer.expand_abbreviation(clean_drug_name)
                 
-                # Tìm tên thuốc gốc (không có hàm lượng) để tra cứu hoạt chất chính
-                drug_name_only = re.sub(r'\b\d+(?:[\.,]\d+)?\s*(?:mg/ml|mg|ml|g|mcg|ui|iu|MG|ML|G|MCG|UI|IU)\b', '', clean_drug_name).strip()
-                drug_name_only = self.normalizer.clean_text(drug_name_only).lower()
-                
                 # 4a. Kiểm tra bảng ánh xạ cứng (Override) trước cho tên đầy đủ
                 override_key = normalize_override_term(expanded_text)
                 if override_key in self.override_dict.get("THUỐC", {}):
@@ -177,42 +213,23 @@ class BaselinePipeline:
                     print(f"  [OVERRIDE MATCH] Mapped drug to {candidates}")
                 else:
                     # Tra cứu Hybrid (BM25s + FAISS) tìm mã RxNorm bằng tên thuốc sạch có liều lượng
-                    candidates = self.rxnorm_retriever.retrieve(expanded_text, top_k=5)
+                    if hasattr(self.rxnorm_retriever, "retrieve_scored") and hasattr(self, "candidate_selector"):
+                        ranked = self.rxnorm_retriever.retrieve_scored(
+                            expanded_text,
+                            top_k=self.config.retrieval.internal_top_k,
+                        )
                     # Xếp hạng lại bằng LLM
-                    if self.llm_reranker:
-                        candidates = self.llm_reranker.rerank(text, ent_text, ent_type, candidates)
+                        candidates = self._select_ranked(processed_ent, ranked, patient_info)
+                    else:
+                        candidates = self.rxnorm_retriever.retrieve(expanded_text, top_k=5)
+                        processed_ent["candidates"] = candidates
+                        processed_ent = self.clinical_validator.check_and_fix_candidates(
+                            processed_ent, patient_info
+                        )
                 
-                    # Ánh xạ hoạt chất chính (IN/PIN) và mã lịch sử ở phía sau để tối đa hóa Recall
-                    resolved_candidates = []
-                    for cand in candidates:
-                        resolved_candidates.append(cand)
-                        
-                        rxcui_name = self.clinical_validator.get_rxnorm_name(cand)
-                        # Tìm hoạt chất của candidate
-                        ingreds = self.clinical_validator.get_ingredients(rxcui_name)
-                        for ing in ingreds:
-                            resolved_candidates.append(ing)
-                            
-                    # Bổ sung hoạt chất chính từ tên thuốc không hàm lượng qua override dict
-                    normalized_drug_name = normalize_override_term(drug_name_only)
-                    if normalized_drug_name in self.override_dict.get("THUỐC", {}):
-                        for ing in self.override_dict["THUỐC"][normalized_drug_name]:
-                            resolved_candidates.append(ing)
-                            
-                    # Loại bỏ trùng lặp và giữ thứ tự
-                    seen = set()
-                    unique_resolved = []
-                    for c in resolved_candidates:
-                        if c not in seen:
-                            seen.add(c)
-                            unique_resolved.append(c)
-                            
-                    candidates = unique_resolved
-                        
-                processed_ent["candidates"] = candidates[:5]
+                processed_ent["candidates"] = candidates[:2]
                 
                 # Áp dụng bộ lọc luật lâm sàng (bao gồm cả kiểm tra dạng bào chế)
-                processed_ent = self.clinical_validator.check_and_fix_candidates(processed_ent, patient_info)
                 
             processed_entities.append(processed_ent)
             
@@ -220,6 +237,13 @@ class BaselinePipeline:
         processed_entities = self.clinical_validator.check_dual_codes(processed_entities)
         
         return processed_entities
+
+    def process_file(self, file_path):
+        """Read UTF-8 text and delegate to the side-effect-free text API."""
+        filename = os.path.basename(file_path)
+        print(f"Processing: {filename}")
+        with open(file_path, "r", encoding="utf-8") as handle:
+            return self.process_text(handle.read())
 
     def run(self, input_dir=INPUT_DIR, output_dir=OUTPUT_DIR):
         """Chạy pipeline trên toàn bộ file txt trong input_dir."""
@@ -250,7 +274,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="AI Race Viettel Pipeline Runner")
     parser.add_argument("--input", type=str, default=INPUT_DIR, help="Input directory containing text files")
     parser.add_argument("--output", type=str, default=OUTPUT_DIR, help="Output directory to save JSON results")
+    parser.add_argument("--config", type=str, default=None, help="Validated PipelineConfig JSON")
     args = parser.parse_args()
-    
-    pipeline = BaselinePipeline()
+
+    loaded_config = None
+    if args.config:
+        with open(args.config, "r", encoding="utf-8") as handle:
+            config_payload = json.load(handle)
+        if isinstance(config_payload, dict) and isinstance(config_payload.get("config"), dict):
+            config_payload = config_payload["config"]
+        loaded_config = PipelineConfig.from_mapping(config_payload)
+    pipeline = BaselinePipeline(config=loaded_config)
     pipeline.run(input_dir=args.input, output_dir=args.output)
