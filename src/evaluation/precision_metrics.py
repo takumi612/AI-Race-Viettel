@@ -1,5 +1,6 @@
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Mapping, Sequence
 
 
@@ -18,7 +19,7 @@ class EntityMetrics:
 
 @dataclass(frozen=True)
 class AssertionMetrics:
-    by_label: dict[str, EntityMetrics]
+    by_label: Mapping[str, EntityMetrics]
     macro_fbeta: float
 
 
@@ -99,7 +100,7 @@ def score_assertions(gt, pred, beta: float = 0.5) -> AssertionMetrics:
             fn += expected and not actual
         by_label[label] = _metrics_from_counts(tp, fp, fn, beta)
     macro_fbeta = sum(metric.fbeta for metric in by_label.values()) / len(ASSERTION_LABELS)
-    return AssertionMetrics(by_label=by_label, macro_fbeta=macro_fbeta)
+    return AssertionMetrics(by_label=MappingProxyType(by_label), macro_fbeta=macro_fbeta)
 
 
 def _codes(entity: dict) -> set[str]:

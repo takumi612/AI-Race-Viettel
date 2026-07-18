@@ -1,3 +1,5 @@
+import pytest
+
 from src.evaluation.precision_metrics import (
     fbeta,
     score_assertions,
@@ -63,3 +65,10 @@ def test_candidate_metrics_separate_selector_precision_from_retrieval_recall():
     assert metrics.precision == 0.5
     assert metrics.top1_hit_rate == 1.0
     assert metrics.recall_at_20 == 1.0
+
+
+def test_assertion_metrics_label_mapping_is_immutable():
+    metrics = score_assertions([], [])
+
+    with pytest.raises(TypeError):
+        metrics.by_label["isNegated"] = metrics.by_label["isNegated"]
