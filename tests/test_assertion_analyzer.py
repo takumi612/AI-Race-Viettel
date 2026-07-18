@@ -135,6 +135,53 @@ def test_patient_return_keeps_a_genuine_later_kinship_cue():
     assert "isFamily" in result
 
 
+@pytest.mark.parametrize("ambiguous_subject", ["anh", "chị", "em"])
+def test_ambiguous_post_patient_subject_is_not_a_family_cue(ambiguous_subject):
+    text = f"Bệnh nhân cho biết {ambiguous_subject} đang đau ngực"
+    start = text.index("đau ngực")
+
+    result = AssertionAnalyzer().analyze(
+        text, start, start + len("đau ngực")
+    )
+
+    assert "isFamily" not in result
+
+
+@pytest.mark.parametrize(
+    "kinship_phrase",
+    [
+        "bố",
+        "cha",
+        "mẹ",
+        "anh trai",
+        "chị gái",
+        "em trai",
+        "em gái",
+        "người nhà",
+    ],
+)
+def test_unambiguous_post_patient_kinship_phrase_is_a_family_cue(kinship_phrase):
+    text = f"Bệnh nhân cho biết {kinship_phrase}, bị tăng huyết áp"
+    start = text.index("tăng huyết áp")
+
+    result = AssertionAnalyzer().analyze(
+        text, start, start + len("tăng huyết áp")
+    )
+
+    assert "isFamily" in result
+
+
+def test_generic_family_context_after_patient_return_is_not_a_family_cue():
+    text = "Bệnh nhân sống cùng gia đình và đau ngực"
+    start = text.index("đau ngực")
+
+    result = AssertionAnalyzer().analyze(
+        text, start, start + len("đau ngực")
+    )
+
+    assert "isFamily" not in result
+
+
 def test_patient_return_in_an_earlier_section_does_not_suppress_family_prior():
     text = "Bệnh nhân ổn định.\nTiền sử gia đình\n- mẹ tăng huyết áp"
     start = text.index("tăng huyết áp")
@@ -187,6 +234,24 @@ def test_default_rule_resource_is_strict_versioned_and_correct_utf8(project_root
     serialized = json.dumps(rules, ensure_ascii=False)
     assert "khÃ´ng" not in serialized
     assert "\ufffd" not in serialized
+
+
+def test_post_patient_family_resource_uses_unambiguous_kinship_phrases(project_root):
+    path = project_root / "src/resources/assertion_rules.json"
+    rules = json.loads(path.read_text(encoding="utf-8"))
+    cues = set(rules["post_patient_family_cues"])
+
+    assert not {"anh", "chị", "em"} & cues
+    assert {
+        "bố",
+        "cha",
+        "mẹ",
+        "anh trai",
+        "chị gái",
+        "em trai",
+        "em gái",
+        "người nhà",
+    } <= cues
 
 
 @pytest.mark.parametrize("invalid_version", [1.0, True, "1"])

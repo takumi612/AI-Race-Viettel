@@ -83,9 +83,11 @@
     "bố",
     "cha",
     "mẹ",
-    "anh",
-    "chị",
-    "em"
+    "anh trai",
+    "chị gái",
+    "em trai",
+    "em gái",
+    "người nhà"
   ],
   "assertion_terminators": {
     "isNegated": [
