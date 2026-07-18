@@ -13,6 +13,7 @@ if PROJECT_ROOT not in sys.path:
 from src.config import PROJECT_ROOT, PipelineConfig
 from src.utils.paths import INPUT_DIR, OUTPUT_DIR
 from src.validation.override_validator import load_verified_overrides, normalize_override_term
+from src.validation.submission import write_failure_output
 from src.validation.patient_extractor import PatientExtractor
 from src.ner.extractor import BaselineExtractor
 from src.retrieval.normalizer import TextNormalizer
@@ -201,19 +202,20 @@ class BaselinePipeline:
         print(f"Found {len(txt_files)} text files in input directory: {input_dir}")
         
         for file_path in txt_files:
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            output_path = os.path.join(output_dir, f"{base_name}.json")
+            error_log_path = os.path.join(output_dir, "errors.jsonl")
             try:
                 results = self.process_file(file_path)
                 
                 # Ghi kết quả JSON
-                base_name = os.path.splitext(os.path.basename(file_path))[0]
-                output_path = os.path.join(output_dir, f"{base_name}.json")
-                
                 with open(output_path, 'w', encoding='utf-8') as f:
                     json.dump(results, f, ensure_ascii=False, indent=2)
                     
                 print(f"  - Saved prediction to {output_path}")
             except Exception as e:
                 print(f"[ERROR] Failed to process {file_path}: {e}")
+                write_failure_output(output_path, error_log_path, base_name, e)
 
 if __name__ == "__main__":
     import argparse
