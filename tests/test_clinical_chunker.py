@@ -115,6 +115,19 @@ def test_medication_context_returns_header_and_its_line_only():
     assert "aspirin" not in context
 
 
+def test_medication_context_keeps_header_when_the_line_is_in_a_later_chunk():
+    text = "Thuốc hiện tại\n- metoprolol 25mg"
+    chunker = ClinicalChunker(ChunkingConfig(max_tokens=3, overlap_tokens=0))
+    chunks = chunker.chunk(text)
+    start = text.index("metoprolol")
+    medication_chunk = next(chunk for chunk in chunks if chunk.start <= start < chunk.end)
+
+    assert medication_chunk.start > 0
+    assert chunker.context_for_span(
+        text, medication_chunk, start, start + len("metoprolol"), "THUỐC"
+    ) == "Thuốc hiện tại\n- metoprolol 25mg"
+
+
 @pytest.mark.parametrize("entity_type", ["CHẨN_ĐOÁN", "TRIỆU_CHỨNG"])
 def test_diagnosis_or_symptom_context_includes_neighbor_sentence(entity_type):
     text = "Triệu chứng hiện tại\nBệnh nhân ho kéo dài. Khó thở khi gắng sức. Không sốt."
@@ -129,6 +142,26 @@ def test_diagnosis_or_symptom_context_includes_neighbor_sentence(entity_type):
     assert "Bệnh nhân ho kéo dài." in context
     assert "Khó thở khi gắng sức." in context
     assert "Không sốt." not in context
+
+
+def test_diagnosis_context_uses_adjacent_newline_separated_sentences():
+    text = (
+        "Triệu chứng hiện tại\n"
+        "Bệnh nhân mệt.\n"
+        "Ho kéo dài.\n"
+        "Khó thở khi gắng sức."
+    )
+    chunker = ClinicalChunker()
+    chunk = chunker.chunk(text)[0]
+    start = text.index("Ho kéo dài")
+
+    context = chunker.context_for_span(
+        text, chunk, start, start + len("Ho kéo dài"), "CHẨN_ĐOÁN"
+    )
+
+    assert "Bệnh nhân mệt." in context
+    assert "Ho kéo dài." in context
+    assert "Khó thở khi gắng sức." in context
 
 
 @pytest.mark.parametrize("entity_type", ["TÊN_XÉT_NGHIỆM", "KẾT_QUẢ_XÉT_NGHIỆM"])
@@ -197,4 +230,4 @@ def test_pathological_long_unit_has_bounded_deduplicated_progressing_windows():
     assert [(chunk.start, chunk.end) for chunk in chunks] == list(
         dict.fromkeys((chunk.start, chunk.end) for chunk in chunks)
     )
-    assert all(later.start > earlier.start for earlier, later in zip(chunks[1:], chunks[2:]))
+    assert all(later.start > earlier.start for earlier, later in zip(chunks, chunks[1:]))

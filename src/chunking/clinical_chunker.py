@@ -47,6 +47,7 @@ class _SectionSpan:
 
 _LINE_NUMBER_PREFIX = re.compile(r"^[ \t]*(?:(?:\d+|[ivxlcdm]+)[.)][ \t]*)?", re.IGNORECASE)
 _SENTENCE = re.compile(r"[^\r\n.!?]+[.!?]?")
+_LINE = re.compile(r"(?:^|(?<=\n)|(?<=\r))([^\r\n]*)(?:\r\n|\n|\r|$)")
 
 
 def _normalize(value: str) -> str:
@@ -127,16 +128,9 @@ class ClinicalChunker:
 
     @staticmethod
     def _lines(document: str) -> Iterable[TokenSpan]:
-        start = 0
-        for line in document.splitlines(keepends=True):
-            end = start + len(line)
-            content_end = end
-            while content_end > start and document[content_end - 1] in "\r\n":
-                content_end -= 1
-            yield start, content_end
-            start = end
-        if start < len(document):
-            yield start, len(document)
+        for match in _LINE.finditer(document):
+            if match.start() != match.end():
+                yield match.start(1), match.end(1)
 
     def _heading_for_line(self, document: str, start: int, end: int) -> tuple[_SectionPattern, int, int] | None:
         line = document[start:end]
@@ -286,10 +280,10 @@ class ClinicalChunker:
         return span
 
     @staticmethod
-    def _sentence_spans(document: str, line_start: int, line_end: int) -> list[TokenSpan]:
+    def _sentence_spans(document: str, start: int, end: int) -> list[TokenSpan]:
         spans: list[TokenSpan] = []
-        for match in _SENTENCE.finditer(document[line_start:line_end]):
-            span = _trimmed_span(document, line_start + match.start(), line_start + match.end())
+        for match in _SENTENCE.finditer(document[start:end]):
+            span = _trimmed_span(document, start + match.start(), start + match.end())
             if span is not None:
                 spans.append(span)
         return spans
@@ -328,29 +322,24 @@ class ClinicalChunker:
         normalized_type = _normalize(entity_type)
         line_text = document[line_start:line_end]
         if normalized_type in {"thuốc", "medication", "drug"}:
-            if (
-                section.header_start is not None
-                and section.header_end is not None
-                and lower <= section.header_start
-                and section.header_end <= upper
-                and (section.header_start, section.header_end) != (line_start, line_end)
-            ):
-                return f"{document[section.header_start:section.header_end]}\n{line_text}"
+            if section.header_text and (section.header_start, section.header_end) != (line_start, line_end):
+                return f"{section.header_text}\n{line_text}"
             return line_text
         if normalized_type in {"tên_xét_nghiệm", "kết_quả_xét_nghiệm", "lab_test", "lab_result"}:
             return line_text
         if normalized_type in {"chẩn_đoán", "triệu_chứng", "diagnosis", "symptom"}:
-            sentences = self._sentence_spans(document, line_start, line_end)
+            sentence_start = lower
+            if section.header_start is not None and lower <= section.header_start < upper:
+                header_line_end = document.find("\n", section.header_end or section.header_start, upper)
+                sentence_start = upper if header_line_end == -1 else header_line_end + 1
+            sentences = self._sentence_spans(document, sentence_start, upper)
             containing = next(
                 (index for index, span in enumerate(sentences) if span[0] <= start and end <= span[1]),
                 None,
             )
             if containing is None:
                 return line_text
-            selected = [sentences[containing]]
-            if containing + 1 < len(sentences):
-                selected.append(sentences[containing + 1])
-            elif containing > 0:
-                selected.insert(0, sentences[containing - 1])
-            return document[selected[0][0] : selected[-1][1]]
+            first = max(0, containing - 1)
+            last = min(len(sentences) - 1, containing + 1)
+            return document[sentences[first][0] : sentences[last][1]]
         return line_text
