@@ -16,6 +16,9 @@
     "family_cues": {
       "source": "Vietnamese family-history relationship phrases curated from repository baseline rules"
     },
+    "post_patient_family_cues": {
+      "source": "Vietnamese explicit kinship phrases allowed after clinical subject returns to the patient"
+    },
     "assertion_terminators": {
       "source": "Precision-first Vietnamese assertion scope review"
     },
@@ -75,6 +78,14 @@
     "em",
     "gia đình",
     "người nhà"
+  ],
+  "post_patient_family_cues": [
+    "bố",
+    "cha",
+    "mẹ",
+    "anh",
+    "chị",
+    "em"
   ],
   "assertion_terminators": {
     "isNegated": [

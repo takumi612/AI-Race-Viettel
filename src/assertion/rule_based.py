@@ -30,6 +30,7 @@ _RULE_GROUPS = {
     "negation_exclusions",
     "historical_cues",
     "family_cues",
+    "post_patient_family_cues",
     "assertion_terminators",
     "scope_boundaries",
     "section_priors",
@@ -108,7 +109,7 @@ def _require_string_list(
 def _validate_payload(payload: object) -> dict[str, object]:
     rules = _require_object(payload, "root")
     _require_exact_keys(rules, _TOP_LEVEL_KEYS, "root")
-    if isinstance(rules["version"], bool) or rules["version"] != 1:
+    if type(rules["version"]) is not int or rules["version"] != 1:
         raise ValueError("assertion rule resource version must be 1")
 
     provenance = _require_object(rules["provenance"], "provenance")
@@ -128,6 +129,7 @@ def _validate_payload(payload: object) -> dict[str, object]:
         "negation_exclusions",
         "historical_cues",
         "family_cues",
+        "post_patient_family_cues",
         "patient_return_cues",
     ):
         _require_string_list(rules[group], group)
@@ -258,6 +260,7 @@ class AssertionAnalyzer:
                 "negation_exclusions",
                 "historical_cues",
                 "family_cues",
+                "post_patient_family_cues",
                 "patient_return_cues",
             )
         }
@@ -304,15 +307,20 @@ class AssertionAnalyzer:
             default=-1,
         )
         scope = prefix[boundary + 1 :]
-        stripped = scope.lstrip()
+        bullet_end = 0
         for marker in sorted(
             boundaries["bullet_markers"], key=lambda item: (-len(item), item)
         ):
-            if stripped.startswith(marker) and (
-                len(stripped) == len(marker) or stripped[len(marker)].isspace()
-            ):
-                return stripped[len(marker) :].lstrip()
-        return scope
+            marker = _normalize(marker)
+            cursor = 0
+            while (marker_start := scope.find(marker, cursor)) != -1:
+                marker_end = marker_start + len(marker)
+                before_is_safe = marker_start == 0 or scope[marker_start - 1].isspace()
+                after_is_safe = marker_end == len(scope) or scope[marker_end].isspace()
+                if before_is_safe and after_is_safe:
+                    bullet_end = max(bullet_end, marker_end)
+                cursor = marker_end
+        return scope[bullet_end:].lstrip() if bullet_end else scope
 
     @staticmethod
     def _redact(text: str, phrases: tuple[str, ...]) -> str:
@@ -384,20 +392,22 @@ class AssertionAnalyzer:
         if _matches(historical_tail, self._normalized_lists["historical_cues"]):
             scores["isHistorical"] = float(weights["historical_cue"])
 
+        section_prefix = self._section_prefix(full_text, start_idx, header_text)
+        patient_returned = bool(
+            _matches(section_prefix, self._normalized_lists["patient_return_cues"])
+        )
+        family_phrases = self._normalized_lists[
+            "post_patient_family_cues" if patient_returned else "family_cues"
+        ]
         family_tail = self._after_last_terminator(scope, "isFamily")
-        if _matches(family_tail, self._normalized_lists["family_cues"]):
+        if _matches(family_tail, family_phrases):
             scores["isFamily"] = float(weights["family_cue"])
 
         prior = self._rules["section_priors"].get(section_type)
         if prior is not None:
             assertion = prior["assertion"]
-            section_prefix = self._section_prefix(full_text, start_idx, header_text)
-            patient_returned = assertion == "isFamily" and bool(
-                _matches(
-                    section_prefix, self._normalized_lists["patient_return_cues"]
-                )
-            )
-            if not patient_returned:
+            suppress_prior = assertion == "isFamily" and patient_returned
+            if not suppress_prior:
                 scores[assertion] = max(
                     scores[assertion], float(weights[prior["weight"]])
                 )

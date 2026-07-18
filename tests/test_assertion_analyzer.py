@@ -4,7 +4,9 @@ import pytest
 
 from src.assertion.rule_based import AssertionAnalyzer
 from src.chunking.clinical_chunker import ClinicalChunker
-from src.config import AssertionConfig, PipelineConfig
+from src.config import AssertionConfig, ChunkingConfig, PipelineConfig
+from src.ner.extractor import BaselineExtractor
+from src.ner.lexicon_loader import ClinicalTerm
 from src.pipeline.main import BaselinePipeline
 
 
@@ -15,6 +17,7 @@ RULE_GROUPS = {
     "negation_exclusions",
     "historical_cues",
     "family_cues",
+    "post_patient_family_cues",
     "assertion_terminators",
     "scope_boundaries",
     "section_priors",
@@ -103,6 +106,35 @@ def test_family_prior_stops_when_context_returns_to_patient():
     assert "isFamily" not in result
 
 
+def test_patient_return_suppresses_generic_family_phrase_after_return():
+    text = (
+        "Tiền sử gia đình: mẹ tăng huyết áp.\n"
+        "Bệnh nhân hiện sống cùng gia đình và đau ngực."
+    )
+    start = text.index("đau ngực")
+
+    result = AssertionAnalyzer().analyze(
+        text,
+        start,
+        start + len("đau ngực"),
+        section_type="family_history",
+        header_text="Tiền sử gia đình",
+    )
+
+    assert "isFamily" not in result
+
+
+def test_patient_return_keeps_a_genuine_later_kinship_cue():
+    text = "Bệnh nhân kể mẹ tăng huyết áp"
+    start = text.index("tăng huyết áp")
+
+    result = AssertionAnalyzer().analyze(
+        text, start, start + len("tăng huyết áp")
+    )
+
+    assert "isFamily" in result
+
+
 def test_patient_return_in_an_earlier_section_does_not_suppress_family_prior():
     text = "Bệnh nhân ổn định.\nTiền sử gia đình\n- mẹ tăng huyết áp"
     start = text.index("tăng huyết áp")
@@ -155,6 +187,22 @@ def test_default_rule_resource_is_strict_versioned_and_correct_utf8(project_root
     serialized = json.dumps(rules, ensure_ascii=False)
     assert "khÃ´ng" not in serialized
     assert "\ufffd" not in serialized
+
+
+@pytest.mark.parametrize("invalid_version", [1.0, True, "1"])
+def test_rule_resource_rejects_non_integer_version(
+    project_root, tmp_path, invalid_version
+):
+    default_path = project_root / "src/resources/assertion_rules.json"
+    rules = json.loads(default_path.read_text(encoding="utf-8"))
+    rules["version"] = invalid_version
+    custom_path = tmp_path / "invalid_version_assertion_rules.json"
+    custom_path.write_text(
+        json.dumps(rules, ensure_ascii=False), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="version"):
+        AssertionAnalyzer(rules_path=custom_path)
 
 
 @pytest.mark.parametrize(
@@ -328,3 +376,135 @@ def test_pipeline_reuses_chunks_and_propagates_section_context_without_family_le
         "section_type": "family_history",
         "header_text": "Tiền sử gia đình",
     }
+
+
+def test_pipeline_maps_dose_expansion_by_entity_start_without_rechunking(tmp_path):
+    text = "Thuốc hiện tại\nalpha beta gamma aspirin 25 mg po bid"
+    file_path = tmp_path / "dose-expansion.txt"
+    file_path.write_text(text, encoding="utf-8")
+
+    class CountingChunker:
+        def __init__(self):
+            self.delegate = ClinicalChunker(
+                ChunkingConfig(max_tokens=5, overlap_tokens=1)
+            )
+            self.calls = 0
+            self.last_chunks = None
+
+        def chunk(self, document):
+            self.calls += 1
+            self.last_chunks = self.delegate.chunk(document)
+            return self.last_chunks
+
+    class StubPatientExtractor:
+        @staticmethod
+        def extract(document):
+            return {}
+
+    class RecordingExtractor:
+        def __init__(self):
+            self.delegate = BaselineExtractor(
+                load_database=False,
+                clinical_terms=[
+                    ClinicalTerm(
+                        "aspirin", "aspirin", "THUỐC", "review", "verified"
+                    )
+                ],
+            )
+            self.chunks = None
+
+        def extract_entities(self, document, chunks=None):
+            self.chunks = chunks
+            return self.delegate.extract_entities(document, chunks=chunks)
+
+    class RecordingAssertionAnalyzer:
+        def __init__(self):
+            self.calls = []
+
+        def analyze(self, *args, **kwargs):
+            self.calls.append((args, kwargs))
+            return []
+
+    class StubNormalizer:
+        @staticmethod
+        def clean_text(value):
+            return value
+
+        @staticmethod
+        def remove_dosage(value):
+            return "aspirin"
+
+        @staticmethod
+        def expand_abbreviation(value):
+            return value
+
+    class StubRetriever:
+        @staticmethod
+        def retrieve(value, top_k):
+            return []
+
+    class StubValidator:
+        @staticmethod
+        def check_and_fix_candidates(entity, patient_info):
+            return entity
+
+        @staticmethod
+        def check_dual_codes(entities):
+            return entities
+
+    pipeline = BaselinePipeline.__new__(BaselinePipeline)
+    pipeline.patient_extractor = StubPatientExtractor()
+    pipeline.clinical_chunker = CountingChunker()
+    pipeline.ner_extractor = RecordingExtractor()
+    pipeline.assertion_analyzer = RecordingAssertionAnalyzer()
+    pipeline.normalizer = StubNormalizer()
+    pipeline.rxnorm_retriever = StubRetriever()
+    pipeline.clinical_validator = StubValidator()
+    pipeline.override_dict = {}
+    pipeline.llm_reranker = None
+
+    result = pipeline.process_file(file_path)
+
+    assert pipeline.clinical_chunker.calls == 1
+    assert pipeline.ner_extractor.chunks is pipeline.clinical_chunker.last_chunks
+    assert result[0]["text"] == "aspirin 25 mg po bid"
+    args, context = pipeline.assertion_analyzer.calls[0]
+    assert args[1:3] == tuple(result[0]["position"])
+    assert context == {
+        "section_type": "treatment_current_medications",
+        "header_text": "Thuốc hiện tại",
+    }
+
+
+@pytest.mark.parametrize("marker", ["•", "-", "*"])
+def test_negation_stops_at_nearest_inline_bullet(marker):
+    text = f"Không ho {marker} đau ngực"
+    start = text.index("đau ngực")
+
+    result = AssertionAnalyzer().analyze(
+        text, start, start + len("đau ngực")
+    )
+
+    assert "isNegated" not in result
+
+
+def test_inline_bullet_keeps_negation_inside_its_own_item():
+    text = "• không có đau ngực"
+    start = text.index("đau ngực")
+
+    result = AssertionAnalyzer().analyze(
+        text, start, start + len("đau ngực")
+    )
+
+    assert "isNegated" in result
+
+
+def test_hyphenated_word_is_not_treated_as_a_bullet_boundary():
+    text = "Không triệu-chứng đau ngực"
+    start = text.index("đau ngực")
+
+    result = AssertionAnalyzer().analyze(
+        text, start, start + len("đau ngực")
+    )
+
+    assert "isNegated" in result

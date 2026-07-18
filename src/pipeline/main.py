@@ -97,12 +97,12 @@ class BaselinePipeline:
                     (
                         chunk
                         for chunk in chunks
-                        if chunk.start <= start_idx and end_idx <= chunk.end
+                        if chunk.start <= start_idx < chunk.end
                     ),
                     None,
                 )
                 if containing_chunk is None:
-                    raise ValueError("entity span is not contained in a ClinicalChunk")
+                    raise ValueError("entity start is not contained in a ClinicalChunk")
                 assertions = self.assertion_analyzer.analyze(
                     text,
                     start_idx,
