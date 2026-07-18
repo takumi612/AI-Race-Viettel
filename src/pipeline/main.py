@@ -11,6 +11,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
 from src.config import PROJECT_ROOT, PipelineConfig
+from src.chunking.clinical_chunker import ClinicalChunker
 from src.utils.paths import INPUT_DIR, OUTPUT_DIR
 from src.validation.override_validator import load_verified_overrides, normalize_override_term
 from src.validation.submission import write_failure_output
@@ -29,10 +30,11 @@ class BaselinePipeline:
     def __init__(self, config: PipelineConfig | None = None):
         print("Initializing Baseline Pipeline...")
         self.config = config or PipelineConfig()
+        self.clinical_chunker = ClinicalChunker(self.config.chunking)
         self.patient_extractor = PatientExtractor()
         self.ner_extractor = BaselineExtractor()
         self.normalizer = TextNormalizer()
-        self.assertion_analyzer = AssertionAnalyzer()
+        self.assertion_analyzer = AssertionAnalyzer(config=self.config)
         self.retriever = HybridRetriever(table_name="icd10")
         self.rxnorm_retriever = HybridRetriever(table_name="rxnorm")
         self.clinical_validator = ClinicalValidator()
@@ -63,7 +65,8 @@ class BaselinePipeline:
         print(f"  - Patient Demographics: {patient_info}")
         
         # 2. Nhận dạng thực thể thô (Baseline)
-        raw_entities = self.ner_extractor.extract_entities(text)
+        chunks = self.clinical_chunker.chunk(text)
+        raw_entities = self.ner_extractor.extract_entities(text, chunks=chunks)
         print(f"  - Extracted {len(raw_entities)} raw entities.")
         
         processed_entities = []
@@ -71,6 +74,15 @@ class BaselinePipeline:
             ent_type = ent['type']
             ent_text = ent['text']
             start_idx, end_idx = ent['position']
+            if (
+                isinstance(start_idx, bool)
+                or isinstance(end_idx, bool)
+                or not isinstance(start_idx, int)
+                or not isinstance(end_idx, int)
+                or not 0 <= start_idx < end_idx <= len(text)
+                or text[start_idx:end_idx] != ent_text
+            ):
+                raise ValueError("entity position must exactly slice its text from the document")
             
             # Cấu trúc đối tượng JSON cho thực thể
             processed_ent = {
@@ -81,7 +93,23 @@ class BaselinePipeline:
             
             # 3. Phân tích thuộc tính ngữ cảnh (chỉ áp dụng cho chẩn đoán, thuốc, triệu chứng)
             if ent_type in ("CHẨN_ĐOÁN", "THUỐC", "TRIỆU_CHỨNG"):
-                assertions = self.assertion_analyzer.analyze(text, start_idx, end_idx)
+                containing_chunk = next(
+                    (
+                        chunk
+                        for chunk in chunks
+                        if chunk.start <= start_idx and end_idx <= chunk.end
+                    ),
+                    None,
+                )
+                if containing_chunk is None:
+                    raise ValueError("entity span is not contained in a ClinicalChunk")
+                assertions = self.assertion_analyzer.analyze(
+                    text,
+                    start_idx,
+                    end_idx,
+                    section_type=containing_chunk.section_type,
+                    header_text=containing_chunk.header_text,
+                )
                 processed_ent["assertions"] = assertions
                 
             # 4. Tìm kiếm ứng viên (chỉ áp dụng cho chẩn đoán, thuốc)
