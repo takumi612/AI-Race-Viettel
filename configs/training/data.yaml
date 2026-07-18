@@ -1,0 +1,21 @@
+schema_version: 1
+seed: 20260719
+
+synthetic:
+  root: data/synthetic_train_v1
+  expected_count: 2000
+  validation_size: 300
+
+trusted:
+  root: data/dev
+  first_id: 101
+  last_id: 180
+  folds: 5
+
+holdout:
+  root: data/dev
+  first_id: 181
+  last_id: 200
+
+database: data/kb/metadata.db
+output: data/training

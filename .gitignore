@@ -70,3 +70,6 @@ reports/*
 !reports/.gitkeep
 data/output_*/
 data/input_*/
+data/training/
+data/.training-build-*/
+data/.training-backup-*/
