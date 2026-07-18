@@ -6,6 +6,7 @@ import argparse
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
 import subprocess
@@ -253,12 +254,26 @@ class DatasetBuildConfig:
         }
 
 
-def _resolve_inside_project(project_root: Path, path: Path) -> Path:
-    resolved = (project_root / path).resolve()
+def _resolve_inside_project(
+    project_root: Path,
+    path: Path,
+    *,
+    allow_external_symlink: bool = False,
+) -> Path:
+    lexical_path = Path(os.path.abspath(project_root / path))
+    try:
+        lexical_path.relative_to(project_root)
+    except ValueError as exc:
+        raise ValueError(f"path escapes project root: {path}") from exc
+    resolved = lexical_path.resolve()
+    if allow_external_symlink:
+        return resolved
     try:
         resolved.relative_to(project_root)
     except ValueError as exc:
-        raise ValueError(f"path escapes project root: {path}") from exc
+        raise ValueError(
+            f"writable path resolves outside project root: {path}"
+        ) from exc
     return resolved
 
 
@@ -303,6 +318,27 @@ def _git_fingerprint(project_root: Path) -> dict[str, Any]:
         "dirty": bool(status.strip()),
         "status_sha256": sha256(status.encode("utf-8")).hexdigest(),
     }
+
+
+def _code_fingerprint(
+    project_root: Path,
+    *,
+    allow_unavailable: bool,
+) -> str:
+    training_root = project_root / "src" / "training"
+    code_files = (
+        sorted(training_root.glob("*.py"))
+        + [
+            project_root / "configs" / "training" / "data.yaml",
+            project_root / "requirements.txt",
+            project_root / "requirements-train.txt",
+        ]
+    )
+    if not code_files or any(not path.is_file() for path in code_files):
+        if allow_unavailable:
+            return "unavailable_non_production"
+        raise ValueError("production build requires a training code fingerprint")
+    return fingerprint_files(code_files, project_root)
 
 
 def _assignment_mapping(assignment: SplitAssignment) -> dict[str, Any]:
@@ -389,10 +425,26 @@ def build_training_datasets(config: DatasetBuildConfig) -> Path:
     if not project_root.is_dir():
         raise ValueError(f"project root is not a directory: {project_root}")
 
-    synthetic_root = _resolve_inside_project(project_root, config.synthetic_root)
-    trusted_root = _resolve_inside_project(project_root, config.trusted_root)
-    holdout_root = _resolve_inside_project(project_root, config.holdout_root)
-    database = _resolve_inside_project(project_root, config.database)
+    synthetic_root = _resolve_inside_project(
+        project_root,
+        config.synthetic_root,
+        allow_external_symlink=True,
+    )
+    trusted_root = _resolve_inside_project(
+        project_root,
+        config.trusted_root,
+        allow_external_symlink=True,
+    )
+    holdout_root = _resolve_inside_project(
+        project_root,
+        config.holdout_root,
+        allow_external_symlink=True,
+    )
+    database = _resolve_inside_project(
+        project_root,
+        config.database,
+        allow_external_symlink=True,
+    )
     output = _resolve_inside_project(project_root, config.output)
 
     synthetic_spec = SourceSpec(
@@ -476,11 +528,10 @@ def build_training_datasets(config: DatasetBuildConfig) -> Path:
         and git_fingerprint["commit"] == "unavailable"
     ):
         raise ValueError("production build requires a Git commit fingerprint")
-    if (
-        not config.allow_non_production_count
-        and git_fingerprint["dirty"] is True
-    ):
-        raise ValueError("production build requires a clean Git working tree")
+    code_sha256 = _code_fingerprint(
+        project_root,
+        allow_unavailable=config.allow_non_production_count,
+    )
 
     source_fingerprints = {
         spec.name: fingerprint_files(_source_files(spec), spec.root)
@@ -529,6 +580,7 @@ def build_training_datasets(config: DatasetBuildConfig) -> Path:
             "holdout_records": len(holdout_records),
         }
         base_fingerprints = {
+            "code_sha256": code_sha256,
             "config_sha256": config_sha256,
             "database_sha256": database_sha256,
             "source_sha256": source_fingerprints,

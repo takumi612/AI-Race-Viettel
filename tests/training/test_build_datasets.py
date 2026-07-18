@@ -129,6 +129,10 @@ def test_build_writes_verified_manifest_and_task_jsonl(valid_build_config):
     assert manifest["flags"]["allow_non_production_count"] is True
     assert len(manifest["fingerprints"]["database_sha256"]) == 64
     assert len(manifest["fingerprints"]["split_sha256"]) == 64
+    assert (
+        manifest["fingerprints"]["code_sha256"]
+        == "unavailable_non_production"
+    )
     assert set(manifest["fingerprints"]["artifacts"]) == {
         "canonical/records.jsonl",
         "splits/assignments.jsonl",
@@ -177,6 +181,56 @@ def test_build_replaces_existing_output_only_when_explicit(valid_build_config):
     assert replaced_output == output
     assert not marker.exists()
     assert (output / "manifests" / "build.json").is_file()
+
+
+def test_build_allows_project_relative_read_only_source_symlinks(
+    tmp_path,
+    monkeypatch,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    external_root = tmp_path / "drive"
+    external_root.mkdir()
+    _build_fixture_project(external_root)
+    (project_root / "data").mkdir()
+    try:
+        for name in ("synthetic_train_v1", "dev", "kb"):
+            (project_root / "data" / name).symlink_to(
+                external_root / "data" / name,
+                target_is_directory=True,
+            )
+    except OSError:
+        # Windows without Developer Mode cannot create symlinks in pytest. Model
+        # the same resolved targets so the external-source safety path is still
+        # exercised on every platform.
+        path_type = type(project_root)
+        original_resolve = path_type.resolve
+        external_targets = {
+            project_root / "data" / "synthetic_train_v1": (
+                external_root / "data" / "synthetic_train_v1"
+            ),
+            project_root / "data" / "dev": external_root / "data" / "dev",
+            project_root / "data" / "kb" / "metadata.db": (
+                external_root / "data" / "kb" / "metadata.db"
+            ),
+        }
+
+        def resolve_external_sources(path, *args, **kwargs):
+            if path in external_targets:
+                return external_targets[path]
+            return original_resolve(path, *args, **kwargs)
+
+        monkeypatch.setattr(path_type, "resolve", resolve_external_sources)
+    config = DatasetBuildConfig.from_mapping(
+        _config_mapping(),
+        project_root=project_root,
+        allow_non_production_count=True,
+    )
+
+    output = build_training_datasets(config)
+
+    assert output.parent == (project_root / "data").resolve()
+    assert not output.is_symlink()
 
 
 def test_config_rejects_machine_specific_and_competition_input_paths(tmp_path):
