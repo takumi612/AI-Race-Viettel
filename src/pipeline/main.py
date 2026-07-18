@@ -49,17 +49,26 @@ class BaselinePipeline:
         self.normalizer = TextNormalizer()
         self.assertion_analyzer = AssertionAnalyzer(config=self.config)
         retrieval = self.config.retrieval
+        embedding_model_path = (
+            str(PROJECT_ROOT / retrieval.embedding_model_artifact)
+            if retrieval.embedding_model_artifact is not None
+            else None
+        )
         self.retriever = HybridRetriever(
             table_name="icd10",
             alpha=retrieval.alpha,
             internal_top_k=retrieval.internal_top_k,
             hierarchical_expansion=retrieval.hierarchical_expansion,
+            embedding_model_type=retrieval.embedding_model_type,
+            embedding_model_path=embedding_model_path,
         )
         self.rxnorm_retriever = HybridRetriever(
             table_name="rxnorm",
             alpha=retrieval.alpha,
             internal_top_k=retrieval.internal_top_k,
             hierarchical_expansion=retrieval.hierarchical_expansion,
+            embedding_model_type=retrieval.embedding_model_type,
+            embedding_model_path=embedding_model_path,
         )
         self.clinical_validator = ClinicalValidator(
             load_historical_rxnorm=self.config.selection.load_historical_rxnorm

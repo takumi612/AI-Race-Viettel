@@ -14,6 +14,7 @@ from src.config import RetrievalConfig
 from src.retrieval.bm25_retriever import BM25Retriever
 from src.retrieval.score_fusion import fuse_candidates
 from src.retrieval.types import ComponentCandidate, RetrievedCandidate
+from src.training.embedding.index_manifest import validate_index_manifest
 
 
 try:
@@ -27,9 +28,8 @@ except ImportError:
 class HybridRetriever:
     """Fuse normalized BM25 and local semantic retrieval scores."""
 
-    _cached_bge_model = None
-    _cached_sapbert_model = None
-    _cached_sapbert_tokenizer = None
+    _cached_bge_models = {}
+    _cached_sapbert_models = {}
 
     def __init__(
         self,
@@ -40,6 +40,7 @@ class HybridRetriever:
         internal_top_k=20,
         hierarchical_expansion=False,
         embedding_model_type=None,
+        embedding_model_path=None,
     ):
         self.table_name = table_name
         config = RetrievalConfig(
@@ -53,6 +54,11 @@ class HybridRetriever:
         self.embedding_model_type = (
             embedding_model_type or os.environ.get("EMBEDDING_MODEL_TYPE", "BGE-M3")
         ).upper()
+        self.embedding_model_path = (
+            os.path.abspath(embedding_model_path)
+            if embedding_model_path is not None
+            else None
+        )
 
         bm25_kwargs = {"table_name": table_name}
         if db_path is not None:
@@ -65,6 +71,9 @@ class HybridRetriever:
         self._load_faiss_index(index_dir)
 
     def _load_faiss_index(self, index_dir):
+        self.faiss_available = False
+        self.faiss_index = None
+        self.faiss_codes = []
         if not FAISS_AVAILABLE:
             print(
                 f"HybridRetriever [{self.table_name}]: faiss is unavailable; "
@@ -88,6 +97,15 @@ class HybridRetriever:
             if not (os.path.exists(index_file) and os.path.exists(codes_file)):
                 continue
             try:
+                manifest_file = os.path.join(location, "manifest.json")
+                if os.path.exists(manifest_file):
+                    validate_index_manifest(
+                        location,
+                        expected_database=getattr(
+                            self.bm25_retriever, "db_path", None
+                        ),
+                        expected_adapter_dir=self._resolve_model_path(),
+                    )
                 self.faiss_index = faiss.read_index(index_file)
                 with open(codes_file, "r", encoding="utf-8") as file:
                     self.faiss_codes = [line.strip() for line in file if line.strip()]
@@ -105,38 +123,52 @@ class HybridRetriever:
             "FAISS index files not found; using BM25 only."
         )
 
-    def _load_model(self):
-        """Load a local embedding model only; never attempt a network download."""
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+    def _resolve_model_path(self):
+        if self.embedding_model_path is not None:
+            return self.embedding_model_path
         from src.utils.paths import KB_DIR
 
         models_dir = os.path.join(os.path.dirname(KB_DIR), "models")
         if self.embedding_model_type == "BGE-M3":
-            if HybridRetriever._cached_bge_model is None:
-                model_path = os.path.join(models_dir, "bge-m3")
+            return os.path.join(models_dir, "bge-m3")
+        if self.embedding_model_type == "SAPBERT":
+            return os.path.join(models_dir, "sapbert")
+        raise ValueError(
+            f"Unsupported embedding model type: {self.embedding_model_type}"
+        )
+
+    def _load_model(self):
+        """Load a local embedding model only; never attempt a network download."""
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model_path = self._resolve_model_path()
+        if self.embedding_model_type == "BGE-M3":
+            if model_path not in HybridRetriever._cached_bge_models:
                 if not os.path.isdir(model_path):
                     raise FileNotFoundError(f"Local BGE-M3 model not found at {model_path}")
                 from sentence_transformers import SentenceTransformer
 
-                HybridRetriever._cached_bge_model = SentenceTransformer(
+                HybridRetriever._cached_bge_models[model_path] = SentenceTransformer(
                     model_path, device=device, local_files_only=True
                 )
-            return HybridRetriever._cached_bge_model
+            return HybridRetriever._cached_bge_models[model_path]
 
         if self.embedding_model_type == "SAPBERT":
-            if HybridRetriever._cached_sapbert_model is None:
-                model_path = os.path.join(models_dir, "sapbert")
+            if model_path not in HybridRetriever._cached_sapbert_models:
                 if not os.path.isdir(model_path):
                     raise FileNotFoundError(f"Local SapBERT model not found at {model_path}")
                 from transformers import AutoModel, AutoTokenizer
 
-                HybridRetriever._cached_sapbert_model = AutoModel.from_pretrained(
+                model = AutoModel.from_pretrained(
                     model_path, local_files_only=True
                 ).to(device)
-                HybridRetriever._cached_sapbert_tokenizer = AutoTokenizer.from_pretrained(
+                tokenizer = AutoTokenizer.from_pretrained(
                     model_path, local_files_only=True
                 )
-            return HybridRetriever._cached_sapbert_model, HybridRetriever._cached_sapbert_tokenizer
+                HybridRetriever._cached_sapbert_models[model_path] = (
+                    model,
+                    tokenizer,
+                )
+            return HybridRetriever._cached_sapbert_models[model_path]
 
         raise ValueError(f"Unsupported embedding model type: {self.embedding_model_type}")
 

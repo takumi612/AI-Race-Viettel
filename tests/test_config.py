@@ -30,6 +30,8 @@ def test_default_pipeline_is_precision_first():
         "KẾT_QUẢ_XÉT_NGHIỆM",
     }
     assert config.retrieval.internal_top_k == 20
+    assert config.retrieval.embedding_model_type == "BGE-M3"
+    assert config.retrieval.embedding_model_artifact is None
     assert config.assertion.negated_threshold == 0.70
     assert config.selection.load_historical_rxnorm is False
     assert config.reranker.enabled is False
@@ -47,10 +49,31 @@ def test_threshold_outside_unit_interval_is_rejected():
 
 
 def test_config_mapping_rejects_unknown_keys_and_preserves_weight_invariant():
-    config = PipelineConfig.from_mapping({"retrieval": {"alpha": 0.80}})
+    config = PipelineConfig.from_mapping(
+        {
+            "retrieval": {
+                "alpha": 0.80,
+                "embedding_model_type": "BGE-M3",
+                "embedding_model_artifact": "artifacts/training/embedding/final",
+            }
+        }
+    )
     assert config.retrieval.bm25_weight + config.retrieval.semantic_weight == pytest.approx(1.0)
+    assert (
+        config.retrieval.embedding_model_artifact
+        == "artifacts/training/embedding/final"
+    )
     with pytest.raises(ValueError, match="unknown"):
         PipelineConfig.from_mapping({"retrieval": {"bonus": 0.20}})
+
+
+@pytest.mark.parametrize(
+    "artifact",
+    [r"D:\models\bge-m3", "/content/models/bge-m3", "../models/bge-m3"],
+)
+def test_retrieval_model_artifact_must_be_project_relative(artifact):
+    with pytest.raises(ValueError, match="project-relative"):
+        RetrievalConfig(embedding_model_artifact=artifact)
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 import math
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Any
 
@@ -39,6 +39,8 @@ class RetrievalConfig:
     alpha: float = 0.75
     internal_top_k: int = 20
     hierarchical_expansion: bool = False
+    embedding_model_type: str = "BGE-M3"
+    embedding_model_artifact: str | None = None
 
     def __post_init__(self) -> None:
         _validate_unit_interval("alpha", self.alpha)
@@ -46,6 +48,26 @@ class RetrievalConfig:
         _require_bool("hierarchical_expansion", self.hierarchical_expansion)
         if self.internal_top_k < 1:
             raise ValueError("internal_top_k must be positive")
+        if self.embedding_model_type not in {"BGE-M3", "SAPBERT"}:
+            raise ValueError("embedding_model_type must be BGE-M3 or SAPBERT")
+        if self.embedding_model_artifact is not None:
+            if (
+                not isinstance(self.embedding_model_artifact, str)
+                or not self.embedding_model_artifact.strip()
+            ):
+                raise ValueError(
+                    "embedding_model_artifact must be project-relative"
+                )
+            raw = self.embedding_model_artifact.strip()
+            if (
+                PurePosixPath(raw).is_absolute()
+                or PureWindowsPath(raw).is_absolute()
+                or PureWindowsPath(raw).drive
+                or ".." in PurePosixPath(raw).parts
+            ):
+                raise ValueError(
+                    "embedding_model_artifact must be project-relative"
+                )
 
     @property
     def bm25_weight(self) -> float:
@@ -212,7 +234,13 @@ class PipelineConfig:
         retrieval = _strict_section(
             values,
             "retrieval",
-            {"alpha", "internal_top_k", "hierarchical_expansion"},
+            {
+                "alpha",
+                "internal_top_k",
+                "hierarchical_expansion",
+                "embedding_model_type",
+                "embedding_model_artifact",
+            },
         )
         chunking = _strict_section(
             values, "chunking", {"max_tokens", "overlap_tokens"}
@@ -265,6 +293,8 @@ class PipelineConfig:
                 "alpha": self.retrieval.alpha,
                 "internal_top_k": self.retrieval.internal_top_k,
                 "hierarchical_expansion": self.retrieval.hierarchical_expansion,
+                "embedding_model_type": self.retrieval.embedding_model_type,
+                "embedding_model_artifact": self.retrieval.embedding_model_artifact,
             },
             "chunking": {
                 "max_tokens": self.chunking.max_tokens,
