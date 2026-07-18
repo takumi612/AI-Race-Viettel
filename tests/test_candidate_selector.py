@@ -75,3 +75,35 @@ def test_llm_reranker_accepts_only_a_subset_of_input_candidates():
     assert LLMReranker.parse_selected_codes('{"best_code": "B"}', ["A", "B"]) == ["B"]
     with pytest.raises(ValueError, match="candidate pool"):
         LLMReranker.parse_selected_codes('{"selected_codes": ["FOREIGN"]}', ["A", "B"])
+    with pytest.raises(ValueError, match="at most two"):
+        LLMReranker.parse_selected_codes(
+            '{"selected_codes": ["A", "B", "C"]}',
+            ["A", "B", "C"],
+        )
+
+
+def test_local_llm_reranker_is_lazy_and_falls_back_deterministically():
+    class LocalBackend:
+        def __init__(self, output=None, error=None):
+            self.output = output
+            self.error = error
+
+        def generate(self, example):
+            if self.error is not None:
+                raise self.error
+            return self.output
+
+    reranker = LLMReranker(
+        use_llm=True,
+        backend="local_transformers",
+        model_artifact="artifacts/reranker",
+    )
+    reranker._local_backend = LocalBackend('{"selected_codes":["B"]}')
+    assert reranker.rerank(
+        "context", "entity", "CHẨN_ĐOÁN", ["A", "B"]
+    ) == ["B"]
+
+    reranker._local_backend = LocalBackend(error=RuntimeError("GPU OOM"))
+    assert reranker.rerank(
+        "context", "entity", "CHẨN_ĐOÁN", ["A", "B"]
+    ) == ["A", "B"]

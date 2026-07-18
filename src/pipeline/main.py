@@ -77,6 +77,10 @@ class BaselinePipeline:
         self.llm_reranker = (
             LLMReranker(
                 use_llm=True,
+                backend=self.config.reranker.backend,
+                model_artifact=self.config.reranker.model_artifact,
+                project_root=PROJECT_ROOT,
+                max_new_tokens=self.config.reranker.max_new_tokens,
                 timeout_seconds=self.config.reranker.timeout_seconds,
             )
             if self.config.reranker.enabled
@@ -143,12 +147,13 @@ class BaselinePipeline:
         # 2. Nhận dạng thực thể thô (Baseline)
         chunks = self.clinical_chunker.chunk(text)
         rule_entities = self.ner_extractor.extract_entities(text, chunks=chunks)
-        if self.model_ner_extractor is None:
+        model_ner_extractor = getattr(self, "model_ner_extractor", None)
+        if model_ner_extractor is None:
             raw_entities = rule_entities
         elif self.config.ner.mode == "model":
-            raw_entities = self.model_ner_extractor.extract_entities(text)
+            raw_entities = model_ner_extractor.extract_entities(text)
         else:
-            model_entities = self.model_ner_extractor.extract_entities(text)
+            model_entities = model_ner_extractor.extract_entities(text)
             raw_entities = merge_hybrid_entities(
                 text,
                 rule_entities,

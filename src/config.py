@@ -190,10 +190,40 @@ class CandidateSelectionConfig:
 @dataclass(frozen=True)
 class RerankerConfig:
     enabled: bool = False
+    backend: str = "http"
+    model_artifact: str | None = None
+    max_new_tokens: int = 64
     timeout_seconds: float = 30.0
 
     def __post_init__(self) -> None:
         _require_bool("enabled", self.enabled)
+        if self.backend not in {"http", "local_transformers"}:
+            raise ValueError("reranker backend must be http or local_transformers")
+        _require_int("max_new_tokens", self.max_new_tokens)
+        if self.max_new_tokens < 1:
+            raise ValueError("max_new_tokens must be positive")
+        if self.model_artifact is not None:
+            if (
+                not isinstance(self.model_artifact, str)
+                or not self.model_artifact.strip()
+            ):
+                raise ValueError("model_artifact must be project-relative")
+            raw = self.model_artifact.strip()
+            if (
+                PurePosixPath(raw).is_absolute()
+                or PureWindowsPath(raw).is_absolute()
+                or PureWindowsPath(raw).drive
+                or ".." in PurePosixPath(raw).parts
+            ):
+                raise ValueError("model_artifact must be project-relative")
+        if (
+            self.enabled
+            and self.backend == "local_transformers"
+            and self.model_artifact is None
+        ):
+            raise ValueError(
+                "model_artifact is required for local_transformers reranker"
+            )
         _require_number("timeout_seconds", self.timeout_seconds)
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
@@ -275,7 +305,15 @@ class PipelineConfig:
             },
         )
         reranker = _strict_section(
-            values, "reranker", {"enabled", "timeout_seconds"}
+            values,
+            "reranker",
+            {
+                "enabled",
+                "backend",
+                "model_artifact",
+                "max_new_tokens",
+                "timeout_seconds",
+            },
         )
 
         return cls(
@@ -323,6 +361,9 @@ class PipelineConfig:
             },
             "reranker": {
                 "enabled": self.reranker.enabled,
+                "backend": self.reranker.backend,
+                "model_artifact": self.reranker.model_artifact,
+                "max_new_tokens": self.reranker.max_new_tokens,
                 "timeout_seconds": self.reranker.timeout_seconds,
             },
         }

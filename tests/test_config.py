@@ -35,12 +35,32 @@ def test_default_pipeline_is_precision_first():
     assert config.assertion.negated_threshold == 0.70
     assert config.selection.load_historical_rxnorm is False
     assert config.reranker.enabled is False
+    assert config.reranker.backend == "http"
+    assert config.reranker.model_artifact is None
+    assert config.reranker.max_new_tokens == 64
     assert config.reranker.timeout_seconds == 30.0
 
 
 def test_non_positive_reranker_timeout_is_rejected():
     with pytest.raises(ValueError):
         RerankerConfig(timeout_seconds=0)
+
+
+def test_local_reranker_requires_project_relative_artifact():
+    with pytest.raises(ValueError, match="model_artifact"):
+        RerankerConfig(enabled=True, backend="local_transformers")
+    with pytest.raises(ValueError, match="project-relative"):
+        RerankerConfig(
+            enabled=True,
+            backend="local_transformers",
+            model_artifact="/content/model",
+        )
+    config = RerankerConfig(
+        enabled=True,
+        backend="local_transformers",
+        model_artifact="artifacts/training/reranker/final",
+    )
+    assert config.model_artifact == "artifacts/training/reranker/final"
 
 
 def test_threshold_outside_unit_interval_is_rejected():
