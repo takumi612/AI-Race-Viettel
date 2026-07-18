@@ -8,7 +8,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from src.config import DATA_DIR
-from src.evaluation.trusted_split import development_ids, holdout_ids
+from src.evaluation.trusted_split import development_ids
 
 def aggregate_data(
     input_dir: str | Path = DATA_DIR / "dev" / "input",
@@ -30,7 +30,7 @@ def aggregate_data(
     combined_gt = {}
     
     with out_txt.open("w", encoding="utf-8") as ft:
-        for i in development_ids() + holdout_ids():
+        for i in development_ids():
             # Xử lý input text
             txt_path = input_dir / f"{i}.txt"
             if txt_path.is_file():

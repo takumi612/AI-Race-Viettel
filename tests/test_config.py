@@ -126,7 +126,7 @@ def test_recall_file_selection_excludes_pseudo_and_holdout_labels(tmp_path):
     assert [path.stem for path in selected] == ["101", "102", "180"]
 
 
-def test_aggregation_excludes_pseudo_labels(tmp_path):
+def test_aggregation_excludes_pseudo_and_holdout_labels(tmp_path):
     from scripts.aggregate_data import aggregate_data
 
     input_dir = tmp_path / "input"
@@ -141,7 +141,37 @@ def test_aggregation_excludes_pseudo_labels(tmp_path):
 
     aggregate_data(input_dir, gt_dir, out_txt, out_json)
 
-    assert set(json.loads(out_json.read_text(encoding="utf-8"))) == {"101", "181"}
+    assert set(json.loads(out_json.read_text(encoding="utf-8"))) == {"101"}
     combined_text = out_txt.read_text(encoding="utf-8")
     assert "File 1.txt" not in combined_text
     assert "File 101.txt" in combined_text
+    assert "File 181.txt" not in combined_text
+
+
+@pytest.mark.parametrize("value", ["/data/models", "/workspace/run"])
+def test_path_audit_reports_generic_posix_absolute_paths(tmp_path, value):
+    source_path = tmp_path / "bad_posix_runtime.py"
+    source_path.write_text(f"MODEL_PATH = {value!r}\n", encoding="utf-8")
+
+    findings = find_machine_specific_paths([source_path])
+
+    assert [(item.path, item.line_number, item.value) for item in findings] == [
+        (source_path, 1, value)
+    ]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "data/models",
+        "./workspace/run",
+        "https://example.test/model",
+        "/",
+        "/chat/completions",
+    ],
+)
+def test_path_audit_ignores_relative_paths_and_urls(tmp_path, value):
+    source_path = tmp_path / "clean_runtime.py"
+    source_path.write_text(f"MODEL_PATH = {value!r}\n", encoding="utf-8")
+
+    assert find_machine_specific_paths([source_path]) == []

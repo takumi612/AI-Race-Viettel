@@ -1,3 +1,4 @@
+import json
 from types import MappingProxyType
 
 import pytest
@@ -57,6 +58,32 @@ def test_verified_loader_returns_immutable_entries(tmp_path):
     assert entries[0]["codes"] == ("6809",)
     with pytest.raises(TypeError):
         entries[0]["term"] = "changed"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"schema_version": True, "entries": []},
+        {
+            "schema_version": 1,
+            "entries": [
+                {
+                    "term": "metformin",
+                    "type": "THUỐC",
+                    "codes": [True],
+                    "source": "RxNorm",
+                    "note": "direct name match",
+                }
+            ],
+        },
+    ],
+)
+def test_verified_schema_rejects_boolean_version_and_codes(tmp_path, payload):
+    path = tmp_path / "invalid_verified.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="verified override schema"):
+        load_verified_overrides(path)
 
 
 def test_repository_verified_override_resource_is_clean(project_root, metadata_db):

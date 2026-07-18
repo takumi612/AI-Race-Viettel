@@ -3,13 +3,14 @@ import json
 import re
 import sqlite3
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
 
 _WINDOWS_ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
-_POSIX_MACHINE_PATH = re.compile(r"^/(?:Users|home|mnt|opt|private|var)/")
+_HTTP_ROUTE = re.compile(r"^/(?:api|v\d+|chat|oauth|healthz?|metrics)(?:/|$)")
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,12 @@ def _entry_shape_errors(entry: object, index: int) -> list[str]:
     codes = entry["codes"]
     if not isinstance(codes, list) or not codes:
         errors.append(f"entry[{index}] codes must be a non-empty list")
-    elif any(not isinstance(code, (str, int)) or not str(code).strip() for code in codes):
+    elif any(
+        isinstance(code, bool)
+        or not isinstance(code, (str, int))
+        or not str(code).strip()
+        for code in codes
+    ):
         errors.append(f"entry[{index}] codes must contain non-empty code values")
     return errors
 
@@ -97,7 +103,7 @@ def validate_override_entries(entries: list[dict], db_path: str) -> list[str]:
     return errors
 
 
-def load_verified_overrides(path: Path) -> tuple[dict, ...]:
+def load_verified_overrides(path: Path) -> tuple[Mapping[str, object], ...]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -106,6 +112,7 @@ def load_verified_overrides(path: Path) -> tuple[dict, ...]:
     if (
         not isinstance(payload, dict)
         or set(payload) != {"schema_version", "entries"}
+        or type(payload.get("schema_version")) is not int
         or payload.get("schema_version") != 1
         or not isinstance(payload.get("entries"), list)
     ):
@@ -142,10 +149,16 @@ def _python_files(paths: list[Path]) -> list[Path]:
 
 
 def _is_machine_specific_path(value: str) -> bool:
+    posix_filesystem_literal = (
+        len(value) > 1
+        and value.startswith("/")
+        and not value.startswith("//")
+        and not _HTTP_ROUTE.match(value)
+    )
     return bool(
         _WINDOWS_ABSOLUTE_PATH.match(value)
         or value.startswith(chr(92) * 2)
-        or _POSIX_MACHINE_PATH.match(value)
+        or posix_filesystem_literal
     )
 
 
