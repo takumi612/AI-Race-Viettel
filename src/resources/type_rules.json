@@ -92,11 +92,16 @@
     "bôi",
     "đặt",
     "truyền",
-    "ngày",
     "sáng",
     "chiều",
     "tối",
     "dưới lưỡi"
+  ],
+  "frequency_patterns": [
+    {
+      "pattern": "ngày {number} lần",
+      "source": "legacy-dose-expansion"
+    }
   ],
   "generic_terms": [
     "air",

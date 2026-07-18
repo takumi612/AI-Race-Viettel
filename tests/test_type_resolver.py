@@ -10,7 +10,7 @@ from src.chunking.clinical_chunker import ClinicalChunk, ClinicalChunker
 from src.config import ChunkingConfig, NERConfig
 from src.ner.extractor import BaselineExtractor, TrieMatcher
 from src.ner.lexicon_loader import ClinicalLexicon, ClinicalTerm
-from src.ner.type_resolver import ContextualTypeResolver, TypeRules
+from src.ner.type_resolver import ContextualTypeResolver, FrequencyPattern, TypeRules
 from src.ner.types import MentionCandidate, TypeDecision
 
 
@@ -34,6 +34,9 @@ def _rules_payload():
         "laboratory_units": ["mg/dl", "mmol/l"],
         "dosage_units": ["mg", "mg/ml"],
         "route_terms": ["po", "uống"],
+        "frequency_patterns": [
+            {"pattern": "ngày {number} lần", "source": "verified-test"}
+        ],
         "generic_terms": ["yếu", "loét"],
         "source_confidence": {"verified": 1.5, "unverified": 0.3, "database": 1.0},
         "weights": {
@@ -243,6 +246,10 @@ def test_lexicon_rejects_malformed_json(tmp_path):
         (("schema_version", True), "schema_version"),
         (("medication_signals", [True]), "medication_signals"),
         (("laboratory_units", []), "laboratory_units"),
+        (("frequency_patterns", []), "frequency_patterns"),
+        (("frequency_patterns", [{"pattern": True, "source": "test"}]), "pattern"),
+        (("frequency_patterns", [{"pattern": "ngày {count} lần", "source": "test"}]), "placeholder"),
+        (("frequency_patterns", [{"pattern": "ngày {number} lần", "source": "test", "extra": 1}]), "unknown"),
         (("source_confidence", {"verified": True}), "source_confidence"),
         (("weights", {"exact": 0.5}), "weights"),
     ],
@@ -278,6 +285,7 @@ def test_directly_injected_type_rules_are_validated_and_deeply_immutable():
         ["mg/dl"],
         ["mg"],
         ["po"],
+        [FrequencyPattern(("ngày", "{number}", "lần"), "verified-test")],
         ["yếu"],
         source_confidence,
         weights,
@@ -295,6 +303,7 @@ def test_directly_injected_type_rules_are_validated_and_deeply_immutable():
             ["mg/dl"],
             ["mg"],
             ["po"],
+            [FrequencyPattern(("ngày", "{number}", "lần"), "verified-test")],
             ["yếu"],
             {"verified": True},
             weights,
@@ -392,6 +401,65 @@ def test_drug_dose_expansion_does_not_treat_prose_as_a_unit(tmp_path):
     entity = next(item for item in extractor.extract_entities(text) if item["type"] == "THUỐC")
 
     assert entity["text"] == "aspirin 25"
+
+
+def test_default_rules_expand_compositional_frequency_to_exact_full_span():
+    text = "Thuốc hiện tại\naspirin 25 mg ngày 2 lần"
+    extractor = BaselineExtractor(load_database=False)
+
+    entity = next(item for item in extractor.extract_entities(text) if item["type"] == "THUỐC")
+
+    assert entity["text"] == "aspirin 25 mg ngày 2 lần"
+    assert entity["text"] == text[slice(*entity["position"])]
+
+
+def test_dose_instruction_does_not_match_route_prefix_inside_word():
+    text = "Thuốc hiện tại\naspirin 25 pokemon"
+    extractor = BaselineExtractor(load_database=False)
+
+    entity = next(item for item in extractor.extract_entities(text) if item["type"] == "THUỐC")
+
+    assert entity["text"] == "aspirin 25"
+
+
+def test_injected_route_vocabulary_has_no_hidden_instruction_fallback(tmp_path):
+    lexicon_path = _write_json(
+        tmp_path / "lexicon.json",
+        {"schema_version": 1, "entries": [_entry("aspirin", "THUỐC", "verified-test")]},
+    )
+    payload = _rules_payload()
+    payload["route_terms"] = ["po"]
+    rules_path = _write_json(tmp_path / "rules.json", payload)
+    extractor = BaselineExtractor(
+        load_database=False,
+        clinical_lexicon_path=lexicon_path,
+        type_rules_path=rules_path,
+    )
+
+    entity = next(
+        item
+        for item in extractor.extract_entities("Thuốc hiện tại\naspirin 25 sáng")
+        if item["type"] == "THUỐC"
+    )
+
+    assert entity["text"] == "aspirin 25"
+
+
+def test_frequency_grammar_requires_source_and_is_deeply_immutable(tmp_path):
+    payload = _rules_payload()
+    path = _write_json(tmp_path / "rules.json", payload)
+
+    rules = TypeRules.load(path)
+
+    assert rules.frequency_patterns[0].tokens == ("ngày", "{number}", "lần")
+    assert rules.frequency_patterns[0].source == "verified-test"
+    with pytest.raises((AttributeError, TypeError)):
+        rules.frequency_patterns[0].tokens = ("changed",)
+
+    payload["frequency_patterns"] = [{"pattern": "ngày {number} lần"}]
+    _write_json(path, payload)
+    with pytest.raises(ValueError, match="source"):
+        TypeRules.load(path)
 
 
 def test_extractor_self_check_runs_as_a_direct_script():

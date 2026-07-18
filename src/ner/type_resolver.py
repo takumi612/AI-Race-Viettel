@@ -25,6 +25,7 @@ _RULE_KEYS = frozenset(
         "laboratory_units",
         "dosage_units",
         "route_terms",
+        "frequency_patterns",
         "generic_terms",
         "source_confidence",
         "weights",
@@ -61,12 +62,63 @@ def _frozen_mapping(values: Mapping[str, float]) -> Mapping[str, float]:
 
 
 @dataclass(frozen=True)
+class FrequencyPattern:
+    """A provenance-bearing token grammar with one numeric placeholder."""
+
+    tokens: tuple[str, ...]
+    source: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.tokens, (list, tuple)) or len(self.tokens) < 2:
+            raise ValueError("frequency pattern tokens must be a sequence of at least two tokens")
+        normalized: list[str] = []
+        for index, token in enumerate(self.tokens):
+            if not isinstance(token, str) or not token.strip():
+                raise ValueError(f"frequency pattern tokens[{index}] must be a non-empty string")
+            value = _normalize(token)
+            if value != "{number}" and ("{" in value or "}" in value):
+                raise ValueError("frequency pattern only supports the {number} placeholder")
+            normalized.append(value)
+        if normalized.count("{number}") != 1:
+            raise ValueError("frequency pattern must contain exactly one {number} placeholder")
+        if not isinstance(self.source, str) or not self.source.strip():
+            raise ValueError("frequency pattern source must be a non-empty string")
+        object.__setattr__(self, "tokens", tuple(normalized))
+        object.__setattr__(self, "source", self.source.strip())
+
+
+def _load_frequency_patterns(value: object) -> tuple[FrequencyPattern, ...]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("type rules frequency_patterns must be a non-empty list")
+    selected: dict[tuple[str, ...], FrequencyPattern] = {}
+    for index, raw in enumerate(value):
+        location = f"frequency_patterns[{index}]"
+        if not isinstance(raw, dict):
+            raise ValueError(f"type rules {location} must be an object")
+        unknown = set(raw) - {"pattern", "source"}
+        if unknown:
+            raise ValueError(f"type rules {location} has unknown keys: {', '.join(sorted(unknown))}")
+        pattern = raw.get("pattern")
+        source = raw.get("source")
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ValueError(f"type rules {location}.pattern must be a non-empty string")
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError(f"type rules {location}.source must be a non-empty string")
+        candidate = FrequencyPattern(tuple(pattern.split()), source)
+        current = selected.get(candidate.tokens)
+        if current is None or candidate.source < current.source:
+            selected[candidate.tokens] = candidate
+    return tuple(selected[key] for key in sorted(selected))
+
+
+@dataclass(frozen=True)
 class TypeRules:
     section_priors: Mapping[str, Mapping[str, float]]
     medication_signals: tuple[str, ...]
     laboratory_units: tuple[str, ...]
     dosage_units: tuple[str, ...]
     route_terms: tuple[str, ...]
+    frequency_patterns: tuple[FrequencyPattern, ...]
     generic_terms: tuple[str, ...]
     source_confidence: Mapping[str, float]
     weights: Mapping[str, float]
@@ -107,6 +159,14 @@ class TypeRules:
                 normalized.add(_normalize(term))
             terms[name] = tuple(sorted(normalized))
 
+        if not isinstance(self.frequency_patterns, (list, tuple)) or not self.frequency_patterns:
+            raise ValueError("type rules frequency_patterns must be a non-empty sequence")
+        if any(not isinstance(pattern, FrequencyPattern) for pattern in self.frequency_patterns):
+            raise ValueError("type rules frequency_patterns must contain FrequencyPattern values")
+        frequency_patterns = tuple(
+            sorted(self.frequency_patterns, key=lambda pattern: (pattern.tokens, pattern.source))
+        )
+
         if not isinstance(self.source_confidence, Mapping) or not self.source_confidence:
             raise ValueError("type rules source_confidence must be a non-empty mapping")
         source_confidence: dict[str, float] = {}
@@ -131,6 +191,7 @@ class TypeRules:
         object.__setattr__(self, "section_priors", MappingProxyType(dict(sorted(frozen_sections.items()))))
         for name, values in terms.items():
             object.__setattr__(self, name, values)
+        object.__setattr__(self, "frequency_patterns", frequency_patterns)
         object.__setattr__(self, "source_confidence", _frozen_mapping(dict(sorted(source_confidence.items()))))
         object.__setattr__(self, "weights", _frozen_mapping(weights))
 
@@ -204,6 +265,7 @@ class TypeRules:
             _string_terms(payload["laboratory_units"], "laboratory_units"),
             _string_terms(payload["dosage_units"], "dosage_units"),
             _string_terms(payload["route_terms"], "route_terms"),
+            _load_frequency_patterns(payload["frequency_patterns"]),
             _string_terms(payload["generic_terms"], "generic_terms"),
             _frozen_mapping(dict(sorted(source_confidence.items()))),
             _frozen_mapping(weights),

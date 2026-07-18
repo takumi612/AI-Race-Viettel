@@ -208,11 +208,20 @@ class BaselineExtractor:
         line_end = document.find("\n", end)
         line_end = len(document) if line_end == -1 else line_end
         tail = document[end:line_end]
-        instruction_terms = sorted(
-            set(self._resolver.rules.route_terms) | set(self._resolver.rules.medication_signals),
-            key=lambda value: (-len(value), value),
-        )
-        instruction = "|".join(re.escape(value) for value in instruction_terms)
+        route_patterns = [
+            r"[ \t]+".join(re.escape(token) for token in value.split()) + r"(?!\w)"
+            for value in sorted(
+                self._resolver.rules.route_terms, key=lambda value: (-len(value), value)
+            )
+        ]
+        frequency_patterns = []
+        for frequency in self._resolver.rules.frequency_patterns:
+            tokens = [
+                r"\d+" if token == "{number}" else re.escape(token)
+                for token in frequency.tokens
+            ]
+            frequency_patterns.append(r"[ \t]+".join(tokens) + r"(?!\w)")
+        instruction = "|".join(frequency_patterns + route_patterns)
         dosage_unit = "|".join(
             re.escape(value)
             for value in sorted(
@@ -222,7 +231,7 @@ class BaselineExtractor:
         pattern = (
             r"^[ \t]*\d+(?:[.,]\d+)?"
             rf"(?:[ \t]*(?:{dosage_unit})(?!\w))?"
-            rf"(?:[ \t]+(?:(?:{instruction})|ngày[ \t]+\d+[ \t]+lần|sáng|chiều|tối))*"
+            rf"(?:[ \t]+(?:{instruction}))*"
         )
         match = re.match(pattern, tail, re.IGNORECASE | re.UNICODE)
         return end + match.end() if match is not None else end
