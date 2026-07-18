@@ -144,7 +144,7 @@ def test_diagnosis_or_symptom_context_includes_neighbor_sentence(entity_type):
     assert "Không sốt." not in context
 
 
-def test_diagnosis_context_uses_adjacent_newline_separated_sentences():
+def test_diagnosis_context_prefers_following_newline_separated_sentence():
     text = (
         "Triệu chứng hiện tại\n"
         "Bệnh nhân mệt.\n"
@@ -159,9 +159,20 @@ def test_diagnosis_context_uses_adjacent_newline_separated_sentences():
         text, chunk, start, start + len("Ho kéo dài"), "CHẨN_ĐOÁN"
     )
 
-    assert "Bệnh nhân mệt." in context
-    assert "Ho kéo dài." in context
-    assert "Khó thở khi gắng sức." in context
+    assert context == "Ho kéo dài.\nKhó thở khi gắng sức."
+
+
+def test_diagnosis_context_uses_preceding_sentence_when_no_following_sentence_exists():
+    text = "Triệu chứng hiện tại\nBệnh nhân mệt.\nHo kéo dài."
+    chunker = ClinicalChunker()
+    chunk = chunker.chunk(text)[0]
+    start = text.index("Ho kéo dài")
+
+    context = chunker.context_for_span(
+        text, chunk, start, start + len("Ho kéo dài"), "CHẨN_ĐOÁN"
+    )
+
+    assert context == "Bệnh nhân mệt.\nHo kéo dài."
 
 
 @pytest.mark.parametrize("entity_type", ["TÊN_XÉT_NGHIỆM", "KẾT_QUẢ_XÉT_NGHIỆM"])

@@ -339,7 +339,10 @@ class ClinicalChunker:
             )
             if containing is None:
                 return line_text
-            first = max(0, containing - 1)
-            last = min(len(sentences) - 1, containing + 1)
+            first = containing
+            last = containing + 1
+            if last == len(sentences):
+                first = max(0, containing - 1)
+                last = containing
             return document[sentences[first][0] : sentences[last][1]]
         return line_text
