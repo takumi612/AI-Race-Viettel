@@ -70,6 +70,9 @@ class ChunkingConfig:
 
 @dataclass(frozen=True)
 class NERConfig:
+    mode: str = "rule"
+    model_artifact: str | None = None
+    model_threshold: float = 0.70
     beta: float = 0.5
     ambiguity_margin: float = 0.15
     default_threshold: float = 0.70
@@ -84,6 +87,17 @@ class NERConfig:
     )
 
     def __post_init__(self) -> None:
+        if self.mode not in {"rule", "model", "hybrid"}:
+            raise ValueError("NER mode must be rule, model, or hybrid")
+        if self.mode != "rule":
+            if not isinstance(self.model_artifact, str) or not self.model_artifact.strip():
+                raise ValueError("model_artifact is required for model/hybrid NER")
+            artifact_path = Path(self.model_artifact)
+            if artifact_path.is_absolute() or ".." in artifact_path.parts:
+                raise ValueError("model_artifact must be project-relative")
+        elif self.model_artifact is not None and not isinstance(self.model_artifact, str):
+            raise ValueError("model_artifact must be a string or null")
+        _validate_unit_interval("model_threshold", self.model_threshold)
         _require_number("beta", self.beta)
         if self.beta <= 0:
             raise ValueError("beta must be positive")
@@ -206,7 +220,15 @@ class PipelineConfig:
         ner = _strict_section(
             values,
             "ner",
-            {"beta", "ambiguity_margin", "default_threshold", "per_type_thresholds"},
+            {
+                "mode",
+                "model_artifact",
+                "model_threshold",
+                "beta",
+                "ambiguity_margin",
+                "default_threshold",
+                "per_type_thresholds",
+            },
         )
         assertion = _strict_section(
             values,
@@ -249,6 +271,9 @@ class PipelineConfig:
                 "overlap_tokens": self.chunking.overlap_tokens,
             },
             "ner": {
+                "mode": self.ner.mode,
+                "model_artifact": self.ner.model_artifact,
+                "model_threshold": self.ner.model_threshold,
                 "beta": self.ner.beta,
                 "ambiguity_margin": self.ner.ambiguity_margin,
                 "default_threshold": self.ner.default_threshold,
