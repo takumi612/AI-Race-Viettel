@@ -1,29 +1,37 @@
-import os
 import sys
 import json
 import logging
-
-if sys.platform.startswith('win'):
-    try:
-        import io
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
-    except AttributeError:
-        pass
+from pathlib import Path
 
 # Thêm project root vào sys.path để hỗ trợ import chéo
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if PROJECT_ROOT not in sys.path:
-    sys.path.append(PROJECT_ROOT)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 
 from src.retrieval.hybrid_retriever import HybridRetriever
 from src.retrieval.normalizer import TextNormalizer
+from src.config import DATA_DIR
+from src.evaluation.trusted_split import development_ids
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("EvalRecall")
 
-def eval_recall_on_dataset(limit=30):
-    gt_dir = r"d:\AI Race Viettel\data\input_part2\gt\output"
+
+def select_trusted_ground_truth_files(gt_dir: Path, limit: int) -> list[Path]:
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    trusted_ids = set(development_ids())
+    files = [
+        path
+        for path in gt_dir.glob("*.json")
+        if path.stem.isdigit() and int(path.stem) in trusted_ids
+    ]
+    return sorted(files, key=lambda path: int(path.stem))[:limit]
+
+
+def eval_recall_on_dataset(gt_dir: str | Path = DATA_DIR / "dev" / "gt", limit=30):
+    gt_dir = Path(gt_dir)
+    if not gt_dir.is_dir():
+        raise ValueError(f"ground-truth directory does not exist: {gt_dir}")
     normalizer = TextNormalizer()
     
     # Khởi tạo retriever
@@ -37,14 +45,12 @@ def eval_recall_on_dataset(limit=30):
     hit_rxnorm_concepts = 0
     
     # Lấy danh sách file và sắp xếp
-    json_files = sorted([f for f in os.listdir(gt_dir) if f.endswith(".json")], key=lambda x: int(os.path.splitext(x)[0]))
-    files_to_eval = json_files[:limit]
+    files_to_eval = select_trusted_ground_truth_files(gt_dir, limit)
     
     logger.info(f"Bắt đầu đánh giá Recall@5 trên {len(files_to_eval)} file nhãn chuẩn đầu tiên...")
     
-    for filename in files_to_eval:
-        file_path = os.path.join(gt_dir, filename)
-        with open(file_path, "r", encoding="utf-8") as f:
+    for file_path in files_to_eval:
+        with file_path.open("r", encoding="utf-8") as f:
             gt_data = json.load(f)
             
         for ent in gt_data:
@@ -102,8 +108,18 @@ def eval_recall_on_dataset(limit=30):
 
 if __name__ == "__main__":
     import argparse
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--gt-dir",
+        type=Path,
+        default=DATA_DIR / "dev" / "gt",
+        help="Directory containing supplied ground-truth JSON files",
+    )
     parser.add_argument("--limit", type=int, default=30, help="Số lượng file đánh giá")
     args = parser.parse_args()
     
-    eval_recall_on_dataset(limit=args.limit)
+    eval_recall_on_dataset(gt_dir=args.gt_dir, limit=args.limit)

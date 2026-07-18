@@ -2,23 +2,26 @@ import os
 import sys
 import sqlite3
 import zipfile
+from pathlib import Path
 
 # Thêm project root vào sys.path để hỗ trợ import src
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
+from src.config import KB_DIR
 from src.utils.paths import DB_PATH, RXNORM_TXT_PATH
 
-ZIP_PATH = r"D:\AI Race Viettel\data\kb\RxNorm_full_07062026.zip"
+DEFAULT_ZIP_PATH = KB_DIR / "rxnorm_full_01052026.zip"
 
-def setup_rxnorm():
-    if not os.path.exists(ZIP_PATH):
-        print(f"[ERROR] RxNorm zip file not found at: {ZIP_PATH}")
+def setup_rxnorm(zip_path: str | Path = DEFAULT_ZIP_PATH):
+    zip_path = Path(zip_path)
+    if not zip_path.is_file():
+        print(f"[ERROR] RxNorm zip file not found at: {zip_path}")
         return False
 
     print("=== STARTING RXNORM DATABASE SETUP ===")
-    print(f"Reading zip file: {ZIP_PATH}...")
+    print(f"Reading zip file: {zip_path}...")
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -50,7 +53,7 @@ def setup_rxnorm():
     unique_conso = set()
     conso_count = 0
     
-    with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         with zip_ref.open("rrf/RXNCONSO.RRF") as f:
             for line in f:
                 line_str = line.decode('utf-8')
@@ -95,7 +98,7 @@ def setup_rxnorm():
     unique_mapping = set()
     mapping_count = 0
 
-    with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         if "rrf/RXNATOMARCHIVE.RRF" in zip_ref.namelist():
             with zip_ref.open("rrf/RXNATOMARCHIVE.RRF") as f:
                 for line in f:

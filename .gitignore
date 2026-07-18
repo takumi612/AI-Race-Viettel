@@ -14,10 +14,12 @@ pip-delete-this-directory.txt
 .coverage
 htmlcov/
 .mypy_cache/
+.superpowers/
 
 # IDE / Editors
 .vscode/
 .idea/
+.worktrees/
 .obsidian/
 *.suo
 *.ntvs*
@@ -64,5 +66,7 @@ data/*.zip
 
 # Thư mục nháp và output phụ
 scratch/
+reports/*
+!reports/.gitkeep
 data/output_*/
 data/input_*/

@@ -1,15 +1,19 @@
 """
-Script tạo Ground Truth (GT) cho 100 file input Part1.
+Script tạo nhãn pseudo-GT cho 100 file input Part1.
 Trích xuất thực thể y tế: TRIỆU_CHỨNG, CHẨN_ĐOÁN, THUỐC, TÊN_XÉT_NGHIỆM, KẾT_QUẢ_XÉT_NGHIỆM
 Tính position chính xác, phát hiện assertions, tra cứu ICD-10/RxNorm.
 """
+import argparse
 import json
 import re
-import os
 import sys
+from pathlib import Path
 
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from src.config import DATA_DIR, PROJECT_ROOT
 
 # ============================================================
 # BỘ TỪ ĐIỂN Y KHOA
@@ -359,9 +363,11 @@ FAMILY_WORDS = [
 # ============================================================
 # ICD-10 DICTIONARY
 # ============================================================
-def load_icd10():
-    path = r'D:\AI Race Viettel\docs\icd10_dictionary.json'
-    with open(path, 'r', encoding='utf-8') as f:
+def load_icd10(path: str | Path = PROJECT_ROOT / "docs" / "icd10_dictionary.json"):
+    path = Path(path)
+    if not path.is_file():
+        raise ValueError(f"ICD-10 dictionary does not exist: {path}")
+    with path.open('r', encoding='utf-8') as f:
         return json.load(f)
 
 def lookup_icd10(diagnosis_text, icd10_dict):
@@ -382,10 +388,16 @@ def lookup_icd10(diagnosis_text, icd10_dict):
     return candidates
 
 # ============================================================
-import sys
-sys.path.append(r'D:\AI Race Viettel')
-from src.assertion.rule_based import AssertionAnalyzer
-analyzer = AssertionAnalyzer()
+_analyzer = None
+
+
+def _get_assertion_analyzer():
+    global _analyzer
+    if _analyzer is None:
+        from src.assertion.rule_based import AssertionAnalyzer
+
+        _analyzer = AssertionAnalyzer()
+    return _analyzer
 
 def detect_assertions(content, start_pos, end_pos, entity_type):
     """Phát hiện assertions dựa trên ngữ cảnh xung quanh entity."""
@@ -393,7 +405,7 @@ def detect_assertions(content, start_pos, end_pos, entity_type):
         return []
 
     # Sử dụng AssertionAnalyzer của dự án (chứa logic scope termination rất tốt)
-    assertions = analyzer.analyze(content, start_pos, end_pos)
+    assertions = _get_assertion_analyzer().analyze(content, start_pos, end_pos)
 
     # Bổ sung thêm rule đặc thù cho section "thuốc trước khi nhập viện"
     if entity_type == "THUỐC":
@@ -604,41 +616,70 @@ def verify_entities(content, entities):
 # MAIN
 # ============================================================
 def process_file(file_id, input_dir, output_dir, icd10_dict):
-    """Xử lý 1 file input và tạo GT."""
-    input_path = f"{input_dir}\\{file_id}.txt"
-    output_path = f"{output_dir}\\{file_id}.json"
+    """Xử lý 1 file input và tạo nhãn pseudo-GT."""
+    input_path = Path(input_dir) / f"{file_id}.txt"
+    output_path = Path(output_dir) / f"{file_id}.json"
 
-    if not os.path.exists(input_path):
+    if not input_path.is_file():
         print(f"  Không tìm thấy: {input_path}", file=sys.stderr)
         return None
 
-    with open(input_path, 'r', encoding='utf-8') as f:
+    with input_path.open('r', encoding='utf-8') as f:
         content = f.read()
 
     entities = extract_entities_from_file(content, icd10_dict)
     errors = verify_entities(content, entities)
 
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with output_path.open('w', encoding='utf-8') as f:
         json.dump(entities, f, ensure_ascii=False, indent=4)
 
     return len(entities), errors
 
 def main():
-    from pathlib import Path
-    input_dir = Path(r'D:\AI Race Viettel\data\dev\input')
-    output_dir = Path(r'D:\AI Race Viettel\data\dev\gt')
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    parser = argparse.ArgumentParser(
+        description="Generate heuristic pseudo-GT labels; these are not supplied ground truth."
+    )
+    parser.add_argument(
+        "--input-dir",
+        type=Path,
+        default=DATA_DIR / "dev" / "input",
+        help="Directory containing source text files for pseudo-GT generation",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DATA_DIR / "dev" / "pseudo_gt",
+        help="Directory for generated pseudo-GT JSON files",
+    )
+    parser.add_argument(
+        "--icd10-dictionary",
+        type=Path,
+        default=PROJECT_ROOT / "docs" / "icd10_dictionary.json",
+        help="Project-relative ICD-10 dictionary used for pseudo-GT generation",
+    )
+    args = parser.parse_args()
+
+    input_dir = args.input_dir
+    output_dir = args.output_dir
+    if not input_dir.is_dir():
+        parser.error(f"input directory does not exist: {input_dir}")
+    if not args.icd10_dictionary.is_file():
+        parser.error(f"ICD-10 dictionary does not exist: {args.icd10_dictionary}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Đang tải ICD-10 dictionary...", file=sys.stderr)
-    icd10_dict = load_icd10()
-    print(f"Đã tải {len(icd10_dict)} mã ICD-10", file=sys.stderr)
+    print("Đang tải ICD-10 dictionary để tạo pseudo-GT...", file=sys.stderr)
+    icd10_dict = load_icd10(args.icd10_dictionary)
+    print(f"Đã tải {len(icd10_dict)} mã ICD-10 cho pseudo-GT", file=sys.stderr)
 
     total_entities = 0
     total_errors = 0
     total_files = 0
 
     for file_id in range(1, 101):
-        result = process_file(file_id, str(input_dir), str(output_dir), icd10_dict)
+        result = process_file(file_id, input_dir, output_dir, icd10_dict)
         if result:
             n_entities, n_errors = result
             total_entities += n_entities
@@ -646,8 +687,19 @@ def main():
             total_files += 1
             print(f"File {file_id:3d}: {n_entities:3d} entities, {n_errors} lỗi")
 
+    metadata = {
+        "label_type": "pseudo-GT",
+        "generated_file_range": [1, 100],
+        "supplied_ground_truth": False,
+    }
+    with (output_dir / "pseudo_gt_metadata.json").open("w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+
     print(f"\n{'='*50}")
-    print(f"TỔNG KẾT: {total_files} files, {total_entities} entities, {total_errors} lỗi position")
+    print(
+        f"TỔNG KẾT pseudo-GT: {total_files} files, {total_entities} entities, "
+        f"{total_errors} lỗi position"
+    )
 
 if __name__ == "__main__":
     main()
