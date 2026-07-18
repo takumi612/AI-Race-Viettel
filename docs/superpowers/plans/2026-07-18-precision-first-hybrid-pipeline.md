@@ -331,6 +331,7 @@ git commit -m "test: establish trusted precision metrics"
 - Produces: `PROJECT_ROOT`, `DATA_DIR`, `KB_DIR`, `PipelineConfig`, `RetrievalConfig`, `ChunkingConfig`, `NERConfig`, `AssertionConfig`, `CandidateSelectionConfig`, `RerankerConfig`
 - Produces: `PipelineConfig.from_mapping(values) -> PipelineConfig` and `PipelineConfig.to_dict() -> dict`
 - Produces: `validate_override_entries(entries: list[dict], db_path: str) -> list[str]`
+- Produces: `load_verified_overrides(path: Path) -> tuple[dict, ...]`
 - Produces: `find_machine_specific_paths(paths: list[Path]) -> list[PathFinding]`
 
 - [ ] **Step 1: Write failing configuration tests**
@@ -551,7 +552,9 @@ Expected: all configuration/path-audit tests pass and the repository scan report
 
 ```python
 # tests/test_override_validator.py
-from src.validation.override_validator import validate_override_entries
+import pytest
+
+from src.validation.override_validator import load_verified_overrides, validate_override_entries
 
 
 def test_known_wrong_rxnorm_mapping_is_rejected(metadata_db):
@@ -572,9 +575,10 @@ def test_override_requires_provenance(metadata_db):
     assert any("source" in error for error in errors)
 
 
-def test_pipeline_does_not_load_quarantined_legacy_overrides(project_root):
-    source = (project_root / "src/pipeline/main.py").read_text(encoding="utf-8")
-    assert 'KB_DIR, "override_dict.json"' not in source
+def test_runtime_loader_rejects_quarantined_legacy_schema(project_root):
+    legacy_path = project_root / "data" / "kb" / "override_dict.json"
+    with pytest.raises(ValueError, match="verified override schema"):
+        load_verified_overrides(legacy_path)
 ```
 
 - [ ] **Step 9: Run override tests and verify RED**
@@ -604,7 +608,7 @@ def validate_override_entries(entries: list[dict], db_path: str) -> list[str]:
     return errors
 ```
 
-Create `verified_overrides.json` with schema version 1 and an initially empty `entries` list. Treat `data/kb/override_dict.json` as quarantined legacy evidence: do not load it during inference and do not silently migrate its entries. The pipeline may load only `verified_overrides.json`. The audit must explicitly report the known wrong `ketorolac -> 6809` and `nitroglycerin -> 7417` mappings in the legacy file; do not replace them with guessed codes.
+Create `verified_overrides.json` with schema version 1 and an initially empty `entries` list. `load_verified_overrides()` validates the schema before returning immutable entry data and rejects the legacy nested mapping shape. Treat `data/kb/override_dict.json` as quarantined legacy evidence: do not load it during inference and do not silently migrate its entries. The pipeline must call only `load_verified_overrides()` with `verified_overrides.json`. The audit must explicitly report the known wrong `ketorolac -> 6809` and `nitroglycerin -> 7417` mappings in the legacy file; do not replace them with guessed codes.
 
 - [ ] **Step 11: Add audit CLI and verify GREEN**
 
