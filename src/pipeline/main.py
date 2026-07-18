@@ -3,13 +3,16 @@ import sys
 import json
 import glob
 import re
+import sqlite3
 
 # Thêm project root vào sys.path để hỗ trợ import chéo
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
-from src.utils.paths import INPUT_DIR, OUTPUT_DIR, KB_DIR
+from src.config import PROJECT_ROOT, PipelineConfig
+from src.utils.paths import INPUT_DIR, OUTPUT_DIR
+from src.validation.override_validator import load_verified_overrides, normalize_override_term
 from src.validation.patient_extractor import PatientExtractor
 from src.ner.extractor import BaselineExtractor
 from src.retrieval.normalizer import TextNormalizer
@@ -18,9 +21,13 @@ from src.retrieval.hybrid_retriever import HybridRetriever
 from src.validation.clinical_validator import ClinicalValidator
 from src.ranking.llm_reranker import LLMReranker
 
+VERIFIED_OVERRIDES_PATH = PROJECT_ROOT / "src" / "resources" / "verified_overrides.json"
+
+
 class BaselinePipeline:
-    def __init__(self):
+    def __init__(self, config: PipelineConfig | None = None):
         print("Initializing Baseline Pipeline...")
+        self.config = config or PipelineConfig()
         self.patient_extractor = PatientExtractor()
         self.ner_extractor = BaselineExtractor()
         self.normalizer = TextNormalizer()
@@ -28,17 +35,17 @@ class BaselinePipeline:
         self.retriever = HybridRetriever(table_name="icd10")
         self.rxnorm_retriever = HybridRetriever(table_name="rxnorm")
         self.clinical_validator = ClinicalValidator()
-        self.llm_reranker = LLMReranker(use_llm=os.getenv("USE_LLM_RERANKER", "False").lower() == "true")
+        self.llm_reranker = LLMReranker(use_llm=self.config.reranker.enabled)
         
-        # Load override dictionary nếu tồn tại
         self.override_dict = {}
-        override_path = os.path.join(KB_DIR, "override_dict.json")
-        if os.path.exists(override_path):
-            with open(override_path, "r", encoding="utf-8") as f:
-                self.override_dict = json.load(f)
-            print(f"  - Loaded static overrides: {len(self.override_dict.get('CHẨN_ĐOÁN', {}))} diagnoses, {len(self.override_dict.get('THUỐC', {}))} drugs.")
-        else:
-            print("  - [WARNING] Static override dictionary not found.")
+        for entry in load_verified_overrides(VERIFIED_OVERRIDES_PATH):
+            entries_by_term = self.override_dict.setdefault(entry["type"], {})
+            entries_by_term[normalize_override_term(entry["term"])] = entry["codes"]
+        print(
+            "  - Loaded verified overrides: "
+            f"{len(self.override_dict.get('CHẨN_ĐOÁN', {}))} diagnoses, "
+            f"{len(self.override_dict.get('THUỐC', {}))} drugs."
+        )
             
         print("Pipeline initialized successfully.")
 
@@ -83,7 +90,7 @@ class BaselinePipeline:
                 expanded_text = self.normalizer.expand_abbreviation(clean_text)
                 
                 # 4a. Kiểm tra bảng ánh xạ cứng (Override) trước
-                override_key = expanded_text.lower()
+                override_key = normalize_override_term(expanded_text)
                 if override_key in self.override_dict.get("CHẨN_ĐOÁN", {}):
                     candidates = self.override_dict["CHẨN_ĐOÁN"][override_key]
                     print(f"  [OVERRIDE MATCH] Mapped diagnosis to {candidates}")
@@ -135,7 +142,7 @@ class BaselinePipeline:
                 drug_name_only = self.normalizer.clean_text(drug_name_only).lower()
                 
                 # 4a. Kiểm tra bảng ánh xạ cứng (Override) trước cho tên đầy đủ
-                override_key = expanded_text.lower()
+                override_key = normalize_override_term(expanded_text)
                 if override_key in self.override_dict.get("THUỐC", {}):
                     candidates = self.override_dict["THUỐC"][override_key]
                     print(f"  [OVERRIDE MATCH] Mapped drug to {candidates}")
@@ -158,8 +165,9 @@ class BaselinePipeline:
                             resolved_candidates.append(ing)
                             
                     # Bổ sung hoạt chất chính từ tên thuốc không hàm lượng qua override dict
-                    if drug_name_only in self.override_dict.get("THUỐC", {}):
-                        for ing in self.override_dict["THUỐC"][drug_name_only]:
+                    normalized_drug_name = normalize_override_term(drug_name_only)
+                    if normalized_drug_name in self.override_dict.get("THUỐC", {}):
+                        for ing in self.override_dict["THUỐC"][normalized_drug_name]:
                             resolved_candidates.append(ing)
                             
                     # Loại bỏ trùng lặp và giữ thứ tự
