@@ -7,6 +7,12 @@ from src.training.fingerprints import (
     stable_json_sha256,
 )
 from src.training.sources import SourceSpec, load_source_records
+from src.training.splits import (
+    SplitAssignment,
+    assert_no_split_leakage,
+    build_synthetic_split,
+    build_trusted_folds,
+)
 from src.training.validation import (
     ValidationFinding,
     require_valid_source,
@@ -17,7 +23,11 @@ __all__ = [
     "CanonicalEntity",
     "CanonicalRecord",
     "SourceSpec",
+    "SplitAssignment",
     "ValidationFinding",
+    "assert_no_split_leakage",
+    "build_synthetic_split",
+    "build_trusted_folds",
     "fingerprint_files",
     "load_source_records",
     "require_valid_source",
