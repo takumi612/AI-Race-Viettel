@@ -725,15 +725,18 @@ Expected: all existing and new tests pass.
 Run:
 
 ```bash
+python scripts/audit_overrides.py --scan-paths src scripts
 python scripts/audit_overrides.py \
   --db data/kb/metadata.db \
-  --overrides src/resources/verified_overrides.json \
-  --scan-paths src scripts tests
+  --overrides src/resources/verified_overrides.json
 git diff --check
 git status --short
 ```
 
-Expected: no machine-specific training path finding, no whitespace errors, and only intended documentation changes before the final commit.
+Expected: no machine-specific production path finding, override audit passes,
+no whitespace errors, and only intended documentation changes before the final
+commit. Tests are excluded from the path scan because absolute-path rejection
+fixtures intentionally contain machine-specific example strings.
 
 - [ ] **Step 5: Commit**
 
