@@ -331,6 +331,7 @@ git commit -m "test: establish trusted precision metrics"
 - Produces: `PROJECT_ROOT`, `DATA_DIR`, `KB_DIR`, `PipelineConfig`, `RetrievalConfig`, `ChunkingConfig`, `NERConfig`, `AssertionConfig`, `CandidateSelectionConfig`, `RerankerConfig`
 - Produces: `PipelineConfig.from_mapping(values) -> PipelineConfig` and `PipelineConfig.to_dict() -> dict`
 - Produces: `validate_override_entries(entries: list[dict], db_path: str) -> list[str]`
+- Produces: `find_machine_specific_paths(paths: list[Path]) -> list[PathFinding]`
 
 - [ ] **Step 1: Write failing configuration tests**
 
@@ -520,34 +521,31 @@ Expected: 6 tests pass.
 Append to `tests/test_config.py`:
 
 ```python
-import re
+from src.validation.override_validator import find_machine_specific_paths
 
 
-def test_runtime_sources_contain_no_windows_absolute_paths(project_root):
-    relative_paths = (
-        "src/utils/setup_rxnorm.py",
-        "src/retrieval/eval_recall.py",
-        "scripts/create_gt_all.py",
-        "scripts/aggregate_data.py",
-    )
-    for relative_path in relative_paths:
-        source = (project_root / relative_path).read_text(encoding="utf-8")
-        assert re.search(r"[A-Za-z]:\\", source) is None, relative_path
+def test_absolute_path_audit_reports_file_line_and_value(tmp_path):
+    source_path = tmp_path / "bad_runtime.py"
+    source_path.write_text('DATA_DIR = r"D:\\\\private-data"\n', encoding="utf-8")
+    findings = find_machine_specific_paths([source_path])
+    assert [(item.path, item.line_number, item.value) for item in findings] == [
+        (source_path, 1, r"D:\\private-data")
+    ]
 ```
 
 - [ ] **Step 6: Run the path regression and verify RED**
 
-Run `python -m pytest tests/test_config.py::test_runtime_sources_contain_no_windows_absolute_paths -v`.
+Run `python -m pytest tests/test_config.py::test_absolute_path_audit_reports_file_line_and_value -v`.
 
-Expected: failure identifies every remaining `D:\\...` or other machine-specific default.
+Expected: import fails because the path-audit API does not exist.
 
 - [ ] **Step 7: Remove runtime path hardcoding**
 
-In `setup_rxnorm.py`, derive `DEFAULT_ZIP_PATH = KB_DIR / "rxnorm_full_01052026.zip"` and accept `setup_rxnorm(zip_path: str | Path = DEFAULT_ZIP_PATH)`. In `eval_recall.py`, `create_gt_all.py`, and `aggregate_data.py`, replace module-level absolute paths with required `argparse` inputs or project-relative defaults from `src.config`; validate paths before processing. `create_gt_all.py` must call generated labels `pseudo-GT` in its CLI help, logs, and output metadata so they cannot be mistaken for the supplied labels 101–200.
+Implement `find_machine_specific_paths()` as the reusable behavior behind `scripts/audit_overrides.py --scan-paths`. In `setup_rxnorm.py`, derive `DEFAULT_ZIP_PATH = KB_DIR / "rxnorm_full_01052026.zip"` and accept `setup_rxnorm(zip_path: str | Path = DEFAULT_ZIP_PATH)`. In `eval_recall.py`, `create_gt_all.py`, and `aggregate_data.py`, replace module-level absolute paths with required `argparse` inputs or project-relative defaults from `src.config`; validate paths before processing. `create_gt_all.py` must call generated labels `pseudo-GT` in its CLI help, logs, and output metadata so they cannot be mistaken for the supplied labels 101–200.
 
-Run `python -m pytest tests/test_config.py -v`.
+Run `python -m pytest tests/test_config.py -v`, then `python scripts/audit_overrides.py --scan-paths src scripts`.
 
-Expected: all configuration and path-regression tests pass.
+Expected: all configuration/path-audit tests pass and the repository scan reports no machine-specific path.
 
 - [ ] **Step 8: Write failing override integrity tests**
 
@@ -865,7 +863,7 @@ git commit -m "feat: add adaptive clinical chunking"
 - Produces: `TypeDecision(entity_type: str | None, confidence: float, scores: dict[str, float], reason: str)`
 - Produces: `ClinicalLexicon.load(path) -> tuple[ClinicalTerm, ...]`
 - Produces: `ContextualTypeResolver.resolve(mention, document, chunk) -> TypeDecision`
-- Changes: `BaselineExtractor.extract_entities(text, chunks=None) -> list[dict]`
+- Changes: `BaselineExtractor(..., clinical_lexicon_path=None).extract_entities(text, chunks=None) -> list[dict]`
 
 - [ ] **Step 1: Write failing contextual disambiguation tests**
 
@@ -900,15 +898,18 @@ def test_ambiguous_low_confidence_span_is_rejected():
     assert decision.entity_type is None
 
 
-def test_extractor_does_not_embed_clinical_lexicon_constants(project_root):
-    source = (project_root / "src/ner/extractor.py").read_text(encoding="utf-8")
-    for constant_name in (
-        "CLINICAL_MEDICATIONS",
-        "CLINICAL_DIAGNOSES",
-        "CLINICAL_SYMPTOMS",
-        "TEST_NAMES",
-    ):
-        assert constant_name not in source
+def test_extractor_uses_injected_clinical_lexicon(tmp_path):
+    path = tmp_path / "clinical_lexicon.json"
+    path.write_text(
+        '{"schema_version": 1, "entries": ['
+        '{"term": "xét nghiệm zeta", "type": "TÊN_XÉT_NGHIỆM", '
+        '"source": "verified-test", "status": "verified"}'
+        ']}',
+        encoding="utf-8",
+    )
+    extractor = BaselineExtractor(load_database=False, clinical_lexicon_path=path)
+    entities = extractor.extract_entities("Kết quả xét nghiệm\nxét nghiệm zeta: 1.2")
+    assert any(entity["text"] == "xét nghiệm zeta" for entity in entities)
 
 
 def test_lexicon_requires_source_and_status(tmp_path):
@@ -962,7 +963,7 @@ class TypeDecision:
 
 - [ ] **Step 4: Externalize clinical lexicons with provenance**
 
-Move the existing `CLINICAL_MEDICATIONS`, `CLINICAL_DIAGNOSES`, `CLINICAL_SYMPTOMS`, and `TEST_NAMES` entries mechanically into `clinical_lexicon.json`. Each entry must have `term`, `type`, `source`, and `status`; mark legacy, unverified terms with `status: "unverified"` instead of silently treating them as ground truth. The loader validates schema, normalizes duplicates, and supplies a lower source prior for unverified entries. No lexicon entry may bypass contextual thresholds or the ambiguity reject gate.
+Move the existing `CLINICAL_MEDICATIONS`, `CLINICAL_DIAGNOSES`, `CLINICAL_SYMPTOMS`, and `TEST_NAMES` entries mechanically into `clinical_lexicon.json`. Each entry must have `term`, `type`, `source`, and `status`; mark legacy, unverified terms with `status: "unverified"` instead of silently treating them as ground truth. The loader validates schema, normalizes duplicates, and supplies a lower source prior for unverified entries. `BaselineExtractor` loads only the configured/injected lexicon resource; no lexicon entry may bypass contextual thresholds or the ambiguity reject gate.
 
 Move generic blacklist behavior into explicit penalties in `type_rules.json`; a generic token may only survive when contextual evidence raises it above the configured per-type threshold. Implement the malformed-entry and normalized-duplicate behavior already covered by Step 1 before wiring the loader into the extractor.
 
@@ -1017,6 +1018,8 @@ git commit -m "refactor: resolve NER types from clinical context"
 - [ ] **Step 1: Write failing assertion scope tests**
 
 ```python
+import json
+
 import pytest
 
 from src.assertion.rule_based import AssertionAnalyzer
@@ -1044,10 +1047,18 @@ def test_pre_admission_medication_is_historical():
     assert "isHistorical" in result
 
 
-def test_assertion_cues_are_not_embedded_in_python(project_root):
-    source = (project_root / "src/assertion/rule_based.py").read_text(encoding="utf-8").lower()
-    for cue in ("không có", "chưa phát hiện", "phủ nhận có"):
-        assert cue not in source
+def test_assertion_analyzer_uses_injected_rule_resource(project_root, tmp_path):
+    default_path = project_root / "src/resources/assertion_rules.json"
+    rules = json.loads(default_path.read_text(encoding="utf-8"))
+    rules["negation_cues"].append("tuyệt đối vắng")
+    custom_path = tmp_path / "assertion_rules.json"
+    custom_path.write_text(json.dumps(rules, ensure_ascii=False), encoding="utf-8")
+    text = "Bệnh nhân tuyệt đối vắng đau ngực"
+    start = text.index("đau ngực")
+    result = AssertionAnalyzer(rules_path=custom_path).analyze(
+        text, start, start + len("đau ngực")
+    )
+    assert "isNegated" in result
 
 
 def test_assertion_analyzer_exposes_calibratable_scores():
@@ -1229,6 +1240,7 @@ git commit -m "feat: fuse normalized BM25 and semantic scores"
 
 - Produces: `CandidateSelector.select(entity_type, ranked, is_valid) -> list[str]`
 - Produces: `ClinicalValidator.is_candidate_valid(entity, code, patient_info) -> bool`
+- Produces: `dose_form_is_compatible(drug_text, rxcui_name, rules) -> bool`
 - Produces: `LLMReranker.parse_selected_codes(payload, allowed_codes) -> list[str]`
 - Changes: LLM reranker returns a validated subset of input candidates or the unchanged fallback list.
 
@@ -1240,7 +1252,7 @@ import pytest
 from src.ranking.llm_reranker import LLMReranker
 from src.retrieval.candidate_selector import CandidateSelector
 from src.retrieval.types import RetrievedCandidate
-from src.validation.clinical_validator import ClinicalValidator
+from src.validation.clinical_validator import ClinicalValidator, dose_form_is_compatible
 
 
 def candidate(code: str, score: float) -> RetrievedCandidate:
@@ -1285,16 +1297,16 @@ def test_historical_rxnorm_mapping_is_opt_in(metadata_db):
     assert clinical_validator.rxnorm_mapping == {}
 
 
-def test_dose_form_preferences_are_not_embedded_in_python(project_root):
-    for relative_path in (
-        "src/validation/clinical_validator.py",
-        "src/retrieval/hybrid_retriever.py",
-    ):
-        source = (project_root / relative_path).read_text(encoding="utf-8").lower()
-        assert "oral tablet" not in source
-        assert "oral capsule" not in source
-        assert "oral_keywords_vi" not in source
-        assert "oral_keywords_en" not in source
+def test_dose_form_validation_uses_supplied_rules():
+    rules = {
+        "route_groups": [{
+            "name": "custom",
+            "mention_terms": ["đường zeta"],
+            "rxnorm_terms": ["zeta form"],
+        }]
+    }
+    assert dose_form_is_compatible("thuốc đường zeta", "ingredient zeta form", rules)
+    assert not dose_form_is_compatible("thuốc đường zeta", "ingredient oral tablet", rules)
 
 
 def test_llm_reranker_accepts_only_a_subset_of_input_candidates():
@@ -1323,7 +1335,7 @@ Move sex, age, and dose-form decisions into `is_candidate_valid()`. Keep `check_
 
 Make the 372k-entry historical RxNorm mapping explicitly opt-in through `CandidateSelectionConfig.load_historical_rxnorm`. Do not query or retain that table when the flag is false. Historical CUIs may only expand the retrieved candidate pool before validation and selection; they may never be appended directly to output. Remove README or log claims that the mapping affects inference when the flag is disabled.
 
-Move dose-form terms and contradiction rules to `clinical_validation_rules.json`, with a `source` field per rule group. Delete the `oral tablet`/`oral capsule` preference from `HybridRetriever`: it is an out-of-formula bonus and violates the normalized fusion contract. Dose form may reject a clinically contradictory candidate, but may not add an uncalibrated score bonus.
+Move dose-form terms and contradiction rules to `clinical_validation_rules.json`, with a `source` field per rule group, and route all decisions through the pure `dose_form_is_compatible()` API so resource injection is testable. Delete the `oral tablet`/`oral capsule` preference from `HybridRetriever`: it is an out-of-formula bonus and violates the normalized fusion contract. Dose form may reject a clinically contradictory candidate, but may not add an uncalibrated score bonus.
 
 - [ ] **Step 5: Require LLM subset semantics**
 
