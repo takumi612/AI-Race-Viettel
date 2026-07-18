@@ -13,6 +13,7 @@ from src.training.metrics import (
     choose_precision_first,
     exact_fbeta,
 )
+from src.training.promote import main as promote_main
 
 
 def _dataset_manifest(tmp_path):
@@ -167,3 +168,13 @@ def test_run_state_rejects_unknown_status():
                 "checkpoint": None,
             }
         )
+
+
+def test_promotion_cli_help(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        promote_main(["--help"])
+    assert exc_info.value.code == 0
+    output = capsys.readouterr().out
+    assert "--run-dir" in output
+    assert "--artifact-dir" in output
+    assert "--metrics-json" in output

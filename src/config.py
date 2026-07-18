@@ -41,6 +41,8 @@ class RetrievalConfig:
     hierarchical_expansion: bool = False
     embedding_model_type: str = "BGE-M3"
     embedding_model_artifact: str | None = None
+    icd_index_artifact: str | None = None
+    rxnorm_index_artifact: str | None = None
 
     def __post_init__(self) -> None:
         _validate_unit_interval("alpha", self.alpha)
@@ -50,15 +52,21 @@ class RetrievalConfig:
             raise ValueError("internal_top_k must be positive")
         if self.embedding_model_type not in {"BGE-M3", "SAPBERT"}:
             raise ValueError("embedding_model_type must be BGE-M3 or SAPBERT")
-        if self.embedding_model_artifact is not None:
+        for field, value in (
+            ("embedding_model_artifact", self.embedding_model_artifact),
+            ("icd_index_artifact", self.icd_index_artifact),
+            ("rxnorm_index_artifact", self.rxnorm_index_artifact),
+        ):
+            if value is None:
+                continue
             if (
-                not isinstance(self.embedding_model_artifact, str)
-                or not self.embedding_model_artifact.strip()
+                not isinstance(value, str)
+                or not value.strip()
             ):
                 raise ValueError(
-                    "embedding_model_artifact must be project-relative"
+                    f"{field} must be project-relative"
                 )
-            raw = self.embedding_model_artifact.strip()
+            raw = value.strip()
             if (
                 PurePosixPath(raw).is_absolute()
                 or PureWindowsPath(raw).is_absolute()
@@ -66,7 +74,7 @@ class RetrievalConfig:
                 or ".." in PurePosixPath(raw).parts
             ):
                 raise ValueError(
-                    "embedding_model_artifact must be project-relative"
+                    f"{field} must be project-relative"
                 )
 
     @property
@@ -270,6 +278,8 @@ class PipelineConfig:
                 "hierarchical_expansion",
                 "embedding_model_type",
                 "embedding_model_artifact",
+                "icd_index_artifact",
+                "rxnorm_index_artifact",
             },
         )
         chunking = _strict_section(
@@ -333,6 +343,8 @@ class PipelineConfig:
                 "hierarchical_expansion": self.retrieval.hierarchical_expansion,
                 "embedding_model_type": self.retrieval.embedding_model_type,
                 "embedding_model_artifact": self.retrieval.embedding_model_artifact,
+                "icd_index_artifact": self.retrieval.icd_index_artifact,
+                "rxnorm_index_artifact": self.retrieval.rxnorm_index_artifact,
             },
             "chunking": {
                 "max_tokens": self.chunking.max_tokens,

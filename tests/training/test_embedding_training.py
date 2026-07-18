@@ -301,4 +301,5 @@ def test_embedding_cli_help(capsys):
     assert exc_info.value.code == 0
     output = capsys.readouterr().out
     assert "--stage" in output
+    assert "--initial-checkpoint" in output
     assert "--dry-run" in output

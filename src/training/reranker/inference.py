@@ -18,6 +18,8 @@ class LocalTransformersReranker:
         max_new_tokens: int = 64,
     ):
         self.model_artifact = Path(model_artifact).resolve()
+        final_dir = self.model_artifact / "final"
+        self.adapter_dir = final_dir if final_dir.is_dir() else self.model_artifact
         self.project_root = Path(project_root).resolve()
         if (
             isinstance(max_new_tokens, bool)
@@ -30,7 +32,7 @@ class LocalTransformersReranker:
         self._tokenizer = None
 
     def _runtime_config(self) -> dict[str, Any]:
-        path = self.model_artifact / "runtime.json"
+        path = self.adapter_dir / "runtime.json"
         if not path.is_file():
             raise ValueError(f"reranker runtime manifest is missing: {path}")
         try:
@@ -86,7 +88,7 @@ class LocalTransformersReranker:
         )
         model = PeftModel.from_pretrained(
             base,
-            self.model_artifact,
+            self.adapter_dir,
             local_files_only=True,
         )
         model.eval()

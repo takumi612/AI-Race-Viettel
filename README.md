@@ -6,6 +6,28 @@ Hệ thống xử lý văn bản y tế tự động (Clinical NLP) phục vụ 
 
 ---
 
+## Modular training trên Colab T4
+
+Repo đã có pipeline huấn luyện tách module cho XLM-R NER, BGE-M3 LoRA và
+Qwen2.5-7B QLoRA. Tất cả trainer chỉ đọc build dữ liệu có fingerprint, chặn
+pseudo-GT/holdout khỏi gradient, hỗ trợ checkpoint resume và yêu cầu review
+precision-first trước khi promote artifact.
+
+Runbook đầy đủ: [docs/training/MODEL_TRAINING_COLAB.md](docs/training/MODEL_TRAINING_COLAB.md).
+Nền tảng data/split: [docs/training/DATA_FOUNDATION.md](docs/training/DATA_FOUNDATION.md).
+
+```bash
+python -m pip install -r requirements-train.txt
+python -m pytest tests/training -q
+python -m src.training.ner.train --help
+python -m src.training.embedding.train --help
+python -m src.training.reranker.train --help
+```
+
+Lưu ý: code trainer đã hoàn chỉnh, nhưng không được bắt đầu train production
+cho tới khi synthetic 2.000 mẫu pass QA và các code ontology còn thiếu trong
+trusted 101–180 được xử lý có provenance.
+
 ## Trusted benchmark policy
 
 Configuration selection uses only trusted development IDs **101–180** with deterministic folds. IDs **1–100** are self-generated pseudo-GT and may be reported only as `untrusted`; they never select thresholds or retrieval weights. Holdout IDs **181–200** are evaluated once with a SHA-256-verified locked configuration.

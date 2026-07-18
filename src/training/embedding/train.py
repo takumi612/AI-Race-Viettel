@@ -18,7 +18,33 @@ from src.training.embedding.data import (
     mine_hard_negative_examples,
     select_embedding_seeds,
 )
-from src.training.fingerprints import sha256_file, stable_json_sha256
+from src.training.fingerprints import (
+    fingerprint_files,
+    sha256_file,
+    stable_json_sha256,
+)
+
+
+def _checkpoint_identity(
+    project_root: Path,
+    initial_checkpoint: str | Path | None,
+    *,
+    stage: str,
+) -> tuple[Path | None, str | None]:
+    if stage.startswith("trusted") and initial_checkpoint is None:
+        raise ValueError("trusted embedding stages require --initial-checkpoint")
+    if stage == "synthetic" and initial_checkpoint is not None:
+        raise ValueError("synthetic embedding stage starts from base_model")
+    if initial_checkpoint is None:
+        return None, None
+    checkpoint = Path(initial_checkpoint)
+    if not checkpoint.is_absolute():
+        checkpoint = project_root / checkpoint
+    checkpoint = checkpoint.resolve()
+    files = sorted(path for path in checkpoint.rglob("*") if path.is_file())
+    if not checkpoint.is_dir() or not files:
+        raise ValueError(f"initial embedding checkpoint is invalid: {checkpoint}")
+    return checkpoint, fingerprint_files(files, checkpoint)
 
 
 def build_embedding_run_plan(
@@ -91,7 +117,14 @@ def train_embedding(
     fold: int | None,
     run_dir: str | Path | None,
     resume: bool,
+    initial_checkpoint: str | Path | None,
 ) -> dict[str, Any]:
+    root = Path(project_root).resolve()
+    initial_path, initial_sha256 = _checkpoint_identity(
+        root,
+        initial_checkpoint,
+        stage=stage,
+    )
     import torch
     from datasets import Dataset
     from peft import LoraConfig, TaskType
@@ -107,7 +140,6 @@ def train_embedding(
         BatchSamplers,
     )
 
-    root = Path(project_root).resolve()
     plan = build_embedding_run_plan(
         config,
         project_root=root,
@@ -153,7 +185,12 @@ def train_embedding(
         resolved_run_dir,
         task="embedding",
         base_model=config.base_model,
-        config={**config.to_mapping(), "stage": stage, "fold": fold},
+        config={
+            **config.to_mapping(),
+            "stage": stage,
+            "fold": fold,
+            "initial_checkpoint_sha256": initial_sha256,
+        },
         dataset_manifest=manifest_path,
         seed=config.seed,
         resume=resume,
@@ -167,16 +204,26 @@ def train_embedding(
         model_source,
         local_files_only=config.local_files_only,
     )
-    model.add_adapter(
-        LoraConfig(
-            r=config.lora_rank,
-            lora_alpha=config.lora_alpha,
-            lora_dropout=config.lora_dropout,
-            bias="none",
-            target_modules="all-linear",
-            task_type=TaskType.FEATURE_EXTRACTION,
+    if initial_path is None:
+        model.add_adapter(
+            LoraConfig(
+                r=config.lora_rank,
+                lora_alpha=config.lora_alpha,
+                lora_dropout=config.lora_dropout,
+                bias="none",
+                target_modules="all-linear",
+                task_type=TaskType.FEATURE_EXTRACTION,
+            )
         )
-    )
+    else:
+        model.load_adapter(
+            str(initial_path),
+            is_trainable=True,
+            local_files_only=True,
+        )
+    transformer_model = getattr(model, "transformers_model", None)
+    if transformer_model is not None:
+        transformer_model.enable_input_require_grads()
     if config.gradient_checkpointing:
         first_module = model[0]
         auto_model = getattr(first_module, "auto_model", None)
@@ -245,12 +292,24 @@ def train_embedding(
         {
             "run_dir": str(resolved_run_dir),
             "global_step": state.global_step,
+            "initial_checkpoint_sha256": initial_sha256,
             "train_example_count": len(train_mined.examples),
             "eval_example_count": len(eval_mined.examples),
             "train_retrieval_miss_count": len(train_mined.retrieval_misses),
             "eval_retrieval_miss_count": len(eval_mined.retrieval_misses),
             "metrics": dict(train_result.metrics),
         }
+    )
+    (resolved_run_dir / "training_metrics.json").write_text(
+        json.dumps(
+            plan["metrics"],
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+            default=lambda value: value.item(),
+        )
+        + "\n",
+        encoding="utf-8",
     )
     return plan
 
@@ -277,6 +336,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--fold", type=int)
     parser.add_argument("--run-dir")
+    parser.add_argument("--initial-checkpoint")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser
@@ -306,6 +366,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 fold=args.fold,
                 run_dir=args.run_dir,
                 resume=args.resume,
+                initial_checkpoint=args.initial_checkpoint,
             )
     except (ValueError, FileNotFoundError, FileExistsError) as exc:
         parser.error(str(exc))

@@ -54,8 +54,19 @@ class BaselinePipeline:
             if retrieval.embedding_model_artifact is not None
             else None
         )
+        icd_index_dir = (
+            str(PROJECT_ROOT / retrieval.icd_index_artifact)
+            if retrieval.icd_index_artifact is not None
+            else None
+        )
+        rxnorm_index_dir = (
+            str(PROJECT_ROOT / retrieval.rxnorm_index_artifact)
+            if retrieval.rxnorm_index_artifact is not None
+            else None
+        )
         self.retriever = HybridRetriever(
             table_name="icd10",
+            index_dir=icd_index_dir,
             alpha=retrieval.alpha,
             internal_top_k=retrieval.internal_top_k,
             hierarchical_expansion=retrieval.hierarchical_expansion,
@@ -64,6 +75,7 @@ class BaselinePipeline:
         )
         self.rxnorm_retriever = HybridRetriever(
             table_name="rxnorm",
+            index_dir=rxnorm_index_dir,
             alpha=retrieval.alpha,
             internal_top_k=retrieval.internal_top_k,
             hierarchical_expansion=retrieval.hierarchical_expansion,

@@ -10,7 +10,11 @@ from typing import Any, Mapping, Sequence
 import yaml
 
 from src.training.artifacts import start_or_resume_run, update_run_state
-from src.training.fingerprints import sha256_file, stable_json_sha256
+from src.training.fingerprints import (
+    fingerprint_files,
+    sha256_file,
+    stable_json_sha256,
+)
 from src.training.metrics import exact_fbeta
 from src.training.ner.bio import (
     ID2LABEL,
@@ -61,6 +65,10 @@ def build_ner_run_plan(
         raise ValueError(f"NER stage {stage} has no training records")
     if stage != "trusted-final" and not eval_records:
         raise ValueError(f"NER stage {stage} has no evaluation records")
+    if config.local_files_only:
+        model_path = (root / config.base_model).resolve()
+        if not model_path.is_dir():
+            raise ValueError(f"local XLM-R model is missing: {model_path}")
     return {
         "task": "ner",
         "stage": stage,
@@ -162,6 +170,26 @@ def train_ner(
     resume: bool,
     initial_checkpoint: str | Path | None,
 ) -> dict[str, Any]:
+    root = Path(project_root).resolve()
+    if stage.startswith("trusted") and initial_checkpoint is None:
+        raise ValueError("trusted NER stages require --initial-checkpoint")
+    if stage == "synthetic" and initial_checkpoint is not None:
+        raise ValueError("synthetic NER stage starts from base_model")
+    initial_path = None
+    initial_sha256 = None
+    if initial_checkpoint is not None:
+        initial_path = Path(initial_checkpoint)
+        if not initial_path.is_absolute():
+            initial_path = root / initial_path
+        initial_path = initial_path.resolve()
+        initial_files = sorted(
+            path for path in initial_path.rglob("*") if path.is_file()
+        )
+        if not initial_path.is_dir() or not initial_files:
+            raise ValueError(
+                f"initial NER checkpoint is invalid: {initial_path}"
+            )
+        initial_sha256 = fingerprint_files(initial_files, initial_path)
     from transformers import (
         AutoModelForTokenClassification,
         AutoTokenizer,
@@ -172,7 +200,6 @@ def train_ner(
     )
     import torch
 
-    root = Path(project_root).resolve()
     plan = build_ner_run_plan(
         config,
         project_root=root,
@@ -185,9 +212,12 @@ def train_ner(
     train_records = select_ner_records(records, stage=stage, role="train", fold=fold)
     eval_records = select_ner_records(records, stage=stage, role="eval", fold=fold)
 
-    if stage.startswith("trusted") and initial_checkpoint is None:
-        raise ValueError("trusted NER stages require --initial-checkpoint")
-    model_source = str(initial_checkpoint or config.base_model)
+    base_model_source = (
+        (root / config.base_model).resolve()
+        if config.local_files_only
+        else config.base_model
+    )
+    model_source = str(initial_path or base_model_source)
     tokenizer = AutoTokenizer.from_pretrained(
         model_source,
         use_fast=True,
@@ -216,13 +246,28 @@ def train_ner(
         resolved_run_dir,
         task="ner",
         base_model=config.base_model,
-        config={**config.to_mapping(), "stage": stage, "fold": fold},
+        config={
+            **config.to_mapping(),
+            "stage": stage,
+            "fold": fold,
+            "initial_checkpoint_sha256": initial_sha256,
+        },
         dataset_manifest=manifest_path,
         seed=config.seed,
         resume=resume,
     )
     (resolved_run_dir / "resolved_config.json").write_text(
-        json.dumps(config.to_mapping(), ensure_ascii=False, indent=2, sort_keys=True)
+        json.dumps(
+            {
+                **config.to_mapping(),
+                "stage": stage,
+                "fold": fold,
+                "initial_checkpoint_sha256": initial_sha256,
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
         + "\n",
         encoding="utf-8",
     )
@@ -283,6 +328,17 @@ def train_ner(
     metrics = dict(result.metrics)
     if has_eval:
         metrics.update(trainer.evaluate())
+    (resolved_run_dir / "training_metrics.json").write_text(
+        json.dumps(
+            metrics,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+            default=lambda value: value.item(),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     checkpoint = final_dir
     state = update_run_state(
         resolved_run_dir,
@@ -292,6 +348,7 @@ def train_ner(
     )
     plan["run_dir"] = str(resolved_run_dir)
     plan["global_step"] = state.global_step
+    plan["initial_checkpoint_sha256"] = initial_sha256
     plan["metrics"] = metrics
     return plan
 

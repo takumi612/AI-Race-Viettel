@@ -47,7 +47,7 @@ def _config_mapping():
         "schema_version": 1,
         "base_model": "data/models/Qwen2.5-7B-Instruct",
         "dataset_dir": "data/training",
-        "candidate_dataset": "data/training/reranker/frozen",
+        "candidate_dataset": "artifacts/training/reranker/frozen",
         "database": "data/kb/metadata.db",
         "output_dir": "artifacts/training/reranker",
         "seed": 20260719,
@@ -256,4 +256,5 @@ def test_reranker_cli_help(capsys):
     assert exc_info.value.code == 0
     output = capsys.readouterr().out
     assert "--stage" in output
+    assert "--initial-checkpoint" in output
     assert "--dry-run" in output

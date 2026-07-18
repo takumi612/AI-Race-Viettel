@@ -137,6 +137,11 @@ def _read_state(path: Path) -> TrainingRunState:
     return TrainingRunState.from_mapping(value)
 
 
+def load_run_state(run_dir: str | Path) -> TrainingRunState:
+    """Read and validate the immutable state for a candidate run."""
+    return _read_state(Path(run_dir).resolve() / "run.json")
+
+
 def _dataset_identity(path: Path) -> tuple[str, str]:
     if not path.is_file():
         raise ValueError(f"dataset manifest is missing: {path}")

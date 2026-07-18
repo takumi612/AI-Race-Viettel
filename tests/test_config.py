@@ -32,6 +32,8 @@ def test_default_pipeline_is_precision_first():
     assert config.retrieval.internal_top_k == 20
     assert config.retrieval.embedding_model_type == "BGE-M3"
     assert config.retrieval.embedding_model_artifact is None
+    assert config.retrieval.icd_index_artifact is None
+    assert config.retrieval.rxnorm_index_artifact is None
     assert config.assertion.negated_threshold == 0.70
     assert config.selection.load_historical_rxnorm is False
     assert config.reranker.enabled is False
@@ -75,6 +77,8 @@ def test_config_mapping_rejects_unknown_keys_and_preserves_weight_invariant():
                 "alpha": 0.80,
                 "embedding_model_type": "BGE-M3",
                 "embedding_model_artifact": "artifacts/training/embedding/final",
+                "icd_index_artifact": "artifacts/indexes/icd10",
+                "rxnorm_index_artifact": "artifacts/indexes/rxnorm",
             }
         }
     )
@@ -83,6 +87,8 @@ def test_config_mapping_rejects_unknown_keys_and_preserves_weight_invariant():
         config.retrieval.embedding_model_artifact
         == "artifacts/training/embedding/final"
     )
+    assert config.retrieval.icd_index_artifact == "artifacts/indexes/icd10"
+    assert config.retrieval.rxnorm_index_artifact == "artifacts/indexes/rxnorm"
     with pytest.raises(ValueError, match="unknown"):
         PipelineConfig.from_mapping({"retrieval": {"bonus": 0.20}})
 
