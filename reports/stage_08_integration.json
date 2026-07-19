@@ -1,0 +1,35 @@
+{
+  "competition_evaluator": {
+    "approximate": "not_scored",
+    "reason": "No ground-truth annotation exists; an empty submission is schema-safe but not a performance claim.",
+    "strict": "not_scored"
+  },
+  "critical_invariants": {
+    "external_api_called": false,
+    "offset_errors": 0,
+    "private_test_used_for_fitting": false,
+    "raw_text_preserved": true,
+    "relation_extra_submission_key": false
+  },
+  "input_document_count": 100,
+  "json_parse_count": 100,
+  "nan_or_nonstandard_count": 0,
+  "output_json_count": 100,
+  "output_validation_errors": {},
+  "pipeline": "load -> section -> detect -> refine -> context -> route/link -> relation -> schema -> validate -> save -> zip",
+  "reload_check": {
+    "document_id": "1",
+    "equivalent": true,
+    "internal_entity_count": 34,
+    "submission_entity_count": 0
+  },
+  "stage": 8,
+  "zip": {
+    "member_count": 100,
+    "nested_output_directory": false,
+    "path": "D:\\2 Code\\AI_race\\output.zip",
+    "sha256": "c51f9cce143c19de06af9e0e0f3e7f21337e7920044db814e6ba09872d832c6b",
+    "size_bytes": 10906,
+    "structure_valid": true
+  }
+}

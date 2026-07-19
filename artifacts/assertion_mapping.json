@@ -1,0 +1,41 @@
+{
+  "axes": {
+    "certainty": [
+      "CONFIRMED",
+      "SUSPECTED",
+      "POSSIBLE",
+      "CONDITIONAL"
+    ],
+    "experiencer": [
+      "PATIENT",
+      "FAMILY",
+      "OTHER"
+    ],
+    "polarity": [
+      "AFFIRMED",
+      "NEGATED"
+    ],
+    "temporality": [
+      "CURRENT",
+      "HISTORICAL",
+      "PLANNED",
+      "RESOLVED"
+    ]
+  },
+  "internal_to_official": {
+    "certainty:CONDITIONAL": null,
+    "certainty:CONFIRMED": null,
+    "certainty:POSSIBLE": null,
+    "certainty:SUSPECTED": null,
+    "experiencer:FAMILY": null,
+    "experiencer:OTHER": null,
+    "experiencer:PATIENT": null,
+    "polarity:AFFIRMED": null,
+    "polarity:NEGATED": null,
+    "temporality:CURRENT": null,
+    "temporality:HISTORICAL": null,
+    "temporality:PLANNED": null,
+    "temporality:RESOLVED": null
+  },
+  "status": "UNCONFIRMED_NO_TRAIN_ANNOTATIONS"
+}

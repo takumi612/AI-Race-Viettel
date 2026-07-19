@@ -1,0 +1,3305 @@
+{
+  "manifest_version": "2.0.0",
+  "project": "clinical-nlp-end-to-end-lab",
+  "current_stage": 9,
+  "stage_status": "completed",
+  "generated_at": "2026-07-19T23:30:00+07:00",
+  "source_files": [
+    {
+      "path": "Lab Clinical NLP End-to-End.docx",
+      "role": "project_contract_source",
+      "size_bytes": 36368,
+      "sha256": "70389b4f4971cd6f93d87f76f3a170a38b39a49692ede759ae957b000065a85a"
+    },
+    {
+      "path": "input.zip",
+      "role": "unlabeled_inference_input_candidate",
+      "size_bytes": 85874,
+      "sha256": "46fe4a578b2c4478faa7c570b218218f539c0bbf1ea409168ae67a14ad86ca35"
+    },
+    {
+      "path": "ICD10.xlsx",
+      "role": "icd10_knowledge_source",
+      "size_bytes": 2011137,
+      "sha256": "4737e36d65698de987b718485c4f2c7dab8c8b71fdd263854798c27ee89e528e"
+    },
+    {
+      "path": "RxNorm_full_07062026.zip",
+      "role": "rxnorm_knowledge_source",
+      "size_bytes": 259313098,
+      "sha256": "53523ee9f1fcd7ee426698edf566aedebe548a6ec8cc372c41271fc5b28e784c"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": ".gitignore",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 522,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "506ddd5b0733ad69184f699d57a795d3296fdd0005e7741e5e939ecd66f05e10"
+    },
+    {
+      "path": "artifacts/assertion_mapping.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 860,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "40474e0ee8a33367906bfb4a29d95f6626448d762238e289796512649eb8b571"
+    },
+    {
+      "path": "artifacts/config.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1715,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "d7b25474cd84f92ab601f33d49989fe9b096b931f1e316e2671bf3d8ad015331"
+    },
+    {
+      "path": "artifacts/entity_type_mapping.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 307,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "ebbfa3d1397ce454295b0102d13e638481f01aa74259e5dd912ad33481b85aef"
+    },
+    {
+      "path": "artifacts/icd10/icd10_dictionary.jsonl.gz",
+      "artifact_type": "compressed_knowledge_cache",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 630718,
+      "required_for_inference": true,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "50ff6a412503352f7c5648e8c47031f943fa9261943f36d856c64810bd868064"
+    },
+    {
+      "path": "artifacts/icd10/metadata.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 556,
+      "required_for_inference": false,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "80a0577e889db89dd2a40cd680416c823b8aaa82f339ba672a3d6ecf6ca1cb7f"
+    },
+    {
+      "path": "artifacts/kb_build_report.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1299,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "0aa275af7fbdf37e90c9edca9c72063222c3754d370a0d13bdffce9d2b282bce"
+    },
+    {
+      "path": "artifacts/model_status.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 439,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "924daa61b922f407e22849eaf630fbaae3d211b2e7550b3f0065cae762c08d1d"
+    },
+    {
+      "path": "artifacts/relation_mapping.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 225,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f99bc45f8413291390d9a575962e8333bc49936af955805ca296710ef477bbc1"
+    },
+    {
+      "path": "artifacts/rxnorm/metadata.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 919,
+      "required_for_inference": false,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "6e041549761569fe0154e8d4182cb637c6856d39c5c10303e3dccfa55a38bdfa"
+    },
+    {
+      "path": "artifacts/rxnorm/relations_metadata.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 711,
+      "required_for_inference": false,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "d46abf7bcfed366d817add45369286a248a261f61f229d282a066b41f1da5978"
+    },
+    {
+      "path": "artifacts/rxnorm/rxnorm_dictionary.jsonl.gz",
+      "artifact_type": "compressed_knowledge_cache",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1444746,
+      "required_for_inference": true,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "974774e29c397e865d17d3bfb22f8ddf1efa6dd2fe31bcac4141cef6095b2497"
+    },
+    {
+      "path": "artifacts/rxnorm/rxnorm_relations.jsonl.gz",
+      "artifact_type": "compressed_knowledge_cache",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2123808,
+      "required_for_inference": true,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "d971cf2cfb80683c298cd9e6856e993dcae8f42e75905a8802ab42e9aea3450e"
+    },
+    {
+      "path": "artifacts/thresholds.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 148,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "a86c7e93865be43c90a82ed0335ee650fe05689e5a11620239fd8471271def53"
+    },
+    {
+      "path": "clinical_nlp_lab/__init__.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 312,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "5e80469d0c272d7f7ed580835f006060d916294e82551531150b59e446728376"
+    },
+    {
+      "path": "clinical_nlp_lab/artifacts.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3845,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "a30cd8b46f6c3fde3f7088fdc960b811f3440bb84e19ac4d4bcebe1b42577416"
+    },
+    {
+      "path": "clinical_nlp_lab/assertions.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_5_clinical_context",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2815,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "97edca67377cec974f03d436b8cd9dd2d5ba0079e94171781fa9c5c7be87aa8f"
+    },
+    {
+      "path": "clinical_nlp_lab/config.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3449,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8dc4ac6b5bb2010089297b43e2211f47e6bf0cabaf5f1aca1bc3e46ed7846915"
+    },
+    {
+      "path": "clinical_nlp_lab/data.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_3_data_baseline",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8073,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "d342068f7f8d201fcf48a612a11da6ba651a70f878702877ac2ab5ad34dd501d"
+    },
+    {
+      "path": "clinical_nlp_lab/evaluation.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7228,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "92d75097e01ea5718c2733cb07742fb48751540222cd38193b7ab510968a3c29"
+    },
+    {
+      "path": "clinical_nlp_lab/kb.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 14899,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "50baa4eee48bc137f9907fd3009d42ce578de16f01b22f53895d13204e626e79"
+    },
+    {
+      "path": "clinical_nlp_lab/linking.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_6_entity_linking",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8543,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "9ef2f7dd1d0877605dd997ba5d1b28d414de5bc5985d6a4f5043ac6688d1e534"
+    },
+    {
+      "path": "clinical_nlp_lab/ner.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_4_entity_extraction",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9083,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "9a7343720795fc31f92b44f78a61ee9ac7efe12440e13f9b2003481642f62e99"
+    },
+    {
+      "path": "clinical_nlp_lab/pipeline.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10840,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "921090156dc97d33f8c07b33dd031ca3797b9d1ba5a1a66e198610717aaa5650"
+    },
+    {
+      "path": "clinical_nlp_lab/relations.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_7_relation_extraction",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2955,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "1a556633ebcb9171f5e067436dbfd6fcd06cb6ea3a5b949056f13eb16f3d8d26"
+    },
+    {
+      "path": "clinical_nlp_lab/schema.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4648,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "5fed50a893e3ff082b10a2aa2ffc88c348753040f8f08cd1773d5f46ad0154eb"
+    },
+    {
+      "path": "clinical_nlp_lab/text.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5415,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "d035ffb5f65aabded5bf34df9085fa8ea5a45b357d0cf5d7ccfbe8107aaafda8"
+    },
+    {
+      "path": "clinical_nlp_lab/training.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_4_entity_extraction",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 13278,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "65dc10b80b083f5bdb37f9788464d389fba5f33f19216964275fd7a1fa5a2bcb"
+    },
+    {
+      "path": "DECISIONS.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 14479,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "dfb0157d915a29642f06416190e0fd898d78cd829a6720d23ab9e722f2d3729e"
+    },
+    {
+      "path": "diagnostics/1.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 25526,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "f7c328811e89796da0eaddc19b838219512ed5f15cde63ec5495fb55c8b32a01"
+    },
+    {
+      "path": "diagnostics/10.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1999,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "5b90c593d1cc0802c4f4efe3d6c08771a65af8124739238fa23833a301935d13"
+    },
+    {
+      "path": "diagnostics/100.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 12546,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "b5ab13280ab9f9b6b783df934ddeb646c5bd4237a07b7ea44de3738b703251ff"
+    },
+    {
+      "path": "diagnostics/11.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2301,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "4c761715f5572fa75b4550d919b75c34ec8713716a856cf69bfb471ac1457f24"
+    },
+    {
+      "path": "diagnostics/12.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 12197,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "35c4201ffec9cc01a4b460080b35a5a7be03e47aa0191d9e8a6f5320cd0ffd27"
+    },
+    {
+      "path": "diagnostics/13.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4384,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "3e234bfbfab4ff31edfde1a31e86dbe13076ba09695d195d0392ec4e0354bfe7"
+    },
+    {
+      "path": "diagnostics/14.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4224,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "abfcce4047c75a8d9034239dc720bcf6c39182fd719819227d73bebd1df96927"
+    },
+    {
+      "path": "diagnostics/15.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2149,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "8f4a17b6501b741a9ab5054995c3cba4ea9c98d1a136b9f4ce5e4ad6ba297af4"
+    },
+    {
+      "path": "diagnostics/16.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 20536,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "089e59eb1a4813f36e9f3a6c394d0663156edb08101ea8853d6c99bc35684bc3"
+    },
+    {
+      "path": "diagnostics/17.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 13781,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "2e45c7ace30c2f9363b91daa7921ed1494d02af56669eda02988624f3f13a544"
+    },
+    {
+      "path": "diagnostics/18.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4639,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "f17809a9ca786bc1f58d0921e726581a3e5c1d6e5195df568979f63fa890f95f"
+    },
+    {
+      "path": "diagnostics/19.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1469,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "39fe420a3881b57e6d6a947da66d1c10d6bf4e7fa5df3d339713113297a75241"
+    },
+    {
+      "path": "diagnostics/2.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2123,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "ec8fba155d903fa9faeff20c353f61a2abcdacf260dc08f64fabe48cf53608c8"
+    },
+    {
+      "path": "diagnostics/20.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 16795,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "6ca702873cc9b29eb7a08051218e29db420f181bab2866e974cd36f20ae9dc8d"
+    },
+    {
+      "path": "diagnostics/21.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2253,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "f946d05af334f9fc33579c8c58aba30f63f154ec24eec9c2999b5878b06bb051"
+    },
+    {
+      "path": "diagnostics/22.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1500,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "5ff2172a65094797e0695a3781edcc40503c1feb7e3f6eaca56e8c700d94227a"
+    },
+    {
+      "path": "diagnostics/23.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3861,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "2efaa1dceab0b060c3c094945154e68152e145ca016d46ac86ce023e0959d722"
+    },
+    {
+      "path": "diagnostics/24.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3598,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "8eaa05064e10581fb093b4acc65e0b803230905f8cca84358913e64ae678e459"
+    },
+    {
+      "path": "diagnostics/25.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 378,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "bd1476d6faed1db5b3c5f5b6456d7761d41513f5d0e70e7bf7612033c3e4c0cd"
+    },
+    {
+      "path": "diagnostics/26.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 462,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "22c92f498c6f48c86258a6fe323bf8aeaaeb9cb95d4075e64efb9120152c96b6"
+    },
+    {
+      "path": "diagnostics/27.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 13508,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "a57f3e9feea4f0633ded9bebbf5aecf7fac4624f9494a842be506c95352857de"
+    },
+    {
+      "path": "diagnostics/28.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 14870,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "c687dc3b1e2778e990b4b3cf71266beb8a7d5e26a541fcfc4f19cedcd928905a"
+    },
+    {
+      "path": "diagnostics/29.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 462,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "93314a74f462a104aee4d7f35090eae04f0bff991960409834e6eab42d591473"
+    },
+    {
+      "path": "diagnostics/3.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 13262,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "f1eaa9173cd4854a5c813822d357197d50d2f2590d42eac55de7b1a6a98bb3e5"
+    },
+    {
+      "path": "diagnostics/30.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8030,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "f8511bdd5d2c86aef8071a4be8bef427c41797af51b84f2e1f15bac278cfcf55"
+    },
+    {
+      "path": "diagnostics/31.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 958,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "a4082e156c1d2f11e7096e198c0abeedd1fe8659cf6ade278cada991a9318ff7"
+    },
+    {
+      "path": "diagnostics/32.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 15308,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "ba6362feda1da90ddada5ac826cc03ac140f76fc28da4777656b4d7d62c2a701"
+    },
+    {
+      "path": "diagnostics/33.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 13055,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "bf8eecba214b205ca3bca3d1636901cbad0ba1c1467ff7044ea0d54a93c91206"
+    },
+    {
+      "path": "diagnostics/34.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5814,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "49e60116656e78363849a4f540ed2a3db930a56e154b6135c65301006e10f395"
+    },
+    {
+      "path": "diagnostics/35.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 11272,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "ff3db5c2adcb7bac4a8ab0ee647489894583da39e683bb8f2e2535d202a6cf78"
+    },
+    {
+      "path": "diagnostics/36.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 16038,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "0df9d4a275bca562992793338a49e853f9bf800ffb791f9a8cac711ee3f44cd3"
+    },
+    {
+      "path": "diagnostics/37.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 24151,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "5abbfeef39d5a82e1c3e8f9d3262b4266c212e4027afd769d573a0acce621979"
+    },
+    {
+      "path": "diagnostics/38.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9726,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "1ed57907616ca9ada912aaa8c18bbe6ea017686b7268a5119b2cd02f7c01eb5b"
+    },
+    {
+      "path": "diagnostics/39.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3947,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "5d8e19ee7847149885810d18cd3861287e8903852a86af6bd8d91c88facacfe5"
+    },
+    {
+      "path": "diagnostics/4.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 14523,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "32f683e0cf06ca7d63a119417e9836c773ff293d13655d7d6602ddf4358375ca"
+    },
+    {
+      "path": "diagnostics/40.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 17680,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "049db4545b9614af7aa24f78a37e59d1e3e2a0f88a1a14cab310f6c21105e067"
+    },
+    {
+      "path": "diagnostics/41.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 35565,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "e0293dbc2807c45d81802d0caa0b32751c7ed722e7cd810028d769906ef3df1b"
+    },
+    {
+      "path": "diagnostics/42.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4590,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "6c32163ffc0ee7f33b453e674b854d1fc92f9faf4f82cbe611763fde66649811"
+    },
+    {
+      "path": "diagnostics/43.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9832,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "46864e0ccc070c2155232217ccfa1f242b4fb7e6d886e91cd982435a07d809e5"
+    },
+    {
+      "path": "diagnostics/44.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 17831,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "dd8304fb661917b805cabca8b351dfc8c26d5c46bc82d6b35b332084ffa30c0a"
+    },
+    {
+      "path": "diagnostics/45.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 545,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "274c1a64b90e89465c3f3670aa589efb8a883ae0c0f6b8be735985c76783318d"
+    },
+    {
+      "path": "diagnostics/46.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1448,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "16fd29f7c4373c36523f4a2d14195b42435450e07be94ecde6ac5875ca75c80b"
+    },
+    {
+      "path": "diagnostics/47.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6745,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "0b030ed3a4224ee48e87193fe915c13bd8ed4e63d6b7f71a5cfdba1d4451391a"
+    },
+    {
+      "path": "diagnostics/48.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 648,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "e6323a8410841e5c7b582e91913fedc2ccd89fac1655c1b8eae56c622cd82ada"
+    },
+    {
+      "path": "diagnostics/49.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2000,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "29185d4e9bfa2b96ab74bcebd5a69c2023fc1b6d3aeba9782ce03fb63afc0420"
+    },
+    {
+      "path": "diagnostics/5.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 15041,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "27ae797a23bfd48eebb0f9451c47df584253929265bd5c74a83d7c3874b250e0"
+    },
+    {
+      "path": "diagnostics/50.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 24145,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "87a40f49b83d2025dd94e344a6934ced1f5ef090896f06e9b7005544c63dcc28"
+    },
+    {
+      "path": "diagnostics/51.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7443,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "57033432f70ebed6953c41d2e11b44800fde532b39a20bf5c60cc53a559737f5"
+    },
+    {
+      "path": "diagnostics/52.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4229,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "5e760808061dba72dd1438e9f827220338562a929924b101ff514baf8339a982"
+    },
+    {
+      "path": "diagnostics/53.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5386,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "8afd9dae89d7510c2c0d6e39973768aab97e6cbf16c56cc8da39d2a3ea8c6cb9"
+    },
+    {
+      "path": "diagnostics/54.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 16088,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "aa978c5d512737dfdbb5e14bb518e3af2123c5317698d4af9ae948fbdf85d587"
+    },
+    {
+      "path": "diagnostics/55.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1613,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "cce5882a2cbbc7d3c0d436ca15fbc3a4b5dfc1da878090ecaaf8da9e0a2c4057"
+    },
+    {
+      "path": "diagnostics/56.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3717,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "07d28a2eb516b019e3da7321cca7268525f1a96e975eb75cc09fb78cd8262190"
+    },
+    {
+      "path": "diagnostics/57.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2100,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "350c0bf297d3a7f3b2f66812c963719772ee4e4eed0a13c7b0dd96b97e8573c0"
+    },
+    {
+      "path": "diagnostics/58.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9452,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "40b7b97be5a57f5b7ea1bfd8a8435a0f57d1c0c7c771b465fc1b6f4bb94b8f1b"
+    },
+    {
+      "path": "diagnostics/59.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7719,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "1b572094886c48a077ad9ffc1c47f0a204cebb5ba429e636974bc1c372577716"
+    },
+    {
+      "path": "diagnostics/6.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2282,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "6e574308fad019815a234ff5fa16970b55cfd0b05703b61ba192dd4e39f90107"
+    },
+    {
+      "path": "diagnostics/60.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1378,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "6ff486cd1e5420394104de36d947bfd12637af2270e70345949a3bf535cf2671"
+    },
+    {
+      "path": "diagnostics/61.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2073,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "a09e2096a811237edcc22fb952bb84795e7fa2b2df2a1bacd1d2a2b3dc7da81b"
+    },
+    {
+      "path": "diagnostics/62.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 709,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "9c101d18e8aef7df0ee983a5230d1137c09bfbbff866cbd741fd7875a54d67ba"
+    },
+    {
+      "path": "diagnostics/63.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 11375,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "02c2b323d237d19c47f9fb94dc4e467b42b8b1644bb25ff5cd2b5cf582b37dab"
+    },
+    {
+      "path": "diagnostics/64.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 11227,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "da24d9626ab3be57c1c15b29835892968254b6317668ebad017bf8878381a495"
+    },
+    {
+      "path": "diagnostics/65.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1393,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37d98d59489ad43abe927f9c6ac569677a733525b0ac9c54b3cde4d1ce94e280"
+    },
+    {
+      "path": "diagnostics/66.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7579,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "d1180b4551de2a79bed7ff839081f0c187d157f453efc128c685dccd575072d7"
+    },
+    {
+      "path": "diagnostics/67.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2067,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "bd65d918c9fa1d909dbe768716644624c844533c5a2ecccb0a4a3c5484a32955"
+    },
+    {
+      "path": "diagnostics/68.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1318,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "97a7919a3c334f84476af0c06c14b0c29df0d94358b7da7ec14e8787b9c6ca97"
+    },
+    {
+      "path": "diagnostics/69.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4049,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "6c7237d5cd6c39f1f8a20877ddd33ed93ed959b171b526bb39698318ba77ee81"
+    },
+    {
+      "path": "diagnostics/7.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7733,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "e954dd5f22675eb97b624053d9c52cc8a24266f9a48d91246526a507ad8d2394"
+    },
+    {
+      "path": "diagnostics/70.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7096,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "e500a80e9ea53665bb811c3d77e3ea77f43978820b51b32c7217c5f971102d90"
+    },
+    {
+      "path": "diagnostics/71.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10586,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "36aa8009c0e3a974c12e9d1ccc857e3e7bd9950a657b70dd105bd7d2f93acf8f"
+    },
+    {
+      "path": "diagnostics/72.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 544,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "fd0b8629e358fcbbed5ae87513fbb82bc9c494e06b17873399af262eb2bb8758"
+    },
+    {
+      "path": "diagnostics/73.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 17804,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "6b55bb8f1999d3d5b3151c9900628958f978cab8286a9c60cacbf0de554488bc"
+    },
+    {
+      "path": "diagnostics/74.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8469,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "274976179435463361e4145912368e39b150d22b28a30dbb803522746fad18ed"
+    },
+    {
+      "path": "diagnostics/75.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 14068,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "978288e2c58ba2f1dc52f33a89533499f772e126901b5e768fc8eb40961fa7f2"
+    },
+    {
+      "path": "diagnostics/76.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10613,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "c1515db1d642efdf5d596457ea82e21e4df0f8c3752d920cda2cd168dc42b070"
+    },
+    {
+      "path": "diagnostics/77.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4369,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "b7cfbd66cc96ce6d8ccf0b4dd7dea6e776f794cae91b5c649425de7a27f1ad10"
+    },
+    {
+      "path": "diagnostics/78.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4766,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "7b2baee83251dc822a38d2c1a59b06de742a3005dae55747de2f385bf2fa24c0"
+    },
+    {
+      "path": "diagnostics/79.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 467,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "a46b084080cd20054bc27e216b666122334e09624da6b5b7477497efab7e7f98"
+    },
+    {
+      "path": "diagnostics/8.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2203,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "20dca1cfe52e8841817b2b0aed59a451ea0e5cf809eaa4525b2b92a84e81885c"
+    },
+    {
+      "path": "diagnostics/80.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3480,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "4a980e02af3ef6da79d967c705b97cdb9bbab29518036953ced3df2b75fa5d69"
+    },
+    {
+      "path": "diagnostics/81.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 389,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "acb9d50aeb0913ac1d1e03ae60cf6f19f9ccf92f701f8cee3a7b3cac3844daac"
+    },
+    {
+      "path": "diagnostics/82.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7303,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "e708a5041bd0c8ead2f54329da8ee8d6bc3a4f00d5e0935ce8b327e520aa7c2d"
+    },
+    {
+      "path": "diagnostics/83.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2561,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "c149a64187093bb6f6f3130c53ad96dae66aec4a5cda7322dce4bdf0e6004b56"
+    },
+    {
+      "path": "diagnostics/84.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10549,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "62ecb68b58a34deff5c3c10cbc0da0f3cb6de58741dc770124879bc1606318d4"
+    },
+    {
+      "path": "diagnostics/85.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2214,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "6feca92408515c5dad3c6d008e03dc33764538dd894b7e14f8d432b13de4865f"
+    },
+    {
+      "path": "diagnostics/86.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2894,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "553706d8dadf89c648e12b42e36be905339de46f94c4bd769ad3b2ebfc3f2488"
+    },
+    {
+      "path": "diagnostics/87.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1391,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "087be370b915bee8f5000e928690a338cc26a0d4526a8f222c6dc5f6e18b14d3"
+    },
+    {
+      "path": "diagnostics/88.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2482,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "4a71b05a6fab6d6e91edfdf72dd941f6f8578188eb90e28a62548b06bff3c887"
+    },
+    {
+      "path": "diagnostics/89.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4264,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "27fb5566b5586493c81f7590ff9fe50a727e6a4072985d29106224ba8a4ccf60"
+    },
+    {
+      "path": "diagnostics/9.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1465,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "134f4814af59c368def7aa2d0c479628085f057107d17249ce5d7ecc1eea76d6"
+    },
+    {
+      "path": "diagnostics/90.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 389,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "ddf765cb09ab59c55072df29696b64d6e7a8fff154c4a5e1d0bb4f26969dca73"
+    },
+    {
+      "path": "diagnostics/91.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5081,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "ff15ebc95776943d2f13dece778713ed09c4043fb33a53aa70875580c971f35e"
+    },
+    {
+      "path": "diagnostics/92.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1825,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "fb8a3717bfc9516b11ec7a580f0175158aeb1f64816572a378bee96552533611"
+    },
+    {
+      "path": "diagnostics/93.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1031,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "89f2124a9682739c2bb51e57ba6c7165d834456dcb00bab4ab2a811ac65c5a6b"
+    },
+    {
+      "path": "diagnostics/94.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7063,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "f32e141f0d8c9c8048752f88098a03fc9d7e5f062b999e3c0029efcefa03530f"
+    },
+    {
+      "path": "diagnostics/95.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3563,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "c7e4932de5ac98e03c2b6bfb51fd9e06bf9c8af1563949ba1dbf9f94c66b35f6"
+    },
+    {
+      "path": "diagnostics/96.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9817,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "c56515b654c40a4e1d85756859d79b883e15eb04c23ddfb5ad64d1d8e6fb8e7a"
+    },
+    {
+      "path": "diagnostics/97.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4562,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "2420628358bb11db824a5dcd9e505cdb5f426f7953a7ae8e5ff1b2206ed4c512"
+    },
+    {
+      "path": "diagnostics/98.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4460,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "4821c941a138ab6688772a1f4b76e68ec6c1c199d483f3492b446c4035fc4bb6"
+    },
+    {
+      "path": "diagnostics/99.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4602,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "835b1cfe292c2a93cc15c8e72bed1649517501daca6931b01f25b7ccef3c719d"
+    },
+    {
+      "path": "diagnostics/run_summary.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 579,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "60aad1788b8b80d9714e0d00f1d8873c1cec58a4f08479b46560eee6fa45c63a"
+    },
+    {
+      "path": "medical_information_extraction_lab.ipynb",
+      "artifact_type": "executable_notebook",
+      "created_by": "stage_9_final_generation",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 36537,
+      "required_for_inference": false,
+      "rebuild": "Run tools/build_notebook.py from the project root.",
+      "sha256": "238adafbccb2ff0549c62bf41b2371693a48b9d63145e86055c94efff58a50fd"
+    },
+    {
+      "path": "output/1.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/10.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/100.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/11.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/12.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/13.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/14.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/15.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/16.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/17.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/18.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/19.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/2.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/20.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/21.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/22.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/23.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/24.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/25.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/26.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/27.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/28.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/29.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/3.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/30.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/31.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/32.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/33.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/34.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/35.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/36.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/37.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/38.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/39.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/4.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/40.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/41.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/42.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/43.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/44.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/45.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/46.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/47.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/48.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/49.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/5.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/50.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/51.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/52.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/53.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/54.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/55.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/56.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/57.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/58.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/59.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/6.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/60.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/61.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/62.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/63.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/64.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/65.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/66.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/67.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/68.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/69.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/7.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/70.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/71.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/72.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/73.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/74.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/75.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/76.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/77.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/78.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/79.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/8.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/80.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/81.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/82.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/83.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/84.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/85.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/86.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/87.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/88.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/89.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/9.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/90.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/91.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/92.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/93.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/94.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/95.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/96.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/97.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/98.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output/99.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output.zip",
+      "artifact_type": "submission_archive",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10906,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "50c9111c5956a556f821bb9d4ea89ecd958e73a09feee69b468fe7cd5cf78e80"
+    },
+    {
+      "path": "PROJECT_STATE.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6686,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "7037585f36c8fbd7415f96ecbeae1792a18c32f72b53c6d89d43f5d3a9545890"
+    },
+    {
+      "path": "README.md",
+      "artifact_type": "readme",
+      "created_by": "stage_9_final_generation",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6961,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2bc472d1b271385c6b19293eca918700d9979b2309b67ffd3e96d5672f9e0e2d"
+    },
+    {
+      "path": "reports/final_verification.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1068,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "09b3bd4032b2b2bc1faa2614d30c3c63a7eb2786390f484354b65e82d7e42983"
+    },
+    {
+      "path": "reports/phase1_audit.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 25339,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c2f66b34450db2a6d40504ff0a3d6b3d1f36366ec1549898ee360ac1f9b04017"
+    },
+    {
+      "path": "reports/PHASE1_DATA_AUDIT.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10446,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f0169e34d0c98ee995281f272bcf1fbcea24c26072e69b8d2484830456dca4c8"
+    },
+    {
+      "path": "reports/stage_03_eda.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2122,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8abca655eacb6d7f54da10bbb2a305dfae756b2500b57f39ea8cc3c18ef54008"
+    },
+    {
+      "path": "reports/stage_04_entity_extraction.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 882,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "3ca6ea40eac152c5c7aab809ec9175f51a981f38b2b73d2879a362190d2b355e"
+    },
+    {
+      "path": "reports/stage_05_clinical_context.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1249,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "055b899a824dde94d138264be285ef8c6d4cc0f86c3fa50b764e55f93babf85c"
+    },
+    {
+      "path": "reports/stage_06_entity_linking.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5047,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "eef18e4a649e63b4fd02d0b475d64b262be21aded8b76c5417a187fdedc2b90a"
+    },
+    {
+      "path": "reports/stage_07_relations.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7178,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "7192d2bbee8d7242d01b4b7a86f6569a552775e0d644b991070d7e612b748c5d"
+    },
+    {
+      "path": "reports/stage_08_integration.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1116,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "882db341b684723bd68f1d68e51995bd4568530c637a6bf1f96c60fa0ca1d894"
+    },
+    {
+      "path": "requirements.txt",
+      "artifact_type": "text_configuration",
+      "created_by": "stage_9_final_generation",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 381,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "63083a0a681c43ae9634b87cec51fc71bebe6655268a60b002aa11eb06d19408"
+    },
+    {
+      "path": "SPEC.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7294,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "00be921a54796b131c56fd8a47bfe33717f924220349839ad3ae57e5e4a86ed6"
+    },
+    {
+      "path": "stages/stage_01/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 941,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "53f559bb0617743658a1a4f669a1fb65b9ec385164f65b9b84c25583c319979e"
+    },
+    {
+      "path": "stages/stage_02/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1690,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "1ad02601f24036704984bf02e33d47b005579d26b935c87c55185a5a23d67894"
+    },
+    {
+      "path": "stages/stage_03/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1372,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "cbe57b770fac1532d14bc684fe8f65d9dbe78c07d3f82e85c14dc38223344703"
+    },
+    {
+      "path": "stages/stage_04/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1490,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "eec33018c6362e2d9cd0b3d557e072fa75e49e36241842f2d7bafa85cd2b779a"
+    },
+    {
+      "path": "stages/stage_05/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1332,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "02437deeefe21a8b6cf56d2538357e1d7ad140968978f70773b12d187225d74e"
+    },
+    {
+      "path": "stages/stage_06/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1319,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "f9218c8826f19da9c34d77675630531bbc5ea1a3b3137b84b358fc83afc5d80d"
+    },
+    {
+      "path": "stages/stage_07/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1057,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "31c3df467660e8775aee8ca5930611c8167375842f77028803f573407021f398"
+    },
+    {
+      "path": "stages/stage_08/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1521,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "a7ae60868f7075dc18a5e59ec3cf758ac2cc002c153283c165c058cd2550266d"
+    },
+    {
+      "path": "stages/stage_09/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1293,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "5de2477d5ad78457c374d7e937852f637c3f9f55e149d08c246af2dcc618c3ec"
+    },
+    {
+      "path": "tests/test_core.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7885,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f2732088bbab1ae1952846fedfb4c0249e8880dbfa574fca19d610d40f0e7d87"
+    },
+    {
+      "path": "tests/test_kb_and_pipeline.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2789,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "b077d73aba6762a1cc8d56d96060f53656a9cf40c71f1682ce575f17df69de28"
+    },
+    {
+      "path": "tools/build_knowledge_bases.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3379,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "533348a002ba5179804e5637efd7fa74c9f05f7d48e65aee609bf0846c594e6a"
+    },
+    {
+      "path": "tools/build_notebook.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 26938,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "250fcbc8a5aadc02694c07e375df59fa0107276f0b3b5bcfdbace9aa96812c73"
+    },
+    {
+      "path": "tools/execute_notebook.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1198,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "0147d2608b598ef845ce5bebf2ebaf3e1326c9c45aaacf7b1862e3d91ab44e1b"
+    },
+    {
+      "path": "tools/phase1_data_audit.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 26183,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "b3ae04d292ce4a5978b516235ebdc1afb208f45ad4e8daf9bf9c32fefb9650a1"
+    },
+    {
+      "path": "tools/run_pipeline.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1504,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "9985c8fd32f5df4d5ff180f0a97d5a6fbcd77b9d5f5355efdd06f0f0b23d7b0e"
+    },
+    {
+      "path": "tools/run_stage3_baseline.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2821,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2b4e0192d4d56e913a63703a3f8e583c1068ed6053cf3832f3b56d414f4e8a95"
+    },
+    {
+      "path": "tools/run_stage4_ner.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2936,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "970ff9d781e2bcbe4e8d97aeff114384621e038990903a56516123e4d9533ebe"
+    },
+    {
+      "path": "tools/run_stage5_context.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2845,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "63207fa5910ef3a3e8d618e50e4932fa0635b9317dce5d2263b7720a71fca5d7"
+    },
+    {
+      "path": "tools/run_stage6_linking.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4743,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "835341b8c4d35a2c82b327bbc569478eb149c07abbfda9eeb3a51ad2311a6682"
+    },
+    {
+      "path": "tools/run_stage7_relations.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2740,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "657366a3c4c09b706d65116bee075c754f378d67814b5026e1eb0690de4c9b24"
+    },
+    {
+      "path": "tools/run_stage8_integration.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3032,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "3af76f7bbfebd00d08833f414ddf5749af7117b759006063f125feaedc374a7f"
+    },
+    {
+      "path": "tools/update_manifest.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6782,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "23ea5facc57fbefd6f90fd445f9330fb036d7d99e180513831199ffe1b6c9d33"
+    },
+    {
+      "path": "train/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 951,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "506b7f83e76bc951b16b57937af39f51a4e19f9b585ac9cac00406f68abac33d"
+    },
+    {
+      "path": "ARTIFACT_MANIFEST.json",
+      "artifact_type": "artifact_manifest",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "all_stages"
+      ],
+      "size_bytes": null,
+      "required_for_inference": false,
+      "rebuild": "Run tools/update_manifest.py with the latest completed stage.",
+      "sha256": null,
+      "checksum_note": "Self-checksum omitted to avoid recursive manifest dependency."
+    }
+  ],
+  "artifact_count_excluding_self": 269,
+  "inference_artifacts_created": [
+    "artifacts/assertion_mapping.json",
+    "artifacts/config.json",
+    "artifacts/entity_type_mapping.json",
+    "artifacts/icd10/icd10_dictionary.jsonl.gz",
+    "artifacts/model_status.json",
+    "artifacts/relation_mapping.json",
+    "artifacts/rxnorm/rxnorm_dictionary.jsonl.gz",
+    "artifacts/rxnorm/rxnorm_relations.jsonl.gz",
+    "artifacts/thresholds.json",
+    "clinical_nlp_lab/__init__.py",
+    "clinical_nlp_lab/artifacts.py",
+    "clinical_nlp_lab/assertions.py",
+    "clinical_nlp_lab/config.py",
+    "clinical_nlp_lab/data.py",
+    "clinical_nlp_lab/evaluation.py",
+    "clinical_nlp_lab/kb.py",
+    "clinical_nlp_lab/linking.py",
+    "clinical_nlp_lab/ner.py",
+    "clinical_nlp_lab/pipeline.py",
+    "clinical_nlp_lab/relations.py",
+    "clinical_nlp_lab/schema.py",
+    "clinical_nlp_lab/text.py",
+    "clinical_nlp_lab/training.py"
+  ],
+  "training_performed": false,
+  "training_status_reason": "No annotated train/validation data was provided; supervised code is implemented but not executed.",
+  "private_test_used_for_fitting": false
+}

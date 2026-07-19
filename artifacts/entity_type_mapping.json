@@ -1,0 +1,12 @@
+{
+  "drop_unmapped": true,
+  "evidence": "No annotated train/validation files were present during implementation.",
+  "internal_to_official": {
+    "DISEASE": null,
+    "DRUG": null,
+    "LAB_RESULT": null,
+    "PATIENT_INFO": null,
+    "SYMPTOM": null
+  },
+  "status": "UNCONFIRMED_NO_TRAIN_ANNOTATIONS"
+}

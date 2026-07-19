@@ -74,3 +74,15 @@ data/input_*/
 data/training/
 data/.training-build-*/
 data/.training-backup-*/
+
+# Clinical NLP Colab branch artifacts
+test_artifacts/
+output/
+diagnostics/
+artifacts/ner_model/
+artifacts/assertion_model/
+artifacts/relation_model/
+!reports/PHASE1_DATA_AUDIT.md
+!reports/phase1_audit.json
+!reports/stage_*.json
+!reports/final_verification.json

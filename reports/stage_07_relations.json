@@ -1,0 +1,346 @@
+{
+  "stage": 7,
+  "method": "same-sentence rule baseline + entity distance + type compatibility",
+  "document_count": 100,
+  "candidate_entity_pair_count": 13330,
+  "relation_counts": {
+    "CONDITION_HAS_SYMPTOM": 17,
+    "DRUG_TREATS_CONDITION": 12,
+    "LAB_ASSOCIATED_WITH_SYMPTOM": 1
+  },
+  "relation_prediction_count": 30,
+  "negative_sampling": {
+    "status": "interface_ready",
+    "reason": "No relation labels; supervised negative sampling was not run."
+  },
+  "submission_policy": {
+    "relation_in_submission": false,
+    "reason": "Official submission schema is unconfirmed and the contract forbids extra keys."
+  },
+  "evaluation": {
+    "status": "not_scored",
+    "reason": "No relation ground truth was provided; no precision/recall/F1 was invented."
+  },
+  "examples": [
+    {
+      "document_id": "4",
+      "subject": [
+        1398,
+        1406,
+        "DISEASE"
+      ],
+      "object": [
+        1372,
+        1380,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.862422,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "4",
+      "subject": [
+        1398,
+        1406,
+        "DISEASE"
+      ],
+      "object": [
+        1393,
+        1396,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.878047,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "5",
+      "subject": [
+        485,
+        492,
+        "DISEASE"
+      ],
+      "object": [
+        466,
+        469,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.864375,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "5",
+      "subject": [
+        485,
+        492,
+        "DISEASE"
+      ],
+      "object": [
+        480,
+        483,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.878047,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "5",
+      "subject": [
+        485,
+        492,
+        "DISEASE"
+      ],
+      "object": [
+        494,
+        496,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.878047,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "7",
+      "subject": [
+        88,
+        121,
+        "DISEASE"
+      ],
+      "object": [
+        48,
+        50,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.842891,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "8",
+      "subject": [
+        568,
+        576,
+        "DISEASE"
+      ],
+      "object": [
+        578,
+        585,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.878047,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "12",
+      "subject": [
+        156,
+        165,
+        "DISEASE"
+      ],
+      "object": [
+        133,
+        135,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.859492,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "16",
+      "subject": [
+        1263,
+        1270,
+        "DISEASE"
+      ],
+      "object": [
+        1232,
+        1240,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.857539,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "16",
+      "subject": [
+        1263,
+        1270,
+        "DISEASE"
+      ],
+      "object": [
+        1242,
+        1245,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.862422,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "17",
+      "subject": [
+        142,
+        148,
+        "DISEASE"
+      ],
+      "object": [
+        135,
+        138,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.876094,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "17",
+      "subject": [
+        316,
+        322,
+        "DISEASE"
+      ],
+      "object": [
+        302,
+        305,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.869258,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "17",
+      "subject": [
+        316,
+        322,
+        "DISEASE"
+      ],
+      "object": [
+        307,
+        314,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.878047,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "32",
+      "subject": [
+        51,
+        59,
+        "LAB_RESULT"
+      ],
+      "object": [
+        43,
+        45,
+        "SYMPTOM"
+      ],
+      "relation": "LAB_ASSOCIATED_WITH_SYMPTOM",
+      "confidence": 0.874141,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "37",
+      "subject": [
+        607,
+        617,
+        "DRUG"
+      ],
+      "object": [
+        590,
+        603,
+        "DISEASE"
+      ],
+      "relation": "DRUG_TREATS_CONDITION",
+      "confidence": 0.876094,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "41",
+      "subject": [
+        1168,
+        1178,
+        "DRUG"
+      ],
+      "object": [
+        1127,
+        1137,
+        "DISEASE"
+      ],
+      "relation": "DRUG_TREATS_CONDITION",
+      "confidence": 0.849727,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "41",
+      "subject": [
+        1277,
+        1302,
+        "DISEASE"
+      ],
+      "object": [
+        1244,
+        1252,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.855586,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "41",
+      "subject": [
+        1314,
+        1327,
+        "DISEASE"
+      ],
+      "object": [
+        1244,
+        1252,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.819453,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "41",
+      "subject": [
+        1555,
+        1565,
+        "DISEASE"
+      ],
+      "object": [
+        1534,
+        1542,
+        "SYMPTOM"
+      ],
+      "relation": "CONDITION_HAS_SYMPTOM",
+      "confidence": 0.867305,
+      "evidence": "same_sentence+type_compatibility+distance"
+    },
+    {
+      "document_id": "41",
+      "subject": [
+        1753,
+        1763,
+        "DRUG"
+      ],
+      "object": [
+        1788,
+        1798,
+        "DISEASE"
+      ],
+      "relation": "DRUG_TREATS_CONDITION",
+      "confidence": 0.855586,
+      "evidence": "same_sentence+type_compatibility+distance"
+    }
+  ]
+}
