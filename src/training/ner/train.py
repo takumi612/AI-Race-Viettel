@@ -112,7 +112,7 @@ def build_compute_metrics(eval_features: Sequence[Mapping[str, Any]]):
                     feature["text"],
                     feature["absolute_offsets"],
                     predicted.tolist()[:seq_len],
-                    attention_mask=feature["attention_mask"],
+                    attention_mask=feature.get("attention_mask"),
                     record_id=feature["record_id"],
                 )
             )
@@ -121,7 +121,7 @@ def build_compute_metrics(eval_features: Sequence[Mapping[str, Any]]):
                     feature["text"],
                     feature["absolute_offsets"],
                     gold.tolist()[:seq_len],
-                    attention_mask=feature["attention_mask"],
+                    attention_mask=feature.get("attention_mask"),
                     record_id=feature["record_id"],
                 )
             )

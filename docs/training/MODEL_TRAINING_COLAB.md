@@ -69,6 +69,8 @@ training:
 
 ```bash
 %cd /content
+# Tránh lỗi khi chạy lại nếu thư mục đã tồn tại
+!rm -rf AI-Race-Viettel
 !git clone --branch develop --single-branch https://github.com/takumi612/AI-Race-Viettel.git
 %cd /content/AI-Race-Viettel
 !python -m pip install -U pip
@@ -78,8 +80,32 @@ training:
 ```
 
 Phải giữ dấu `/` cuối output. `gdown` 6 tải folder lớn đệ quy và không còn tùy
-chọn `--remaining-ok`. Lệnh trên ghi `dev`, `kb`, `models` và
-`synthetic_train_v1` trực tiếp trong `data`; không tạo `data/data`.
+chọn `--remaining-ok`. Lệnh trên có thể tạo thư mục lồng nhau (ví dụ `data/data`). 
+Hãy chạy đoạn script Python sau ngay lập tức để tự động chuẩn hóa cấu trúc dữ liệu nếu bị lồng:
+
+```python
+from pathlib import Path
+import shutil
+
+repo_data = Path("/content/AI-Race-Viettel/data")
+# Tìm thư mục con chứa kb/metadata.db (đặc trưng của bộ dữ liệu đã tải)
+metadata_paths = list(repo_data.glob("**/kb/metadata.db"))
+if metadata_paths:
+    nested_data_root = metadata_paths[0].parent.parent
+    if nested_data_root != repo_data:
+        print(f"Phát hiện thư mục dữ liệu bị lồng: {nested_data_root}")
+        print("Đang chuyển dữ liệu ra thư mục cha...")
+        for item in nested_data_root.iterdir():
+            dest = repo_data / item.name
+            if dest.exists():
+                if dest.is_dir():
+                    shutil.rmtree(dest)
+                else:
+                    dest.unlink()
+            shutil.move(str(item), str(dest))
+        nested_data_root.rmdir()
+        print("Đã chuẩn hóa cấu trúc thư mục dữ liệu thành công!")
+```
 
 Kiểm tra download bằng cell fail-fast sau:
 
@@ -173,23 +199,40 @@ Mount MyDrive chỉ để lưu artifact. Cell này không thay thế hoặc syml
 dataset:
 
 ```python
+from pathlib import Path
 from google.colab import drive
+import shutil
 
 drive.mount("/content/drive")
+repo = Path("/content/AI-Race-Viettel")
 drive_root = Path("/content/drive/MyDrive/AI-Race-Viettel")
 drive_artifacts = drive_root / "artifacts"
 drive_artifacts.mkdir(parents=True, exist_ok=True)
 repo_artifacts = repo / "artifacts"
+
 if repo_artifacts.is_symlink():
     if repo_artifacts.resolve() != drive_artifacts.resolve():
         raise RuntimeError(f"Wrong artifacts symlink: {repo_artifacts.resolve()}")
 elif repo_artifacts.exists():
+    # Nếu thư mục artifacts cục bộ đã tồn tại và không trống (ví dụ do chạy train trước khi mount Drive),
+    # di chuyển các dữ liệu đó sang Google Drive để tránh bị mất trước khi liên kết
     if any(repo_artifacts.iterdir()):
-        raise RuntimeError(f"Refusing to replace non-empty directory: {repo_artifacts}")
-    repo_artifacts.rmdir()
+        print(f"Thư mục {repo_artifacts} không trống. Đang chuyển dữ liệu sang Google Drive...")
+        for item in repo_artifacts.iterdir():
+            dest = drive_artifacts / item.name
+            if not dest.exists():
+                if item.is_dir():
+                    shutil.copytree(item, dest)
+                else:
+                    shutil.copy2(item, dest)
+            else:
+                print(f"Cảnh báo: Tệp {dest.name} đã tồn tại trên Drive, bỏ qua.")
+    shutil.rmtree(repo_artifacts)
     repo_artifacts.symlink_to(drive_artifacts, target_is_directory=True)
+    print("Đã tạo liên kết symlink artifacts sang Google Drive thành công!")
 else:
     repo_artifacts.symlink_to(drive_artifacts, target_is_directory=True)
+    print("Đã tạo liên kết symlink artifacts sang Google Drive thành công!")
 ```
 
 ## 4. Build dữ liệu một lần
