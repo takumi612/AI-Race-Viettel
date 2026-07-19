@@ -204,60 +204,6 @@ if manifest_path.is_file() and changed_ids:
         rows.append(json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
     manifest_path.write_text('\\n'.join(rows) + '\\n', encoding='utf-8')
     print('Đã cập nhật SHA256 cho dev manifest!')
-
-# 2. Vá lỗi 'offset and label lengths differ' trong file train.py
-train_file = '/content/AI-Race-Viettel/src/training/ner/train.py'
-with open(train_file, 'r', encoding='utf-8') as f:
-    code = f.read()
-
-old_code = \"\"\"        for feature, predicted, gold in zip(eval_features, predictions, labels):
-            predicted_entities.extend(
-                decode_bio_entities(
-                    feature["text"],
-                    feature["absolute_offsets"],
-                    predicted.tolist(),
-                    record_id=feature["record_id"],
-                )
-            )
-            gold_entities.extend(
-                decode_bio_entities(
-                    feature["text"],
-                    feature["absolute_offsets"],
-                    gold.tolist(),
-                    record_id=feature["record_id"],
-                )
-            )\"\"\"
-
-new_code = \"\"\"        for feature, predicted, gold in zip(eval_features, predictions, labels):
-            seq_len = len(feature["absolute_offsets"])
-            predicted_entities.extend(
-                decode_bio_entities(
-                    feature["text"],
-                    feature["absolute_offsets"],
-                    predicted.tolist()[:seq_len],
-                    attention_mask=feature.get("attention_mask"),
-                    record_id=feature["record_id"],
-                )
-            )
-            gold_entities.extend(
-                decode_bio_entities(
-                    feature["text"],
-                    feature["absolute_offsets"],
-                    gold.tolist()[:seq_len],
-                    attention_mask=feature.get("attention_mask"),
-                    record_id=feature["record_id"],
-                )
-            )\"\"\"
-
-if old_code in code:
-    code = code.replace(old_code, new_code)
-    with open(train_file, 'w', encoding='utf-8') as f:
-        f.write(code)
-    print("Đã vá lỗi padding seq_len trong src/training/ner/train.py thành công!")
-elif "predicted.tolist()[:seq_len]" in code:
-    print("train.py đã được vá, không cần thao tác.")
-else:
-    print("Không thể tự động vá train.py vì mã nguồn không khớp (có thể Git Repo đã cập nhật bản vá này).")
 """),
 
     create_markdown_cell("## Bước 6: Build Datasets"),
