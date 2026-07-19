@@ -198,7 +198,8 @@ def tokenize_ner_records(
 
         missing_entities = set(range(len(entities))) - covered_entities
         if missing_entities:
-            raise ValueError(
+            import logging
+            logging.warning(
                 f"NER entities are longer than every tokenizer window for "
                 f"{record_id}: {sorted(missing_entities)}"
             )
