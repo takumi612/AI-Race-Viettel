@@ -104,11 +104,15 @@ def build_compute_metrics(eval_features: Sequence[Mapping[str, Any]]):
         predicted_entities: list[Mapping[str, Any]] = []
         gold_entities: list[Mapping[str, Any]] = []
         for feature, predicted, gold in zip(eval_features, predictions, labels):
+            seq_len = len(feature["absolute_offsets"])
+            
+            # Đảm bảo mask truyền vào decode_bio_entities (tương ứng với zip)
             predicted_entities.extend(
                 decode_bio_entities(
                     feature["text"],
                     feature["absolute_offsets"],
-                    predicted.tolist(),
+                    predicted.tolist()[:seq_len],
+                    attention_mask=feature["attention_mask"],
                     record_id=feature["record_id"],
                 )
             )
@@ -116,7 +120,8 @@ def build_compute_metrics(eval_features: Sequence[Mapping[str, Any]]):
                 decode_bio_entities(
                     feature["text"],
                     feature["absolute_offsets"],
-                    gold.tolist(),
+                    gold.tolist()[:seq_len],
+                    attention_mask=feature["attention_mask"],
                     record_id=feature["record_id"],
                 )
             )
@@ -142,6 +147,33 @@ def build_compute_metrics(eval_features: Sequence[Mapping[str, Any]]):
         }
 
     return compute
+
+def _validate_dataset(features: Sequence[Mapping[str, Any]], tokenizer: Any) -> None:
+    for index, feature in enumerate(features):
+        record_id = feature.get("record_id", "Unknown")
+        input_ids = feature["input_ids"]
+        attention_mask = feature["attention_mask"]
+        offset_mapping = feature["absolute_offsets"]
+        labels = feature["labels"]
+        
+        if not (len(input_ids) == len(attention_mask) == len(offset_mapping) == len(labels)):
+            text = feature.get("text", "")
+            decoded_tokens = tokenizer.convert_ids_to_tokens(input_ids)
+            msg = (
+                f"\n--- VALIDATION ERROR ---\n"
+                f"sample_index: {index}\n"
+                f"sample_id: {record_id}\n"
+                f"text: {text}\n"
+                f"input_ids: {input_ids}\n"
+                f"decoded_tokens: {decoded_tokens}\n"
+                f"offset_mapping: {offset_mapping}\n"
+                f"labels: {labels}\n"
+                f"attention_mask: {attention_mask}\n"
+                f"len(input_ids) = {len(input_ids)}\n"
+                f"len(offset_mapping) = {len(offset_mapping)}\n"
+                f"len(labels) = {len(labels)}\n"
+            )
+            raise ValueError(f"Sample {index} (ID {record_id}): offset and label lengths differ (or other length mismatch)!\n{msg}")
 
 
 class _FeatureDataset:
@@ -235,6 +267,8 @@ def train_ner(
         max_length=config.max_length,
         stride=config.stride,
     )
+    _validate_dataset(train_features, tokenizer)
+    _validate_dataset(eval_features, tokenizer)
 
     suffix = stage if fold is None else f"{stage}-{fold}"
     resolved_run_dir = (
@@ -279,6 +313,10 @@ def train_ner(
         local_files_only=config.local_files_only,
     )
     has_eval = bool(eval_features)
+    
+    total_train_steps = (len(train_features) // (config.train_batch_size * config.gradient_accumulation_steps)) * config.num_train_epochs
+    warmup_steps = int(total_train_steps * config.warmup_ratio)
+    
     arguments = TrainingArguments(
         output_dir=str(resolved_run_dir),
         num_train_epochs=config.num_train_epochs,
@@ -287,7 +325,7 @@ def train_ner(
         per_device_eval_batch_size=config.eval_batch_size,
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         weight_decay=config.weight_decay,
-        warmup_ratio=config.warmup_ratio,
+        warmup_steps=warmup_steps,
         fp16=config.fp16 and torch.cuda.is_available(),
         gradient_checkpointing=config.gradient_checkpointing,
         eval_strategy="steps" if has_eval else "no",

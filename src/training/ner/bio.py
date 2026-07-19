@@ -146,14 +146,17 @@ def decode_bio_entities(
     offset_mapping: Sequence[Sequence[int]],
     label_ids: Sequence[int],
     *,
+    attention_mask: Sequence[int] | None = None,
     confidences: Sequence[float] | None = None,
     record_id: str | None = None,
     id2label: Mapping[int, str] = ID2LABEL,
 ) -> tuple[dict[str, Any], ...]:
     if len(offset_mapping) != len(label_ids):
-        raise ValueError("offset and label lengths differ")
+        raise ValueError(f"offset and label lengths differ: {len(offset_mapping)} vs {len(label_ids)}")
     if confidences is not None and len(confidences) != len(label_ids):
         raise ValueError("confidence and label lengths differ")
+    if attention_mask is not None and len(attention_mask) != len(label_ids):
+        raise ValueError("attention_mask and label lengths differ")
     offsets = tuple(_offset(value) for value in offset_mapping)
     raw_labels = [
         "O" if label_id == -100 else id2label.get(int(label_id), "")
@@ -186,10 +189,17 @@ def decode_bio_entities(
         active_end = None
         active_confidences = []
 
-    for index, (label, (token_start, token_end)) in enumerate(
-        zip(constrained, offsets)
+    mask = attention_mask if attention_mask is not None else [1] * len(label_ids)
+    
+    for index, (label, (token_start, token_end), is_valid_token, raw_label_id) in enumerate(
+        zip(constrained, offsets, mask, label_ids)
     ):
-        if token_end <= token_start or label == "O":
+        valid = (
+            is_valid_token == 1
+            and raw_label_id != -100
+            and token_end > token_start
+        )
+        if not valid or label == "O":
             close_active()
             continue
         prefix, entity_type = label.split("-", 1)

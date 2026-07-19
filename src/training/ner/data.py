@@ -111,28 +111,44 @@ def tokenize_ner_records(
         raise ValueError("invalid NER max_length/stride")
 
     features: list[dict[str, Any]] = []
+    from src.training.ner.bio import LABEL2ID
     for record in records:
         record_id = record.get("record_id")
         text = record.get("text")
         entities = record.get("entities", [])
+        tokens = record.get("tokens")
+        ner_tags = record.get("ner_tags")
         if not isinstance(record_id, str) or not record_id:
             raise ValueError("NER record_id must be non-empty")
-        if not isinstance(text, str) or not text:
-            raise ValueError(f"NER text is empty for {record_id}")
+        if not text and not tokens:
+            raise ValueError(f"NER text and tokens are empty for {record_id}")
         if not isinstance(entities, list):
             raise ValueError(f"NER entities must be a list for {record_id}")
 
-        encoded = tokenizer(
-            text,
-            truncation=True,
-            max_length=max_length,
-            stride=stride,
-            padding=False,
-            return_offsets_mapping=True,
-            return_overflowing_tokens=True,
-        )
+        if tokens and ner_tags:
+            encoded = tokenizer(
+                tokens,
+                is_split_into_words=True,
+                truncation=True,
+                max_length=max_length,
+                stride=stride,
+                padding=False,
+                return_offsets_mapping=True,
+                return_overflowing_tokens=True,
+            )
+        else:
+            encoded = tokenizer(
+                text,
+                truncation=True,
+                max_length=max_length,
+                stride=stride,
+                padding=False,
+                return_offsets_mapping=True,
+                return_overflowing_tokens=True,
+            )
+            
         covered_entities: set[int] = set()
-        for window in _windows(encoded):
+        for window_index, window in enumerate(_windows(encoded)):
             offsets = window.pop("offset_mapping")
             visible = [
                 tuple(offset)
@@ -143,22 +159,37 @@ def tokenize_ner_records(
                 continue
             window_start = min(offset[0] for offset in visible)
             window_end = max(offset[1] for offset in visible)
-            for entity_index, entity in enumerate(entities):
-                position = entity.get("position") if isinstance(entity, Mapping) else None
-                if (
-                    isinstance(position, list)
-                    and len(position) == 2
-                    and position[0] >= window_start
-                    and position[1] <= window_end
-                ):
-                    covered_entities.add(entity_index)
-            labels = align_bio_labels(text, offsets, entities)
+            
+            if tokens and ner_tags:
+                labels = []
+                window_word_ids = encoded.word_ids(batch_index=window_index)
+                previous_word_idx = None
+                for word_idx in window_word_ids:
+                    if word_idx is None:
+                        labels.append(-100)
+                    elif word_idx != previous_word_idx:
+                        labels.append(LABEL2ID.get(ner_tags[word_idx], -100))
+                    else:
+                        labels.append(-100)
+                    previous_word_idx = word_idx
+            else:
+                for entity_index, entity in enumerate(entities):
+                    position = entity.get("position") if isinstance(entity, Mapping) else None
+                    if (
+                        isinstance(position, list)
+                        and len(position) == 2
+                        and position[0] >= window_start
+                        and position[1] <= window_end
+                    ):
+                        covered_entities.add(entity_index)
+                labels = align_bio_labels(text, offsets, entities)
+                
             feature: dict[str, Any] = {
                 **window,
                 "labels": labels,
                 "absolute_offsets": [list(offset) for offset in offsets],
                 "record_id": record_id,
-                "text": text,
+                "text": text or " ".join(tokens),
                 "split": record.get("split"),
             }
             if "fold" in record:
