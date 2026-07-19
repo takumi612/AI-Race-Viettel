@@ -15,6 +15,7 @@ from src.validation.override_validator import load_verified_overrides, normalize
 from src.validation.submission import write_failure_output
 from src.validation.patient_extractor import PatientExtractor
 from src.ner.extractor import BaselineExtractor
+from src.ner.model_extractor import ModelNERExtractor, merge_hybrid_entities
 from src.retrieval.normalizer import TextNormalizer
 from src.assertion.rule_based import AssertionAnalyzer
 from src.retrieval.hybrid_retriever import HybridRetriever
@@ -33,20 +34,53 @@ class BaselinePipeline:
         self.clinical_chunker = ClinicalChunker(self.config.chunking)
         self.patient_extractor = PatientExtractor()
         self.ner_extractor = BaselineExtractor()
+        self.model_ner_extractor = None
+        if self.config.ner.mode != "rule":
+            artifact_path = PROJECT_ROOT / str(self.config.ner.model_artifact)
+            try:
+                self.model_ner_extractor = ModelNERExtractor(
+                    artifact_path,
+                    threshold=self.config.ner.model_threshold,
+                )
+            except (OSError, ValueError) as exc:
+                if self.config.ner.mode == "model":
+                    raise
+                print(f"  - NER hybrid fallback to rule mode: {exc}")
         self.normalizer = TextNormalizer()
         self.assertion_analyzer = AssertionAnalyzer(config=self.config)
         retrieval = self.config.retrieval
+        embedding_model_path = (
+            str(PROJECT_ROOT / retrieval.embedding_model_artifact)
+            if retrieval.embedding_model_artifact is not None
+            else None
+        )
+        icd_index_dir = (
+            str(PROJECT_ROOT / retrieval.icd_index_artifact)
+            if retrieval.icd_index_artifact is not None
+            else None
+        )
+        rxnorm_index_dir = (
+            str(PROJECT_ROOT / retrieval.rxnorm_index_artifact)
+            if retrieval.rxnorm_index_artifact is not None
+            else None
+        )
         self.retriever = HybridRetriever(
             table_name="icd10",
+            index_dir=icd_index_dir,
             alpha=retrieval.alpha,
             internal_top_k=retrieval.internal_top_k,
             hierarchical_expansion=retrieval.hierarchical_expansion,
+            embedding_model_type=retrieval.embedding_model_type,
+            embedding_model_path=embedding_model_path,
         )
         self.rxnorm_retriever = HybridRetriever(
             table_name="rxnorm",
+            index_dir=rxnorm_index_dir,
             alpha=retrieval.alpha,
             internal_top_k=retrieval.internal_top_k,
             hierarchical_expansion=retrieval.hierarchical_expansion,
+            embedding_model_type=retrieval.embedding_model_type,
+            embedding_model_path=embedding_model_path,
         )
         self.clinical_validator = ClinicalValidator(
             load_historical_rxnorm=self.config.selection.load_historical_rxnorm
@@ -55,6 +89,10 @@ class BaselinePipeline:
         self.llm_reranker = (
             LLMReranker(
                 use_llm=True,
+                backend=self.config.reranker.backend,
+                model_artifact=self.config.reranker.model_artifact,
+                project_root=PROJECT_ROOT,
+                max_new_tokens=self.config.reranker.max_new_tokens,
                 timeout_seconds=self.config.reranker.timeout_seconds,
             )
             if self.config.reranker.enabled
@@ -120,7 +158,21 @@ class BaselinePipeline:
         
         # 2. Nhận dạng thực thể thô (Baseline)
         chunks = self.clinical_chunker.chunk(text)
-        raw_entities = self.ner_extractor.extract_entities(text, chunks=chunks)
+        rule_entities = self.ner_extractor.extract_entities(text, chunks=chunks)
+        model_ner_extractor = getattr(self, "model_ner_extractor", None)
+        if model_ner_extractor is None:
+            raw_entities = rule_entities
+        elif self.config.ner.mode == "model":
+            raw_entities = model_ner_extractor.extract_entities(text)
+        else:
+            model_entities = model_ner_extractor.extract_entities(text)
+            raw_entities = merge_hybrid_entities(
+                text,
+                rule_entities,
+                model_entities,
+                default_threshold=self.config.ner.default_threshold,
+                per_type_thresholds=self.config.ner.per_type_thresholds,
+            )
         print(f"  - Extracted {len(raw_entities)} raw entities.")
         
         processed_entities = []

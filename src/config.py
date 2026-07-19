@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 import math
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Any
 
@@ -39,6 +39,10 @@ class RetrievalConfig:
     alpha: float = 0.75
     internal_top_k: int = 20
     hierarchical_expansion: bool = False
+    embedding_model_type: str = "BGE-M3"
+    embedding_model_artifact: str | None = None
+    icd_index_artifact: str | None = None
+    rxnorm_index_artifact: str | None = None
 
     def __post_init__(self) -> None:
         _validate_unit_interval("alpha", self.alpha)
@@ -46,6 +50,32 @@ class RetrievalConfig:
         _require_bool("hierarchical_expansion", self.hierarchical_expansion)
         if self.internal_top_k < 1:
             raise ValueError("internal_top_k must be positive")
+        if self.embedding_model_type not in {"BGE-M3", "SAPBERT"}:
+            raise ValueError("embedding_model_type must be BGE-M3 or SAPBERT")
+        for field, value in (
+            ("embedding_model_artifact", self.embedding_model_artifact),
+            ("icd_index_artifact", self.icd_index_artifact),
+            ("rxnorm_index_artifact", self.rxnorm_index_artifact),
+        ):
+            if value is None:
+                continue
+            if (
+                not isinstance(value, str)
+                or not value.strip()
+            ):
+                raise ValueError(
+                    f"{field} must be project-relative"
+                )
+            raw = value.strip()
+            if (
+                PurePosixPath(raw).is_absolute()
+                or PureWindowsPath(raw).is_absolute()
+                or PureWindowsPath(raw).drive
+                or ".." in PurePosixPath(raw).parts
+            ):
+                raise ValueError(
+                    f"{field} must be project-relative"
+                )
 
     @property
     def bm25_weight(self) -> float:
@@ -70,6 +100,9 @@ class ChunkingConfig:
 
 @dataclass(frozen=True)
 class NERConfig:
+    mode: str = "rule"
+    model_artifact: str | None = None
+    model_threshold: float = 0.70
     beta: float = 0.5
     ambiguity_margin: float = 0.15
     default_threshold: float = 0.70
@@ -84,6 +117,17 @@ class NERConfig:
     )
 
     def __post_init__(self) -> None:
+        if self.mode not in {"rule", "model", "hybrid"}:
+            raise ValueError("NER mode must be rule, model, or hybrid")
+        if self.mode != "rule":
+            if not isinstance(self.model_artifact, str) or not self.model_artifact.strip():
+                raise ValueError("model_artifact is required for model/hybrid NER")
+            artifact_path = Path(self.model_artifact)
+            if artifact_path.is_absolute() or ".." in artifact_path.parts:
+                raise ValueError("model_artifact must be project-relative")
+        elif self.model_artifact is not None and not isinstance(self.model_artifact, str):
+            raise ValueError("model_artifact must be a string or null")
+        _validate_unit_interval("model_threshold", self.model_threshold)
         _require_number("beta", self.beta)
         if self.beta <= 0:
             raise ValueError("beta must be positive")
@@ -154,10 +198,40 @@ class CandidateSelectionConfig:
 @dataclass(frozen=True)
 class RerankerConfig:
     enabled: bool = False
+    backend: str = "http"
+    model_artifact: str | None = None
+    max_new_tokens: int = 64
     timeout_seconds: float = 30.0
 
     def __post_init__(self) -> None:
         _require_bool("enabled", self.enabled)
+        if self.backend not in {"http", "local_transformers"}:
+            raise ValueError("reranker backend must be http or local_transformers")
+        _require_int("max_new_tokens", self.max_new_tokens)
+        if self.max_new_tokens < 1:
+            raise ValueError("max_new_tokens must be positive")
+        if self.model_artifact is not None:
+            if (
+                not isinstance(self.model_artifact, str)
+                or not self.model_artifact.strip()
+            ):
+                raise ValueError("model_artifact must be project-relative")
+            raw = self.model_artifact.strip()
+            if (
+                PurePosixPath(raw).is_absolute()
+                or PureWindowsPath(raw).is_absolute()
+                or PureWindowsPath(raw).drive
+                or ".." in PurePosixPath(raw).parts
+            ):
+                raise ValueError("model_artifact must be project-relative")
+        if (
+            self.enabled
+            and self.backend == "local_transformers"
+            and self.model_artifact is None
+        ):
+            raise ValueError(
+                "model_artifact is required for local_transformers reranker"
+            )
         _require_number("timeout_seconds", self.timeout_seconds)
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
@@ -198,7 +272,15 @@ class PipelineConfig:
         retrieval = _strict_section(
             values,
             "retrieval",
-            {"alpha", "internal_top_k", "hierarchical_expansion"},
+            {
+                "alpha",
+                "internal_top_k",
+                "hierarchical_expansion",
+                "embedding_model_type",
+                "embedding_model_artifact",
+                "icd_index_artifact",
+                "rxnorm_index_artifact",
+            },
         )
         chunking = _strict_section(
             values, "chunking", {"max_tokens", "overlap_tokens"}
@@ -206,7 +288,15 @@ class PipelineConfig:
         ner = _strict_section(
             values,
             "ner",
-            {"beta", "ambiguity_margin", "default_threshold", "per_type_thresholds"},
+            {
+                "mode",
+                "model_artifact",
+                "model_threshold",
+                "beta",
+                "ambiguity_margin",
+                "default_threshold",
+                "per_type_thresholds",
+            },
         )
         assertion = _strict_section(
             values,
@@ -225,7 +315,15 @@ class PipelineConfig:
             },
         )
         reranker = _strict_section(
-            values, "reranker", {"enabled", "timeout_seconds"}
+            values,
+            "reranker",
+            {
+                "enabled",
+                "backend",
+                "model_artifact",
+                "max_new_tokens",
+                "timeout_seconds",
+            },
         )
 
         return cls(
@@ -243,12 +341,19 @@ class PipelineConfig:
                 "alpha": self.retrieval.alpha,
                 "internal_top_k": self.retrieval.internal_top_k,
                 "hierarchical_expansion": self.retrieval.hierarchical_expansion,
+                "embedding_model_type": self.retrieval.embedding_model_type,
+                "embedding_model_artifact": self.retrieval.embedding_model_artifact,
+                "icd_index_artifact": self.retrieval.icd_index_artifact,
+                "rxnorm_index_artifact": self.retrieval.rxnorm_index_artifact,
             },
             "chunking": {
                 "max_tokens": self.chunking.max_tokens,
                 "overlap_tokens": self.chunking.overlap_tokens,
             },
             "ner": {
+                "mode": self.ner.mode,
+                "model_artifact": self.ner.model_artifact,
+                "model_threshold": self.ner.model_threshold,
                 "beta": self.ner.beta,
                 "ambiguity_margin": self.ner.ambiguity_margin,
                 "default_threshold": self.ner.default_threshold,
@@ -268,6 +373,9 @@ class PipelineConfig:
             },
             "reranker": {
                 "enabled": self.reranker.enabled,
+                "backend": self.reranker.backend,
+                "model_artifact": self.reranker.model_artifact,
+                "max_new_tokens": self.reranker.max_new_tokens,
                 "timeout_seconds": self.reranker.timeout_seconds,
             },
         }

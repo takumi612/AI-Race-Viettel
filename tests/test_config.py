@@ -30,9 +30,16 @@ def test_default_pipeline_is_precision_first():
         "KẾT_QUẢ_XÉT_NGHIỆM",
     }
     assert config.retrieval.internal_top_k == 20
+    assert config.retrieval.embedding_model_type == "BGE-M3"
+    assert config.retrieval.embedding_model_artifact is None
+    assert config.retrieval.icd_index_artifact is None
+    assert config.retrieval.rxnorm_index_artifact is None
     assert config.assertion.negated_threshold == 0.70
     assert config.selection.load_historical_rxnorm is False
     assert config.reranker.enabled is False
+    assert config.reranker.backend == "http"
+    assert config.reranker.model_artifact is None
+    assert config.reranker.max_new_tokens == 64
     assert config.reranker.timeout_seconds == 30.0
 
 
@@ -41,16 +48,58 @@ def test_non_positive_reranker_timeout_is_rejected():
         RerankerConfig(timeout_seconds=0)
 
 
+def test_local_reranker_requires_project_relative_artifact():
+    with pytest.raises(ValueError, match="model_artifact"):
+        RerankerConfig(enabled=True, backend="local_transformers")
+    with pytest.raises(ValueError, match="project-relative"):
+        RerankerConfig(
+            enabled=True,
+            backend="local_transformers",
+            model_artifact="/content/model",
+        )
+    config = RerankerConfig(
+        enabled=True,
+        backend="local_transformers",
+        model_artifact="artifacts/training/reranker/final",
+    )
+    assert config.model_artifact == "artifacts/training/reranker/final"
+
+
 def test_threshold_outside_unit_interval_is_rejected():
     with pytest.raises(ValueError):
         NERConfig(default_threshold=1.01)
 
 
 def test_config_mapping_rejects_unknown_keys_and_preserves_weight_invariant():
-    config = PipelineConfig.from_mapping({"retrieval": {"alpha": 0.80}})
+    config = PipelineConfig.from_mapping(
+        {
+            "retrieval": {
+                "alpha": 0.80,
+                "embedding_model_type": "BGE-M3",
+                "embedding_model_artifact": "artifacts/training/embedding/final",
+                "icd_index_artifact": "artifacts/indexes/icd10",
+                "rxnorm_index_artifact": "artifacts/indexes/rxnorm",
+            }
+        }
+    )
     assert config.retrieval.bm25_weight + config.retrieval.semantic_weight == pytest.approx(1.0)
+    assert (
+        config.retrieval.embedding_model_artifact
+        == "artifacts/training/embedding/final"
+    )
+    assert config.retrieval.icd_index_artifact == "artifacts/indexes/icd10"
+    assert config.retrieval.rxnorm_index_artifact == "artifacts/indexes/rxnorm"
     with pytest.raises(ValueError, match="unknown"):
         PipelineConfig.from_mapping({"retrieval": {"bonus": 0.20}})
+
+
+@pytest.mark.parametrize(
+    "artifact",
+    [r"D:\models\bge-m3", "/content/models/bge-m3", "../models/bge-m3"],
+)
+def test_retrieval_model_artifact_must_be_project_relative(artifact):
+    with pytest.raises(ValueError, match="project-relative"):
+        RetrievalConfig(embedding_model_artifact=artifact)
 
 
 @pytest.mark.parametrize(

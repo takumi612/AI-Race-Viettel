@@ -2,6 +2,13 @@
 
 *Kế hoạch bàn giao bằng tiếng Việt cho người triển khai tiếp.*
 
+> **Cập nhật 2026-07-19:** Task 7–10 trong tài liệu này đã được triển khai tại
+> commit `d0cae07` trên branch `develop`. Các checkbox bên dưới được giữ như
+> lịch sử thiết kế/review, không phải backlog còn mở. Phase A của pipeline
+> huấn luyện modular (contracts, validation, split, projections và atomic
+> dataset build) được triển khai sau đó; hướng dẫn vận hành nằm tại
+> `docs/training/DATA_FOUNDATION.md`.
+
 > **Dành cho agent/người triển khai tiếp:** dùng `superpowers:subagent-driven-development` (khuyến nghị) hoặc `superpowers:executing-plans`; thực hiện từng task bằng TDD, commit riêng và review độc lập trước khi sang task kế tiếp.
 
 **Mục tiêu:** hoàn thiện BM25-first hybrid retrieval, candidate selection ưu tiên precision, benchmark trên nhãn đáng tin cậy, khóa cấu hình, chạy holdout đúng một lần và tạo submission hợp lệ cho 100 file public.
@@ -13,10 +20,13 @@
 ## 1. Trạng thái bàn giao
 
 - Worktree: `D:\AI Race Viettel\.worktrees\precision-first-pipeline`
-- Branch: `codex/precision-first-pipeline`
-- Baseline bắt buộc cho Task 7: `ae9f610a9bbfcb44eac51e4719768e9a1f1c6740`
-- Task 1–6: hoàn tất và đã qua review độc lập.
-- Full suite tại baseline: **175 passed**.
+- Branch hiện tại: `develop`
+- Baseline lịch sử của Task 7: `ae9f610a9bbfcb44eac51e4719768e9a1f1c6740`
+- Task 7–10 đã hoàn tất tại `d0cae07`; baseline đó có **200 passed**.
+- Training data foundation Phase A được thiết kế tại `f9b20cb`, lập kế hoạch
+  tại `fd79f4f` và triển khai bằng các checkpoint TDD sau đó. Verification
+  Phase A: **245 passed**, metric self-test và production path/override audit
+  đều đạt.
 - Input public: `D:\AI Race Viettel\data\input` (100 file); bản copy ignored đã có trong worktree ở `data/input`.
 - Ground truth: ID 1–100 là pseudo-GT tự tạo, **không được dùng để chọn cấu hình**; ID 101–200 là nhãn được cung cấp.
 - Development pool đáng tin cậy: ID 101–180.
@@ -32,7 +42,8 @@ git rev-parse HEAD
 python -m pytest -q
 ```
 
-Kỳ vọng: worktree sạch, HEAD bắt đầu từ `ae9f610`, `175 passed`.
+Kỳ vọng hiện tại: branch `develop`, worktree sạch sau checkpoint cuối và full
+suite không regression. Không reset về `ae9f610`; đó chỉ là baseline lịch sử.
 
 ## Global Constraints
 

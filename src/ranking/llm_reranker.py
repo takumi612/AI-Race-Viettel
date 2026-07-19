@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 import sqlite3
 
 from src.utils.paths import KB_DIR
@@ -19,8 +20,27 @@ class LLMReranker:
         api_url: str = "http://localhost:8000/v1",
         api_key: str = "token-viettel-race",
         timeout_seconds: float = 30.0,
+        backend: str = "http",
+        model_artifact: str | None = None,
+        project_root: str | Path = ".",
+        max_new_tokens: int = 64,
     ):
         self.use_llm = bool(use_llm)
+        if backend not in {"http", "local_transformers"}:
+            raise ValueError("unsupported LLM reranker backend")
+        if backend == "local_transformers" and not model_artifact:
+            raise ValueError("model_artifact is required for local reranker")
+        if (
+            isinstance(max_new_tokens, bool)
+            or not isinstance(max_new_tokens, int)
+            or max_new_tokens < 1
+        ):
+            raise ValueError("max_new_tokens must be positive")
+        self.backend = backend
+        self.model_artifact = model_artifact
+        self.project_root = Path(project_root).resolve()
+        self.max_new_tokens = max_new_tokens
+        self._local_backend = None
         self.api_url = api_url.rstrip("/")
         self.api_key = api_key
         self.timeout_seconds = float(timeout_seconds)
@@ -40,15 +60,21 @@ class LLMReranker:
         allowed = [str(code) for code in allowed_codes]
         allowed_set = set(allowed)
         if "selected_codes" in payload:
+            if set(payload) != {"selected_codes"}:
+                raise ValueError("LLM payload contains unexpected keys")
             selected = payload["selected_codes"]
             if not isinstance(selected, list) or any(not isinstance(code, str) for code in selected):
                 raise ValueError("selected_codes must be a list of strings")
         elif "best_code" in payload:
+            if set(payload) != {"best_code"}:
+                raise ValueError("LLM payload contains unexpected keys")
             selected = [payload["best_code"]]
             if not isinstance(payload["best_code"], str):
                 raise ValueError("best_code must be a string")
         else:
             raise ValueError("LLM payload contains no selected codes")
+        if len(selected) > 2:
+            raise ValueError("selected_codes must contain at most two codes")
         if any(code not in allowed_set for code in selected):
             raise ValueError("selected code is outside the candidate pool")
         result = []
@@ -88,14 +114,47 @@ class LLMReranker:
             f"{index + 1}. code={code}; description={descriptions.get(code, '')}"
             for index, code in enumerate(candidates)
         )
+        if self.backend == "local_transformers":
+            example = {
+                "context": text_context,
+                "entity_text": entity_text,
+                "entity_type": entity_type,
+                "assertions": [],
+                "candidates": [
+                    {
+                        "code": code,
+                        "description": descriptions.get(code, ""),
+                    }
+                    for code in candidates
+                ],
+            }
+            try:
+                if self._local_backend is None:
+                    from src.training.reranker.inference import (
+                        LocalTransformersReranker,
+                    )
+
+                    artifact = Path(str(self.model_artifact))
+                    if not artifact.is_absolute():
+                        artifact = self.project_root / artifact
+                    self._local_backend = LocalTransformersReranker(
+                        artifact,
+                        project_root=self.project_root,
+                        max_new_tokens=self.max_new_tokens,
+                    )
+                content = self._local_backend.generate(example)
+                return self.parse_selected_codes(content, candidates)
+            except Exception as exc:
+                LOGGER.warning("Local LLM reranker fallback: %s", exc)
+                return candidates
         payload = {
             "model": "Qwen2.5-7B-Instruct",
             "messages": [
                 {"role": "system", "content": "Select only codes from the supplied candidate pool and return JSON."},
                 {"role": "user", "content": f"Context: {text_context}\nEntity: {entity_text}\nCandidates:\n{context}"},
             ],
-            "temperature": 0.1,
-            "max_tokens": 50,
+            "temperature": 0.0,
+            "max_tokens": self.max_new_tokens,
             "response_format": {"type": "json_object"},
         }
         try:

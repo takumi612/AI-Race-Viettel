@@ -1,0 +1,7 @@
+-r requirements.txt
+PyYAML>=6,<7
+accelerate>=1.2,<2
+datasets>=3,<5
+peft>=0.14,<1
+safetensors>=0.4,<1
+bitsandbytes>=0.45,<1; platform_system == "Linux"
