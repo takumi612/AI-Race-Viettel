@@ -34,10 +34,16 @@ def initialize_runtime_artifacts(config: dict[str, Any], artifact_dir: str | Pat
         write_json(
             root / "entity_type_mapping.json",
             {
-                "status": "UNCONFIRMED_NO_TRAIN_ANNOTATIONS",
+                "status": "CONFIRMED_FROM_REPOSITORY_VALIDATOR",
                 "drop_unmapped": True,
-                "internal_to_official": {entity_type: None for entity_type in config["internal_entity_types"]},
-                "evidence": "No annotated train/validation files were present during implementation.",
+                "internal_to_official": {
+                    "DISEASE": "CHẨN_ĐOÁN",
+                    "DRUG": "THUỐC",
+                    "LAB_RESULT": "KẾT_QUẢ_XÉT_NGHIỆM",
+                    "PATIENT_INFO": None,
+                    "SYMPTOM": "TRIỆU_CHỨNG",
+                },
+                "evidence": "Confirmed from src/validation/submission.py in takumi612/AI-Race-Viettel.",
             },
         )
     )
@@ -51,10 +57,18 @@ def initialize_runtime_artifacts(config: dict[str, Any], artifact_dir: str | Pat
         write_json(
             root / "assertion_mapping.json",
             {
-                "status": "UNCONFIRMED_NO_TRAIN_ANNOTATIONS",
+                "status": "CONFIRMED_FROM_REPOSITORY_VALIDATOR",
                 "axes": assertion_axes,
                 "internal_to_official": {
-                    f"{axis}:{value}": None
+                    f"{axis}:{value}": (
+                        "isNegated"
+                        if (axis, value) == ("polarity", "NEGATED")
+                        else "isHistorical"
+                        if (axis, value) == ("temporality", "HISTORICAL")
+                        else "isFamily"
+                        if (axis, value) == ("experiencer", "FAMILY")
+                        else None
+                    )
                     for axis, values in assertion_axes.items()
                     for value in values
                 },
@@ -107,4 +121,3 @@ def inventory_files(paths: Iterable[str | Path]) -> list[dict[str, Any]]:
             }
         )
     return records
-

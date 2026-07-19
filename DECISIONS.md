@@ -188,9 +188,9 @@
 **Stage:** 8  
 **Module:** Official schema conversion / submission  
 **Default method:** Xuất mọi entity sau NER và map type/assertion sang official schema.  
-**Chosen method:** Map theo `src/validation/submission.py`: `DISEASE -> CHẨN_ĐOÁN`, `DRUG -> THUỐC`, `SYMPTOM -> TRIỆU_CHỨNG`, `LAB_RESULT -> KẾT_QUẢ_XÉT_NGHIỆM`; assertions phủ định/tiền sử/gia đình map sang ba label được validator cho phép. Field được serialize theo từng entity type.
-**Reason:** Repository đích do người dùng chỉ định đã chứa validator chính thức, là bằng chứng cụ thể hơn giả định schema năm key đồng nhất ban đầu.
-**Evidence:** Validator của repository báo 0 lỗi trên 100 JSON; `reports/stage_08_integration.json` ghi 842 submission entities, 0 offset errors và ZIP 100 members/CRC pass.
-**Alternatives rejected:** Giữ 100 mảng rỗng dù schema đã có trong repository; xuất internal labels `DISEASE/DRUG/SYMPTOM`.
-**Impact:** Submission có dự đoán baseline thực và vẫn schema-safe; 3 `PATIENT_INFO` chưa có official type bị drop có log.
+**Chosen method:** Map theo `src/validation/submission.py`: `DISEASE -> CHẨN_ĐOÁN`, `DRUG -> THUỐC`, `SYMPTOM -> TRIỆU_CHỨNG`, `LAB_RESULT -> KẾT_QUẢ_XÉT_NGHIỆM`; assertions phủ định/tiền sử/gia đình map sang ba label được validator cho phép. Field được serialize theo từng entity type.  
+**Reason:** Repository đích do người dùng chỉ định đã chứa validator chính thức, là bằng chứng cụ thể hơn giả định schema năm key đồng nhất ban đầu.  
+**Evidence:** Validator của repository báo 0 lỗi trên 100 JSON; `reports/stage_08_integration.json` ghi 842 submission entities, 0 offset errors và ZIP 100 members/CRC pass.  
+**Alternatives rejected:** Giữ 100 mảng rỗng dù schema đã có trong repository; xuất internal labels `DISEASE/DRUG/SYMPTOM`.  
+**Impact:** Submission có dự đoán baseline thực và vẫn schema-safe; 3 `PATIENT_INFO` chưa có official type bị drop có log.  
 **Rollback plan:** Chỉ cập nhật mapping/schema adapter và rerun `tools/run_pipeline.py` nếu ban tổ chức phát hành validator mới.

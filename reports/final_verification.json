@@ -2,17 +2,17 @@
   "stage": 9,
   "status": "completed",
   "tests": {
-    "command": "python -m unittest discover -s tests -v",
-    "passed": 24,
+    "command": "python -m unittest discover -s tests -p 'test_*.py' -v",
+    "passed": 27,
     "failed": 0
   },
   "notebook": {
     "path": "medical_information_extraction_lab.ipynb",
     "nbformat": 4,
-    "total_cells": 63,
-    "code_cells": 31,
+    "total_cells": 65,
+    "code_cells": 32,
     "empty_code_cells": 0,
-    "executed_code_cells": 31,
+    "executed_code_cells": 32,
     "execution_valid": true
   },
   "pipeline": {
@@ -22,6 +22,9 @@
     "diagnostic_relations": 30,
     "offset_errors": 0,
     "output_json": 100,
+    "submission_entities": 842,
+    "unmapped_entities": 3,
+    "repository_validator_errors": 0,
     "reload_equivalent": true,
     "private_test_fitting": false
   },
@@ -29,9 +32,9 @@
     "path": "output.zip",
     "members": 100,
     "structure_valid": true,
-    "sha256": "50c9111c5956a556f821bb9d4ea89ecd958e73a09feee69b468fe7cd5cf78e80"
+    "sha256": "d89b68759985a26813e0739cbc0b8cf3816ae3bd4e1a7c1d1956176666c90998"
   },
-  "official_mapping_status": "UNCONFIRMED_NO_TRAIN_ANNOTATIONS",
-  "submission_entity_count": 0,
-  "reason_for_empty_submission": "Official entity/assertion/relation labels and schema mappings were not supplied; internal predictions are retained in diagnostics."
+  "official_mapping_status": "CONFIRMED_FROM_REPOSITORY_VALIDATOR",
+  "submission_entity_count": 842,
+  "mapping_evidence": "src/validation/submission.py in takumi612/AI-Race-Viettel"
 }

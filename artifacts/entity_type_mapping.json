@@ -1,12 +1,12 @@
 {
   "drop_unmapped": true,
-  "evidence": "No annotated train/validation files were present during implementation.",
+  "evidence": "Confirmed from src/validation/submission.py in takumi612/AI-Race-Viettel.",
   "internal_to_official": {
-    "DISEASE": null,
-    "DRUG": null,
-    "LAB_RESULT": null,
+    "DISEASE": "CHẨN_ĐOÁN",
+    "DRUG": "THUỐC",
+    "LAB_RESULT": "KẾT_QUẢ_XÉT_NGHIỆM",
     "PATIENT_INFO": null,
-    "SYMPTOM": null
+    "SYMPTOM": "TRIỆU_CHỨNG"
   },
-  "status": "UNCONFIRMED_NO_TRAIN_ANNOTATIONS"
+  "status": "CONFIRMED_FROM_REPOSITORY_VALIDATOR"
 }

@@ -6,6 +6,28 @@ Hệ thống xử lý văn bản y tế tự động (Clinical NLP) phục vụ 
 
 ---
 
+## One-click Clinical NLP notebook trên Colab
+
+Nếu mục tiêu là chạy pipeline end-to-end và sinh `output.zip`, mở
+[`medical_information_extraction_lab.ipynb`](medical_information_extraction_lab.ipynb)
+trên Colab rồi chọn **Runtime → Run all**. Notebook tự mount Drive, clone đúng
+nhánh `Pipeline_colab`, cài `requirements-colab.txt`, tìm input thật và lưu kết
+quả tại `MyDrive/AI-Race-Viettel/output/output.zip`.
+
+Chuẩn bị dữ liệu một lần theo
+[`COLAB_RUNBOOK.md`](COLAB_RUNBOOK.md). Không cần upload input/model vào Git;
+dataset, output, checkpoint và raw RxNorm lớn được giữ trên Drive. Nếu có
+annotation, đặt cặp `.txt` + `.json` trong `data/train/` hoặc layout
+`data/synthetic_train_v1/input` + `data/synthetic_train_v1/gt` để notebook train
+trước khi inference. Nếu không có annotation, notebook chạy baseline artifact
+và không bịa supervised score.
+
+Chi tiết các giai đoạn và bằng chứng runtime nằm trong `stages/stage_01` đến
+`stages/stage_09`, `reports/final_verification.json` và
+`CLINICAL_NLP_PROJECT_STATE.md`.
+
+---
+
 ## Modular training trên Colab T4
 
 Repo đã có pipeline huấn luyện tách module cho XLM-R NER, BGE-M3 LoRA và

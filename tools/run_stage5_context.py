@@ -51,7 +51,8 @@ def main() -> None:
         "offset_errors": offset_errors,
         "axis_counts": {axis: dict(counter.most_common()) for axis, counter in axis_counts.items()},
         "internal_label_counts": dict(internal_label_counts.most_common()),
-        "official_mapping_status": "UNCONFIRMED_NO_TRAIN_ANNOTATIONS",
+        "official_mapping_status": "CONFIRMED_FROM_REPOSITORY_VALIDATOR",
+        "official_assertions": ["isNegated", "isHistorical", "isFamily"],
         "threshold_tuning": {
             "status": "not_run",
             "reason": "Validation assertion labels are absent; default deterministic rules retained.",

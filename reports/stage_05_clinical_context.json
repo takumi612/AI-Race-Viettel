@@ -36,7 +36,12 @@
     "temporality:PLANNED": 17,
     "experiencer:FAMILY": 17
   },
-  "official_mapping_status": "UNCONFIRMED_NO_TRAIN_ANNOTATIONS",
+  "official_mapping_status": "CONFIRMED_FROM_REPOSITORY_VALIDATOR",
+  "official_assertions": [
+    "isNegated",
+    "isHistorical",
+    "isFamily"
+  ],
   "threshold_tuning": {
     "status": "not_run",
     "reason": "Validation assertion labels are absent; default deterministic rules retained."

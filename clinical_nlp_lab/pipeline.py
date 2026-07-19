@@ -139,6 +139,7 @@ def run_inference(
     candidate_linked = 0
     relation_count = 0
     submission_entity_count = 0
+    unmapped_type_counts: Counter[str] = Counter()
     offset_errors = 0
     results_by_id: dict[str, dict[str, Any]] = {}
 
@@ -152,6 +153,7 @@ def run_inference(
         candidate_linked += sum(bool(item["candidates"]) for item in internal_entities)
         relation_count += len(result["diagnostics"]["relations"])
         submission_entity_count += len(result["submission"])
+        unmapped_type_counts.update(result["diagnostics"]["dropped_unmapped_types"])
         offset_errors += sum(
             document.raw_text[item["position"][0]:item["position"][1]] != item["text"]
             for item in internal_entities
@@ -193,9 +195,11 @@ def run_inference(
         "candidate_linked_entity_count": candidate_linked,
         "diagnostic_relation_count": relation_count,
         "submission_entity_count": submission_entity_count,
+        "unmapped_entity_count": sum(unmapped_type_counts.values()),
+        "unmapped_type_counts": dict(unmapped_type_counts),
         "offset_error_count": offset_errors,
         "official_mapping_status": pipeline.entity_mapping.get("status"),
-        "unmapped_entities_dropped": submission_entity_count == 0 and sum(type_counts.values()) > 0,
+        "unmapped_entities_dropped": bool(unmapped_type_counts),
         "zip_path": str(final_zip) if final_zip else None,
         "zip_structure_valid": bool(final_zip),
         "training_or_fitting_on_input": False,

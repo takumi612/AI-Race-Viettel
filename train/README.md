@@ -26,7 +26,19 @@ train/
 
 `position` dùng `[start, end]` với `end` exclusive và bắt buộc thỏa `raw_text[start:end] == text`.
 
-## Dạng 2: JSON record tự chứa text
+## Dạng 2: thư mục input/gt
+
+```text
+synthetic_train_v1/
+├── input/
+│   └── 001.txt
+└── gt/
+    └── 001.json
+```
+
+JSON trong `gt/` dùng cùng entity schema như dạng 1. Đây là layout được notebook tự nhận khi `TRAIN_DIR_OVERRIDE` trỏ tới thư mục `synthetic_train_v1`.
+
+## Dạng 3: JSON record tự chứa text
 
 ```json
 {

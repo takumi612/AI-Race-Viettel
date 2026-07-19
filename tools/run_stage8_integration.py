@@ -22,12 +22,14 @@ def main() -> None:
     output_dir = PROJECT_ROOT / "output"
     output_validation_errors: dict[str, list[str]] = {}
     json_parse_count = 0
+    submission_entity_count = 0
     nan_or_nonstandard = 0
     for document in documents:
         path = output_dir / f"{document.document_id}.json"
         with path.open("r", encoding="utf-8") as stream:
             payload = json.load(stream)
         json_parse_count += 1
+        submission_entity_count += len(payload)
         errors = validate_submission_payload(payload, document.raw_text)
         if errors:
             output_validation_errors[document.document_id] = errors
@@ -47,6 +49,8 @@ def main() -> None:
         "output_validation_errors": output_validation_errors,
         "json_parse_count": json_parse_count,
         "nan_or_nonstandard_count": nan_or_nonstandard,
+        "submission_entity_count": submission_entity_count,
+        "official_mapping_status": "CONFIRMED_FROM_REPOSITORY_VALIDATOR",
         "zip": {
             "path": str(output_zip),
             "size_bytes": output_zip.stat().st_size,
@@ -59,7 +63,7 @@ def main() -> None:
         "competition_evaluator": {
             "strict": "not_scored",
             "approximate": "not_scored",
-            "reason": "No ground-truth annotation exists; an empty submission is schema-safe but not a performance claim.",
+            "reason": "No ground-truth annotation exists; runtime/schema validation is not a performance claim.",
         },
         "critical_invariants": {
             "raw_text_preserved": True,

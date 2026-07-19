@@ -41,23 +41,131 @@ Notebook end-to-end cho Clinical NER, assertion/context, ICD-10/RxNorm linking, 
 
 ## Chạy trên Google Colab
 
-1. Đưa toàn bộ project lên GitHub hoặc Google Drive; không chỉ upload riêng file `.ipynb`. Có thể điền `GITHUB_REPO_URL` để notebook tự clone repo vào Colab.
-2. Nếu project nằm ở vị trí khác, sửa `PROJECT_ROOT_OVERRIDE` trong cell bootstrap đầu tiên.
-3. Đặt `MOUNT_GOOGLE_DRIVE = True` để lưu checkpoint, cache và output lâu dài trên Drive.
-4. Đặt `FAST_DEV_RUN = False` để train đầy đủ; đặt `True` trước để smoke-test.
-5. Notebook chỉ train khi tìm thấy annotation hợp lệ trong thư mục `train/` (cặp `.txt` + `.json` hoặc JSON record có `raw_text`).
+1. Chuẩn bị dữ liệu một lần tại `MyDrive/AI-Race-Viettel/data/` theo cấu trúc ghi trong `COLAB_RUNBOOK.md`.
+2. Upload riêng file `.ipynb`; cell đầu tiên tự mount Drive, clone nhánh `Pipeline_colab` và cài dependencies.
+3. Notebook tự tìm input thật, annotation, knowledge sources và lưu checkpoint/output về Drive.
+4. Giữ `FAST_DEV_RUN = False` để train đầy đủ; đổi thành `True` cho smoke-test ngắn.
+5. Bootstrap có thể tạo smoke input tạm để hoàn tất khởi tạo, nhưng production gate ngay sau đó vẫn bắt buộc input thật và sẽ dừng với hướng dẫn rõ; smoke input không bao giờ được dùng để tạo ZIP production.
 
 Notebook không gọi external API và không fit trên private/test input. Nguồn sự thật của project: `SPEC.md`, `PROJECT_STATE.md`, `DECISIONS.md`, `ARTIFACT_MANIFEST.json`."""
         )
     )
     cells.append(
         markdown_cell(
-            """## 0. Project overview\n\n**Mục tiêu:** Chuyển văn bản lâm sàng phi cấu trúc thành entity JSON có span, type, assertions và candidate chuẩn hóa.\n\n**Pipeline:** raw text -> validation -> sectioning -> detection -> span refinement -> context -> type-routed linking -> relation diagnostics -> schema conversion -> submission validation -> `output.zip`.\n\n**Giới hạn dữ liệu:** workspace hiện không có train/validation annotation; internal diagnostics vẫn chạy nhưng mapping official sẽ drop có kiểm soát."""
+            """## 0. Project overview\n\n**Mục tiêu:** Chuyển văn bản lâm sàng phi cấu trúc thành entity JSON có span, type, assertions và candidate chuẩn hóa.\n\n**Pipeline:** raw text -> validation -> sectioning -> detection -> span refinement -> context -> type-routed linking -> relation diagnostics -> schema conversion -> submission validation -> `output.zip`.\n\n**Dữ liệu train:** nếu Drive chưa có annotation, supervised training được bỏ qua minh bạch và inference dùng artifacts/rule-dictionary baseline. Official entity/assertion schema được đối chiếu từ validator trong chính repository."""
         )
     )
     cells.append(
         code_cell(
-            """from pathlib import Path\nimport json\nimport os\nimport subprocess\nimport sys\n\n# Colab/Drive controls. Keep PROJECT_ROOT_OVERRIDE empty when the repository\n# is cloned to /content/clinical-nlp-end-to-end-lab or stored in Drive.\nIS_COLAB = "COLAB_RELEASE_TAG" in os.environ\nMOUNT_GOOGLE_DRIVE = True\nINSTALL_REQUIREMENTS = True\nCOLAB_REQUIREMENTS_FILE = "requirements-colab.txt"\nFAST_DEV_RUN = False\nPROJECT_ROOT_OVERRIDE = ""\nGITHUB_REPO_URL = ""\nGITHUB_BRANCH = "main"\nINPUT_ZIP_OVERRIDE = ""\nTRAIN_DIR_OVERRIDE = ""\nICD10_PATH_OVERRIDE = ""\nRXNORM_ZIP_OVERRIDE = ""\nTRAINING_OUTPUT_DIR_OVERRIDE = ""\nDRIVE_PROJECT_DIR = Path("/content/drive/MyDrive/clinical-nlp-end-to-end-lab")\nDRIVE_TRAINING_OUTPUT_DIR = Path("/content/drive/MyDrive/clinical-nlp-training-artifacts")\nCOLAB_REPO_DIR = Path("/content/clinical-nlp-end-to-end-lab")\n\nif IS_COLAB and MOUNT_GOOGLE_DRIVE:\n    from google.colab import drive\n    drive.mount("/content/drive", force_remount=False)\n\nif IS_COLAB and GITHUB_REPO_URL.strip() and not COLAB_REPO_DIR.exists():\n    subprocess.run(\n        ["git", "clone", "--depth", "1", "--branch", GITHUB_BRANCH, GITHUB_REPO_URL, str(COLAB_REPO_DIR)],\n        check=True,\n    )\n\nproject_candidates = []\nif PROJECT_ROOT_OVERRIDE.strip():\n    project_candidates.append(Path(PROJECT_ROOT_OVERRIDE).expanduser())\nproject_candidates.extend([COLAB_REPO_DIR, DRIVE_PROJECT_DIR, Path("/content/AI_race"), Path.cwd()])\nPROJECT_ROOT = next(\n    (candidate.resolve() for candidate in project_candidates if (candidate / "clinical_nlp_lab").is_dir()),\n    None,\n)\nif PROJECT_ROOT is None:\n    raise FileNotFoundError(\n        "Project root not found. Clone/upload the repository or set PROJECT_ROOT_OVERRIDE."\n    )\n\nif TRAINING_OUTPUT_DIR_OVERRIDE.strip():\n    TRAINING_OUTPUT_ROOT = Path(TRAINING_OUTPUT_DIR_OVERRIDE).expanduser().resolve()\nelif IS_COLAB and MOUNT_GOOGLE_DRIVE:\n    TRAINING_OUTPUT_ROOT = DRIVE_TRAINING_OUTPUT_DIR\nelse:\n    TRAINING_OUTPUT_ROOT = PROJECT_ROOT / "artifacts"\nTRAINING_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)\n\nif IS_COLAB and INSTALL_REQUIREMENTS:\n    requirements_path = PROJECT_ROOT / COLAB_REQUIREMENTS_FILE\n    if not requirements_path.exists():\n        requirements_path = PROJECT_ROOT / "requirements.txt"\n    if requirements_path.exists():\n        subprocess.run(\n            [sys.executable, "-m", "pip", "install", "-q", "-r", str(requirements_path)],\n            check=True,\n        )\n\nif str(PROJECT_ROOT) not in sys.path:\n    sys.path.insert(0, str(PROJECT_ROOT))\n\nfrom clinical_nlp_lab.config import load_config, set_reproducible_seed\nfrom clinical_nlp_lab.data import (\n    describe_documents,\n    document_train_validation_split,\n    load_annotated_documents,\n    load_input_documents,\n    validate_documents,\n)\nfrom clinical_nlp_lab.kb import load_candidate_dictionary\nfrom clinical_nlp_lab.ner import DictionaryRuleEntityDetector, refine_boundaries\nfrom clinical_nlp_lab.assertions import HybridAssertionPredictor\nfrom clinical_nlp_lab.linking import EntityLinker, LexicalCandidateIndex\nfrom clinical_nlp_lab.relations import RuleRelationExtractor\nfrom clinical_nlp_lab.pipeline import reload_equivalence_check, run_inference\nfrom clinical_nlp_lab.schema import write_json\n\nCONFIG = load_config(PROJECT_ROOT / "artifacts/config.json")\nCONFIG["fast_dev_run"] = FAST_DEV_RUN\nfor config_key, override_value in {\n    "input_zip": INPUT_ZIP_OVERRIDE,\n    "train_dir": TRAIN_DIR_OVERRIDE,\n    "icd10_path": ICD10_PATH_OVERRIDE,\n    "rxnorm_zip_path": RXNORM_ZIP_OVERRIDE,\n}.items():\n    if override_value.strip():\n        CONFIG[config_key] = override_value\nSEED_STATUS = set_reproducible_seed(int(CONFIG["seed"]))\nprint({"is_colab": IS_COLAB, "project_root": str(PROJECT_ROOT), "training_output_root": str(TRAINING_OUTPUT_ROOT), "seed_status": SEED_STATUS, "fast_dev_run": CONFIG["fast_dev_run"], "cuda": os.environ.get("CUDA_VISIBLE_DEVICES", "auto")})"""
+            """from pathlib import Path\nimport json\nimport os\nimport subprocess\nimport sys\nimport tempfile\n\n# One-click Colab bootstrap. The defaults clone the committed Colab branch.\nIS_COLAB = "COLAB_RELEASE_TAG" in os.environ\nMOUNT_GOOGLE_DRIVE = True\nINSTALL_REQUIREMENTS = True\nCOLAB_REQUIREMENTS_FILE = "requirements-colab.txt"\nFAST_DEV_RUN = False\nAUTO_SMOKE_INPUT = True\nPROJECT_ROOT_OVERRIDE = ""\nGITHUB_REPO_URL = "https://github.com/takumi612/AI-Race-Viettel.git"\nGITHUB_BRANCH = "Pipeline_colab"\nINPUT_ZIP_OVERRIDE = ""\nTRAIN_DIR_OVERRIDE = ""\nICD10_PATH_OVERRIDE = ""\nRXNORM_ZIP_OVERRIDE = ""\nTRAINING_OUTPUT_DIR_OVERRIDE = ""\nDRIVE_PROJECT_DIR = Path("/content/drive/MyDrive/clinical-nlp-end-to-end-lab")\nDRIVE_TRAINING_OUTPUT_DIR = Path("/content/drive/MyDrive/clinical-nlp-training-artifacts")\nCOLAB_REPO_DIR = Path("/content/AI-Race-Viettel")\n\nif IS_COLAB and MOUNT_GOOGLE_DRIVE:\n    from google.colab import drive\n    drive.mount("/content/drive", force_remount=False)\n\nif IS_COLAB and GITHUB_REPO_URL.strip() and not COLAB_REPO_DIR.exists():\n    subprocess.run(\n        ["git", "clone", "--depth", "1", "--branch", GITHUB_BRANCH, GITHUB_REPO_URL, str(COLAB_REPO_DIR)],\n        check=True,\n    )\n\nproject_candidates = []\nif PROJECT_ROOT_OVERRIDE.strip():\n    project_candidates.append(Path(PROJECT_ROOT_OVERRIDE).expanduser())\nproject_candidates.extend([COLAB_REPO_DIR, DRIVE_PROJECT_DIR, Path("/content/clinical-nlp-end-to-end-lab"), Path("/content/AI_race"), Path.cwd()])\nPROJECT_ROOT = next(\n    (candidate.resolve() for candidate in project_candidates if (candidate / "clinical_nlp_lab").is_dir()),\n    None,\n)\nif PROJECT_ROOT is None:\n    raise FileNotFoundError(\n        "Project root not found. Automatic clone failed; set PROJECT_ROOT_OVERRIDE."\n    )\n\nif TRAINING_OUTPUT_DIR_OVERRIDE.strip():\n    TRAINING_OUTPUT_ROOT = Path(TRAINING_OUTPUT_DIR_OVERRIDE).expanduser().resolve()\nelif IS_COLAB and MOUNT_GOOGLE_DRIVE:\n    TRAINING_OUTPUT_ROOT = DRIVE_TRAINING_OUTPUT_DIR\nelse:\n    TRAINING_OUTPUT_ROOT = PROJECT_ROOT / "artifacts"\nTRAINING_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)\n\nif IS_COLAB and INSTALL_REQUIREMENTS:\n    requirements_path = PROJECT_ROOT / COLAB_REQUIREMENTS_FILE\n    if not requirements_path.exists():\n        requirements_path = PROJECT_ROOT / "requirements.txt"\n    if requirements_path.exists():\n        subprocess.run(\n            [sys.executable, "-m", "pip", "install", "-q", "-r", str(requirements_path)],\n            check=True,\n        )\n\nif str(PROJECT_ROOT) not in sys.path:\n    sys.path.insert(0, str(PROJECT_ROOT))\n\nfrom clinical_nlp_lab.config import load_config, set_reproducible_seed\nfrom clinical_nlp_lab.data import (\n    describe_documents,\n    document_train_validation_split,\n    load_annotated_documents,\n    load_input_documents,\n    validate_documents,\n)\nfrom clinical_nlp_lab.kb import load_candidate_dictionary\nfrom clinical_nlp_lab.ner import DictionaryRuleEntityDetector, refine_boundaries\nfrom clinical_nlp_lab.assertions import HybridAssertionPredictor\nfrom clinical_nlp_lab.linking import EntityLinker, LexicalCandidateIndex\nfrom clinical_nlp_lab.relations import RuleRelationExtractor\nfrom clinical_nlp_lab.pipeline import reload_equivalence_check, run_inference\nfrom clinical_nlp_lab.schema import write_json\n\ndef _has_text_files(path: Path) -> bool:\n    return path.is_dir() and any(path.glob("*.txt"))\n\ndef _has_annotation_files(path: Path) -> bool:\n    return path.is_dir() and (any(path.glob("*.json")) or any(path.glob("*.txt")))\n\nCONFIG = load_config(PROJECT_ROOT / "artifacts/config.json")\nCONFIG["fast_dev_run"] = FAST_DEV_RUN\nfor config_key, override_value in {\n    "input_zip": INPUT_ZIP_OVERRIDE,\n    "train_dir": TRAIN_DIR_OVERRIDE,\n    "icd10_path": ICD10_PATH_OVERRIDE,\n    "rxnorm_zip_path": RXNORM_ZIP_OVERRIDE,\n}.items():\n    if override_value.strip():\n        CONFIG[config_key] = override_value\n\ninput_candidates = []\nif INPUT_ZIP_OVERRIDE.strip():\n    input_candidates.append(Path(INPUT_ZIP_OVERRIDE).expanduser())\ninput_candidates.extend([\n    PROJECT_ROOT / "input.zip",\n    PROJECT_ROOT / "data/input",\n    DRIVE_PROJECT_DIR / "input.zip",\n    DRIVE_PROJECT_DIR / "data/input",\n])\nINPUT_SOURCE = next((candidate for candidate in input_candidates if candidate.is_file() or _has_text_files(candidate)), None)\nSMOKE_INPUT_USED = False\nif INPUT_SOURCE is None and AUTO_SMOKE_INPUT:\n    smoke_root = Path(tempfile.gettempdir()) / "clinical_nlp_smoke_input"\n    smoke_root.mkdir(parents=True, exist_ok=True)\n    (smoke_root / "1.txt").write_text(\n        "HISTORY\\nPatient reports fever and cough.\\nMEDICATIONS\\nAspirin 81 mg po daily.",\n        encoding="utf-8",\n    )\n    INPUT_SOURCE = smoke_root\n    SMOKE_INPUT_USED = True\nif INPUT_SOURCE is None:\n    raise FileNotFoundError("No input source found. Set INPUT_ZIP_OVERRIDE or enable AUTO_SMOKE_INPUT.")\nCONFIG["input_zip"] = str(INPUT_SOURCE)\n\ntrain_candidates = []\nif TRAIN_DIR_OVERRIDE.strip():\n    train_candidates.append(Path(TRAIN_DIR_OVERRIDE).expanduser())\ntrain_candidates.extend([PROJECT_ROOT / "train", DRIVE_PROJECT_DIR / "train"])\nTRAIN_SOURCE = next((candidate for candidate in train_candidates if _has_annotation_files(candidate)), None)\nif TRAIN_SOURCE is None:\n    TRAIN_SOURCE = PROJECT_ROOT / "train"\nCONFIG["train_dir"] = str(TRAIN_SOURCE)\n\nSEED_STATUS = set_reproducible_seed(int(CONFIG["seed"]))\nprint({"is_colab": IS_COLAB, "project_root": str(PROJECT_ROOT), "input_source": str(INPUT_SOURCE), "smoke_input_used": SMOKE_INPUT_USED, "train_source": str(TRAIN_SOURCE), "training_output_root": str(TRAINING_OUTPUT_ROOT), "seed_status": SEED_STATUS, "fast_dev_run": CONFIG["fast_dev_run"], "cuda": os.environ.get("CUDA_VISIBLE_DEVICES", "auto")})"""
+        )
+    )
+
+    cells.append(
+        markdown_cell(
+            """## 0.1 Production data and output resolver
+
+Cell này là production gate cho chế độ `Run all`. Nó ưu tiên dữ liệu thật trên Google Drive, hỗ trợ cả `input.zip` và thư mục `input/*.txt`, nhận annotation dạng `train/*.txt + *.json` hoặc `synthetic_train_v1/input + gt`, và lưu `output.zip` về Drive. Nếu không tìm thấy input thật, notebook dừng ngay với cấu trúc thư mục cần tạo."""
+        )
+    )
+    cells.append(
+        code_cell(
+            """# Production defaults: upload data once to Drive, then Run all needs no edits.
+REQUIRE_REAL_INPUT = True
+DATA_ROOT_OVERRIDE = ""
+OUTPUT_ARCHIVE_OVERRIDE = ""
+DRIVE_DATA_DIR = Path("/content/drive/MyDrive/AI-Race-Viettel/data")
+DRIVE_OUTPUT_DIR = Path("/content/drive/MyDrive/AI-Race-Viettel/output")
+
+def _unique_paths(paths):
+    seen = set()
+    result = []
+    for path in paths:
+        normalized = str(path)
+        if normalized not in seen:
+            seen.add(normalized)
+            result.append(path)
+    return result
+
+data_roots = []
+if DATA_ROOT_OVERRIDE.strip():
+    data_roots.append(Path(DATA_ROOT_OVERRIDE).expanduser())
+data_roots.extend([
+    DRIVE_DATA_DIR,
+    Path("/content/drive/MyDrive/clinical-nlp-data"),
+    DRIVE_PROJECT_DIR / "data",
+    PROJECT_ROOT / "data",
+    PROJECT_ROOT,
+])
+data_roots = _unique_paths(data_roots)
+
+input_candidates = []
+if INPUT_ZIP_OVERRIDE.strip():
+    input_candidates.append(Path(INPUT_ZIP_OVERRIDE).expanduser())
+for root in data_roots:
+    input_candidates.extend([root / "input.zip", root / "input", root / "data/input"])
+REAL_INPUT_SOURCE = next(
+    (path for path in _unique_paths(input_candidates) if path.is_file() or _has_text_files(path)),
+    None,
+)
+if REAL_INPUT_SOURCE is None and REQUIRE_REAL_INPUT:
+    raise FileNotFoundError(
+        "Real input not found. Create MyDrive/AI-Race-Viettel/data/input/ with .txt files "
+        "or upload MyDrive/AI-Race-Viettel/data/input.zip. See COLAB_RUNBOOK.md."
+    )
+if REAL_INPUT_SOURCE is not None:
+    INPUT_SOURCE = REAL_INPUT_SOURCE
+    CONFIG["input_zip"] = str(INPUT_SOURCE)
+    SMOKE_INPUT_USED = False
+
+def _has_training_layout(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    text_stems = {item.stem for item in path.glob("*.txt")}
+    json_stems = {item.stem for item in path.glob("*.json")}
+    direct_pairs = bool(text_stems & json_stems)
+    split_pairs = _has_text_files(path / "input") and (path / "gt").is_dir() and any((path / "gt").glob("*.json"))
+    return direct_pairs or split_pairs
+
+train_candidates = []
+if TRAIN_DIR_OVERRIDE.strip():
+    train_candidates.append(Path(TRAIN_DIR_OVERRIDE).expanduser())
+for root in data_roots:
+    train_candidates.extend([root / "train", root / "synthetic_train_v1", root])
+REAL_TRAIN_SOURCE = next(
+    (path for path in _unique_paths(train_candidates) if _has_training_layout(path)),
+    None,
+)
+if REAL_TRAIN_SOURCE is not None:
+    TRAIN_SOURCE = REAL_TRAIN_SOURCE
+    CONFIG["train_dir"] = str(TRAIN_SOURCE)
+
+source_overrides = {
+    "icd10_path": (ICD10_PATH_OVERRIDE, "ICD10.xlsx"),
+    "rxnorm_zip_path": (RXNORM_ZIP_OVERRIDE, "RxNorm_full_07062026.zip"),
+}
+for config_key, (explicit_path, filename) in source_overrides.items():
+    candidates = [Path(explicit_path).expanduser()] if explicit_path.strip() else []
+    candidates.extend(root / filename for root in data_roots)
+    discovered = next((path for path in _unique_paths(candidates) if path.is_file()), None)
+    if discovered is not None:
+        CONFIG[config_key] = str(discovered)
+
+if OUTPUT_ARCHIVE_OVERRIDE.strip():
+    OUTPUT_ARCHIVE_PATH = Path(OUTPUT_ARCHIVE_OVERRIDE).expanduser()
+elif IS_COLAB and MOUNT_GOOGLE_DRIVE:
+    OUTPUT_ARCHIVE_PATH = DRIVE_OUTPUT_DIR / "output.zip"
+else:
+    OUTPUT_ARCHIVE_PATH = PROJECT_ROOT / "output.zip"
+OUTPUT_ARCHIVE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+print({
+    "real_input": str(INPUT_SOURCE),
+    "training_data": str(REAL_TRAIN_SOURCE) if REAL_TRAIN_SOURCE else "not_found_training_will_skip",
+    "output_zip": str(OUTPUT_ARCHIVE_PATH),
+    "icd10_source": CONFIG["icd10_path"],
+    "rxnorm_source": CONFIG["rxnorm_zip_path"],
+})"""
         )
     )
 
@@ -80,7 +188,7 @@ Notebook không gọi external API và không fit trên private/test input. Ngu�
             "artifacts/config.json.",
             "CONFIG.",
             "artifacts/config.json.",
-            """assert CONFIG["max_length"] == 512\nassert CONFIG["stride"] == 128\nassert CONFIG["submission_keys"] == ["text", "type", "candidates", "assertions", "position"]\nprint({"config_keys": len(CONFIG), "thresholds": CONFIG["thresholds"]})""",
+            """from clinical_nlp_lab.schema import ALLOWED_ASSERTIONS, OFFICIAL_SCHEMA_KEYS\n\nassert CONFIG["max_length"] == 512\nassert CONFIG["stride"] == 128\nassert OFFICIAL_SCHEMA_KEYS["CHẨN_ĐOÁN"] == {"text", "type", "position", "assertions", "candidates"}\nassert OFFICIAL_SCHEMA_KEYS["TRIỆU_CHỨNG"] == {"text", "type", "position", "assertions"}\nassert ALLOWED_ASSERTIONS == {"isNegated", "isHistorical", "isFamily"}\nprint(json.dumps({"config_keys": len(CONFIG), "thresholds": CONFIG["thresholds"], "official_schema": {key: sorted(value) for key, value in OFFICIAL_SCHEMA_KEYS.items()}}, ensure_ascii=True))""",
         ),
         (
             3,
@@ -290,7 +398,7 @@ Notebook không gọi external API và không fit trên private/test input. Ngu�
             "input.zip and artifacts/.",
             "INTEGRATION_SUMMARY.",
             "output/, diagnostics/, output.zip.",
-            """INTEGRATION_SUMMARY = run_inference(PROJECT_ROOT / CONFIG["input_zip"], PROJECT_ROOT / CONFIG["output_dir"], PROJECT_ROOT / CONFIG["artifact_dir"], True, PROJECT_ROOT / CONFIG["diagnostics_dir"], PROJECT_ROOT / "output.zip")\nprint(INTEGRATION_SUMMARY)""",
+            """INTEGRATION_SUMMARY = run_inference(PROJECT_ROOT / CONFIG["input_zip"], PROJECT_ROOT / CONFIG["output_dir"], PROJECT_ROOT / CONFIG["artifact_dir"], True, PROJECT_ROOT / CONFIG["diagnostics_dir"], OUTPUT_ARCHIVE_PATH)\nprint(INTEGRATION_SUMMARY)""",
         ),
         (
             24,
@@ -330,7 +438,7 @@ Notebook không gọi external API và không fit trên private/test input. Ngu�
             "output/*.json.",
             "output.zip.",
             "output.zip.",
-            """import zipfile\nwith zipfile.ZipFile(PROJECT_ROOT / "output.zip") as archive:\n    ZIP_NAMES = archive.namelist()\n    assert len(ZIP_NAMES) == len(DOCUMENTS)\n    assert all(name.startswith("output/") and not name.startswith("output/output/") for name in ZIP_NAMES)\n    assert archive.testzip() is None\nprint({"members": len(ZIP_NAMES), "structure_valid": True})""",
+            """import zipfile\nwith zipfile.ZipFile(OUTPUT_ARCHIVE_PATH) as archive:\n    ZIP_NAMES = archive.namelist()\n    assert len(ZIP_NAMES) == len(DOCUMENTS)\n    assert all(name.startswith("output/") and not name.startswith("output/output/") for name in ZIP_NAMES)\n    assert archive.testzip() is None\nprint({"members": len(ZIP_NAMES), "structure_valid": True, "output_zip": str(OUTPUT_ARCHIVE_PATH)})""",
         ),
         (
             28,
@@ -360,7 +468,7 @@ Notebook không gọi external API và không fit trên private/test input. Ngu�
             "All stage reports.",
             "Final completion summary.",
             "README.md and PROJECT_STATE.md.",
-            """print({"completed_stages": list(range(1, 10)), "submission_schema_valid": True, "limitation": "Official labels/annotations were not supplied; diagnostics are retained and unmapped entities are dropped."})""",
+            """print({"completed_stages": list(range(1, 10)), "submission_schema_valid": True, "output_zip": str(OUTPUT_ARCHIVE_PATH), "trained_ner": bool(NER_TRAINING_RESULT.get("trained")), "official_mapping": INTEGRATION_SUMMARY.get("official_mapping_status"), "submission_entities": INTEGRATION_SUMMARY.get("submission_entity_count"), "limitation": "Supervised quality metrics require annotated train/validation data."})""",
         ),
     ]
 

@@ -15,7 +15,15 @@ SOURCE_ROLES = {
     "RxNorm_full_07062026.zip": "rxnorm_knowledge_source",
 }
 
-EXCLUDED_PARTS = {".git", "__pycache__", ".test_tmp", ".pytest_cache", "test_artifacts"}
+EXCLUDED_PARTS = {
+    ".git",
+    "__pycache__",
+    ".test_tmp",
+    ".pytest_cache",
+    "test_artifacts",
+    # Local transport clone used only to publish the selected deliverables.
+    "git_push_workspace",
+}
 
 
 def sha256_file(path: Path, block_size: int = 1024 * 1024) -> str:

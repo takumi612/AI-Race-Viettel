@@ -54,6 +54,26 @@ def load_annotated_documents(train_dir: str | Path) -> list[ClinicalDocument]:
         return []
 
     documents: list[ClinicalDocument] = []
+
+    # Canonical competition/training layout:
+    # train/input/<document_id>.txt + train/gt/<document_id>.json
+    paired_input_dir = directory / "input"
+    paired_ground_truth_dir = directory / "gt"
+    if paired_input_dir.is_dir() and paired_ground_truth_dir.is_dir():
+        for text_path in sorted(paired_input_dir.glob("*.txt")):
+            annotation_path = paired_ground_truth_dir / f"{text_path.stem}.json"
+            if not annotation_path.exists():
+                continue
+            raw_text = text_path.read_text(encoding="utf-8")
+            payload = _load_annotation_payload(annotation_path)
+            if isinstance(payload, dict) and "entities" in payload:
+                payload = payload["entities"]
+            if not isinstance(payload, list):
+                raise ValueError(f"Annotation must be a list: {annotation_path}")
+            document = ClinicalDocument(text_path.stem, raw_text)
+            document.entities = [parse_entity(item, raw_text) for item in payload]
+            documents.append(document)
+
     for text_path in sorted(directory.glob("*.txt")):
         annotation_path = text_path.with_suffix(".json")
         if not annotation_path.exists():

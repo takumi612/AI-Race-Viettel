@@ -1,6 +1,6 @@
 # Runbook: upload notebook và Run all trên Google Colab
 
-Notebook: `medical_information_extraction_lab.ipynb`
+Notebook: `medical_information_extraction_lab.ipynb`  
 Git branch: `Pipeline_colab`
 
 ## 1. Chuẩn bị Google Drive một lần
