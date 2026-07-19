@@ -66,3 +66,21 @@
 - [x] **Step 3:** Chạy `python -m pytest tests/training -q`, `git diff --check`, scan Drive IDs/path và kiểm tra mọi code fence.
 - [x] **Step 4:** Stage đúng các file tài liệu/plan; xác nhận `data/synthetic_train_v1` không staged.
 - [ ] **Step 5:** Commit và `git push origin develop`; chỉ báo thành công khi remote push trả exit code 0.
+
+### Task 4: Hướng dẫn Qwen2.5-7B QLoRA
+
+**Files:**
+- Create: `docs/training/QWEN_QLORA_COLAB.md`
+- Modify: `README.md`
+- Modify: `docs/training/DATA_FOUNDATION.md`
+- Modify: `docs/training/MODEL_TRAINING_COLAB.md`
+
+**Interfaces:**
+- Consumes: Hugging Face model `Qwen/Qwen2.5-7B-Instruct` revision `a09a35458c702b33eeacc393d103063234e8bc28`.
+- Produces: local base model tại `data/models/Qwen2.5-7B-Instruct` và PEFT adapter tại `artifacts/training/reranker/<run>/final`.
+
+- [x] **Step 1:** Ghi lệnh `hf download --dry-run` và download thật với revision/local-dir cố định.
+- [x] **Step 2:** Thêm cell kiểm tra config, tokenizer, safetensors index, đủ 4 shard và provenance marker `HF_REVISION.txt`.
+- [x] **Step 3:** Ghi luồng copy base weights sang MyDrive và restore về local mà không ghi đè dữ liệu có sẵn.
+- [x] **Step 4:** Ghi prerequisites, freeze candidates, dry-run, synthetic, resume, trusted-fold và trusted-final commands.
+- [x] **Step 5:** Liên kết hướng dẫn từ README/runbook và kiểm tra toàn bộ Python cells, local links, CLI help/dry-run.

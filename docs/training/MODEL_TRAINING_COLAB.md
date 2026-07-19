@@ -137,10 +137,21 @@ if not bge_weights.is_file():
     raise FileNotFoundError(f"BGE-M3 weights missing: {bge_weights}")
 
 qwen = repo_data / "models" / "Qwen2.5-7B-Instruct"
+qwen_revision = "a09a35458c702b33eeacc393d103063234e8bc28"
+qwen_index = qwen / "model.safetensors.index.json"
+qwen_shards = []
+if qwen_index.is_file():
+    qwen_shards = sorted(
+        set(json.loads(qwen_index.read_text(encoding="utf-8"))["weight_map"].values())
+    )
 qwen_ready = (
     (qwen / "config.json").is_file()
     and (qwen / "tokenizer.json").is_file()
-    and any(qwen.glob("*.safetensors"))
+    and len(qwen_shards) == 4
+    and all((qwen / shard).is_file() and (qwen / shard).stat().st_size > 0 for shard in qwen_shards)
+    and (qwen / "HF_REVISION.txt").is_file()
+    and (qwen / "HF_REVISION.txt").read_text(encoding="utf-8").strip()
+    == qwen_revision
 )
 print("DATA CHECK PASSED")
 print("Qwen reranker ready:", qwen_ready)
@@ -373,6 +384,23 @@ Output mặc định là `artifacts/training/reranker/frozen`. Nếu gold nằm 
 top-k, record được ghi là retrieval miss và không được chèn gold vào pool.
 
 ## 9. Qwen2.5-7B QLoRA
+
+Hướng dẫn đầy đủ về revision, download, kiểm tra 4 weight shard, lưu base
+weights trên MyDrive, resume và vị trí adapter:
+[QWEN_QLORA_COLAB.md](QWEN_QLORA_COLAB.md).
+
+Trainer đọc local base model tại `data/models/Qwen2.5-7B-Instruct`. Nếu
+preflight ở phần 3 báo `Qwen reranker ready: False`, tải model trước:
+
+```bash
+!python -m pip install -U "huggingface_hub>=0.34,<2"
+!hf download Qwen/Qwen2.5-7B-Instruct \
+  --revision a09a35458c702b33eeacc393d103063234e8bc28 \
+  --local-dir /content/AI-Race-Viettel/data/models/Qwen2.5-7B-Instruct
+```
+
+Sau download, chạy cell `QWEN CHECK PASSED` trong hướng dẫn riêng để kiểm tra
+đủ shard và ghi `HF_REVISION.txt` rồi mới dry-run/train.
 
 Synthetic:
 

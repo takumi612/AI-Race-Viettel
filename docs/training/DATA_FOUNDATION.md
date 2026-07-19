@@ -217,10 +217,21 @@ if not bge_weights.is_file():
     raise FileNotFoundError(f"BGE-M3 weights missing: {bge_weights}")
 
 qwen = repo_data / "models" / "Qwen2.5-7B-Instruct"
+qwen_revision = "a09a35458c702b33eeacc393d103063234e8bc28"
+qwen_index = qwen / "model.safetensors.index.json"
+qwen_shards = []
+if qwen_index.is_file():
+    qwen_shards = sorted(
+        set(json.loads(qwen_index.read_text(encoding="utf-8"))["weight_map"].values())
+    )
 qwen_ready = (
     (qwen / "config.json").is_file()
     and (qwen / "tokenizer.json").is_file()
-    and any(qwen.glob("*.safetensors"))
+    and len(qwen_shards) == 4
+    and all((qwen / shard).is_file() and (qwen / shard).stat().st_size > 0 for shard in qwen_shards)
+    and (qwen / "HF_REVISION.txt").is_file()
+    and (qwen / "HF_REVISION.txt").read_text(encoding="utf-8").strip()
+    == qwen_revision
 )
 print("DATA CHECK PASSED")
 print("Qwen reranker ready:", qwen_ready)
@@ -228,6 +239,8 @@ print("Qwen reranker ready:", qwen_ready)
 
 `Qwen reranker ready: False` chỉ chặn stage QLoRA. Config reranker dùng
 `local_files_only: true`, vì vậy phải bổ sung đúng local model trước stage đó.
+Xem [QWEN_QLORA_COLAB.md](QWEN_QLORA_COLAB.md) để tải revision đã khóa, kiểm
+tra đủ shard, lưu base weights và chạy QLoRA.
 
 Cài dependency, test và chạy build:
 
