@@ -16,17 +16,110 @@ precision-first trước khi promote artifact.
 Runbook đầy đủ: [docs/training/MODEL_TRAINING_COLAB.md](docs/training/MODEL_TRAINING_COLAB.md).
 Nền tảng data/split: [docs/training/DATA_FOUNDATION.md](docs/training/DATA_FOUNDATION.md).
 
+### Quick start trên Colab
+
+Repo GitHub không chứa dataset hoặc model lớn. Trên một runtime Colab mới,
+phải clone code rồi tải toàn bộ `data` canonical từ Drive **trước** khi build
+hoặc train:
+
 ```bash
-python -m pip install -r requirements-train.txt
-python -m pytest tests/training -q
-python -m src.training.ner.train --help
-python -m src.training.embedding.train --help
-python -m src.training.reranker.train --help
+%cd /content
+!git clone --branch develop --single-branch https://github.com/takumi612/AI-Race-Viettel.git
+%cd /content/AI-Race-Viettel
+!python -m pip install -U "gdown>=6.0.0"
+!python -m gdown "https://drive.google.com/drive/folders/1WdqC1BHvbcm0xDw2KjJ4uKOqxZsPMiQe?usp=drive_link" \
+  --folder -O "/content/AI-Race-Viettel/data/"
 ```
 
-Lưu ý: code trainer đã hoàn chỉnh, nhưng không được bắt đầu train production
-cho tới khi synthetic 2.000 mẫu pass QA và các code ontology còn thiếu trong
-trusted 101–180 được xử lý có provenance.
+Giữ dấu `/` cuối output để `gdown` ghi các thư mục `dev`, `kb`, `models`,
+`synthetic_train_v1` trực tiếp bên trong `data`, không tạo `data/data`.
+`gdown` 6 không dùng tùy chọn cũ `--remaining-ok`.
+
+Chạy cell fail-fast sau ngay khi download xong:
+
+```python
+from pathlib import Path
+import hashlib
+import json
+import sqlite3
+
+data = Path("/content/AI-Race-Viettel/data")
+synthetic = data / "synthetic_train_v1"
+required = [synthetic, data / "dev", data / "models", data / "kb" / "metadata.db"]
+missing = [str(path) for path in required if not path.exists()]
+if missing:
+    raise FileNotFoundError(f"Drive download incomplete; missing: {missing}")
+
+input_count = len(list((synthetic / "input").glob("*.txt")))
+gt_count = len(list((synthetic / "gt").glob("*.json")))
+if (input_count, gt_count) != (2000, 2000):
+    raise RuntimeError(f"Synthetic count mismatch: input={input_count}, gt={gt_count}")
+
+qa = json.loads(
+    (synthetic / "qa" / "validation_report.json").read_text(encoding="utf-8")
+)
+if qa.get("passed") is not True:
+    raise RuntimeError("Synthetic QA did not pass")
+
+expected = "66bd0e58ae1adc72ae2b00ed36df42b6b1012a4ec4e8367c43ef5c0d2a54292a"
+actual = hashlib.sha256((synthetic / "manifest.jsonl").read_bytes()).hexdigest()
+if actual != expected:
+    raise RuntimeError(f"Manifest SHA-256 mismatch: {actual}")
+
+db = data / "kb" / "metadata.db"
+if db.stat().st_size == 0:
+    raise RuntimeError("metadata.db is empty")
+with sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True) as connection:
+    tables = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+required_tables = {"icd10", "rxnorm"}
+if not required_tables.issubset(tables):
+    raise RuntimeError(f"metadata.db missing tables: {sorted(required_tables - tables)}")
+
+bge_weights = data / "models" / "bge-m3" / "model.safetensors"
+if not bge_weights.is_file():
+    raise FileNotFoundError(f"BGE-M3 weights missing: {bge_weights}")
+
+qwen = data / "models" / "Qwen2.5-7B-Instruct"
+qwen_ready = (
+    (qwen / "config.json").is_file()
+    and (qwen / "tokenizer.json").is_file()
+    and any(qwen.glob("*.safetensors"))
+)
+print("DATA CHECK PASSED")
+print("Qwen reranker ready:", qwen_ready)
+```
+
+`Qwen reranker ready: False` không chặn build dữ liệu, NER hoặc BGE, nhưng
+phải bổ sung model `data/models/Qwen2.5-7B-Instruct` trước stage QLoRA vì config
+đặt `local_files_only: true`.
+
+Sau khi cell in `DATA CHECK PASSED`:
+
+```bash
+!python -m pip install -r requirements-train.txt
+!python -m pytest tests/training -q
+!python -m src.training.build_datasets \
+  --config configs/training/data.yaml \
+  --project-root .
+```
+
+Dataset synthetic canonical hiện đã đồng bộ:
+
+- Path: `D:\AI Race Viettel\data\synthetic_train_v1`
+- 2.000 cặp input/ground-truth, seed `20260719`
+- Manifest SHA-256:
+  `66bd0e58ae1adc72ae2b00ed36df42b6b1012a4ec4e8367c43ef5c0d2a54292a`
+- QA: `passed=true`, source/ontology validation: 0 lỗi
+- Codex task: `codex://threads/019f7475-c529-7113-87ee-530fcb4eac16`
+
+Synthetic gate đã đạt. Production build hiện vẫn cố ý dừng ở 8 candidate thuộc
+trusted 101–180 chưa tồn tại trong `metadata.db`; cần xử lý có provenance trước
+khi bắt đầu train.
 
 ## Trusted benchmark policy
 
@@ -51,10 +144,11 @@ d:\AI Race Viettel\
 │   ├── eval_assumptions.md    # Chi tiết cách đếm position & công thức chấm điểm
 │   └── experiment_log.md      # Nhật ký thực nghiệm (Tracking mô hình & điểm)
 ├── data/                      # Quản lý dữ liệu tập trung (Đã gitignored tệp lớn)
-│   ├── kb/                    # CSDL tri thức y khoa (ICD-10 SQLite, RxNorm context)
-│   ├── raw/                   # Dữ liệu synthetic thô phục vụ training (BIO format)
-│   ├── processed/             # Dữ liệu đã gán nhãn & phân chia train/val
-│   ├── dev/                   # Tập dữ liệu kiểm thử cục bộ (Validation Set)
+│   ├── synthetic_train_v1/    # 2.000 cặp synthetic canonical đã QA
+│   ├── dev/                   # Trusted dev 101–180 và holdout 181–200
+│   ├── kb/                    # metadata.db, ICD-10/RxNorm và retrieval indexes
+│   ├── models/                # Base model local cho BGE-M3/Qwen
+│   ├── training/              # Dataset build có fingerprint, được sinh lại
 │   ├── input/                 # 100 file .txt đầu vào tập test công khai của BTC
 │   └── output/                # Kết quả JSON dự đoán của pipeline
 ├── src/                       # Mã nguồn chính
@@ -103,31 +197,45 @@ pip install bm25s scipy rapidfuzz pandas openpyxl
 
 ## 💾 Hướng dẫn tải dữ liệu từ Google Drive
 
-Toàn bộ CSDL chuẩn, mô hình, và tệp bổ trợ lớn đã được upload tại thư mục [Google Drive của dự án](https://drive.google.com/drive/folders/1d3DdQEJHjfuHSPX65Ld-mEYxqu6gI9tK?usp=sharing).
+Code trên GitHub không chứa dataset hoặc model lớn. Nguồn canonical là thư mục
+[Google Drive `data`](https://drive.google.com/drive/folders/1WdqC1BHvbcm0xDw2KjJ4uKOqxZsPMiQe?usp=drive_link).
+Folder phải được chia sẻ ở chế độ “Anyone with the link” để Colab tải được.
 
 ### 1. Cài đặt công cụ `gdown`
-Để tải nhanh thư mục từ Drive qua Command Line:
-```bash
-pip install gdown
-```
 
-### 2. Tải toàn bộ thư mục dữ liệu y khoa vào `data/kb/`
-Chạy lệnh sau từ thư mục gốc của dự án để kéo CSDL chuẩn (`metadata.db`, `ICD10.xlsx`, `icd10_context.txt`, `icd10_dictionary.json`...):
+Yêu cầu `gdown>=6.0.0` để tải đệ quy thư mục có hơn 50 file:
 
 ```bash
-gdown --folder "https://drive.google.com/drive/folders/1d3DdQEJHjfuHSPX65Ld-mEYxqu6gI9tK" -O data/kb/ --remaining-ok
+python -m pip install -U "gdown>=6.0.0"
 ```
 
-*Lưu ý: Nếu quá trình tải từ Drive báo lỗi quota hoặc file quá lớn, bạn có thể tải thủ công qua trình duyệt và đặt các file vào đúng thư mục `data/kb/`.*
+### 2. Tải toàn bộ dữ liệu vào `data/`
+
+Chạy từ thư mục gốc của một fresh clone. Dấu `/` cuối `data/` là có chủ ý:
+
+```bash
+python -m gdown "https://drive.google.com/drive/folders/1WdqC1BHvbcm0xDw2KjJ4uKOqxZsPMiQe?usp=drive_link" --folder -O "data/"
+```
+
+Không chạy download vào một `data` đã có dataset khác. Hãy dùng fresh clone
+hoặc backup dữ liệu cũ trước. Nếu Drive quota chặn `gdown`, tải thủ công toàn bộ
+nội dung folder và giữ nguyên cấu trúc bên dưới.
 
 ### Cấu trúc dữ liệu mong đợi sau khi tải:
+
 ```text
-data/kb/
-├── ICD10.xlsx           # Excel gốc ICD-10 của Bộ Y Tế
-├── metadata.db          # SQLite chứa 25,123 mã ICD-10 và luật lâm sàng
-├── icd10_context.txt    # Context text phẳng cho RAG
-├── icd10_dictionary.json# Dictionary JSON phẳng cho LLM
-└── (RxNorm files...)    # Dữ liệu RxNorm (Tải sau 17/07)
+data/
+├── synthetic_train_v1/
+│   ├── input/           # đúng 2.000 file .txt
+│   ├── gt/              # đúng 2.000 file .json
+│   ├── qa/validation_report.json
+│   └── manifest.jsonl
+├── dev/
+├── kb/metadata.db
+├── models/bge-m3/
+├── models/Qwen2.5-7B-Instruct/  # bắt buộc trước QLoRA
+├── input/               # chỉ inference
+└── output/              # kết quả inference hiện có
 ```
 
 ---

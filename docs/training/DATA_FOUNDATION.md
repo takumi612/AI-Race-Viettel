@@ -55,9 +55,20 @@ nếu mã GT sai thì sửa GT có provenance; nếu DB thiếu thì rebuild DB 
 chuẩn rồi chạy lại audit. NER span vẫn dùng được, nhưng mã sai không được đưa
 vào embedding/reranker gradient.
 
-Synthetic hiện chỉ được dùng khi session sinh dữ liệu đã hoàn tất validation
-và thư mục kết quả được promote thành `data/synthetic_train_v1`. Không đổi tên
-thư mục `.failed-validation` chỉ để vượt gate.
+Synthetic canonical đã được promote và xác minh tại
+`D:\AI Race Viettel\data\synthetic_train_v1`:
+
+- đúng 2.000 cặp `input/*.txt` và `gt/*.json`;
+- deterministic seed `20260719`;
+- `qa/validation_report.json`: `passed=true`, không error/warning;
+- manifest SHA-256:
+  `66bd0e58ae1adc72ae2b00ed36df42b6b1012a4ec4e8367c43ef5c0d2a54292a`;
+- source loader + ontology validator của training: 2.000 record, 0 finding;
+- split seed `20260719`: 1.700 train, 300 validation, group overlap bằng 0;
+- projection: 2.000 NER record, 2.736 embedding seed và 2.736 reranker seed.
+
+Task sinh dữ liệu canonical:
+`codex://threads/019f7475-c529-7113-87ee-530fcb4eac16`.
 
 ## 3. Chạy local
 
@@ -71,8 +82,9 @@ python -m src.training.build_datasets `
   --project-root .
 ```
 
-Lần chạy đầu từ chối nếu synthetic chưa pass hoặc 8 mã ontology phía trên
-chưa được giải quyết. Đây là hành vi mong muốn của pipeline precision-first.
+Synthetic hiện đã qua gate. Lần chạy production đã đi qua toàn bộ 2.000
+synthetic record và dừng ở 8 mã trusted ontology phía trên. Đây là hành vi
+mong muốn của pipeline precision-first.
 
 Nếu `data/training` đã tồn tại, kiểm tra
 `data/training/manifests/build.json` trước. Chỉ sau đó mới thay thế nguyên tử:
@@ -115,94 +127,130 @@ replace thất bại sẽ rollback output cũ.
 
 ## 5. Google Colab miễn phí
 
-Clone code sạch và mount Drive:
-
-```python
-from google.colab import drive
-
-drive.mount("/content/drive")
-```
+GitHub chỉ chứa code. Clone repo rồi tải toàn bộ `data` canonical từ
+[Drive của dự án](https://drive.google.com/drive/folders/1WdqC1BHvbcm0xDw2KjJ4uKOqxZsPMiQe?usp=drive_link)
+trước khi cài dependency training:
 
 ```bash
 %cd /content
-!git clone <GITHUB_REPOSITORY_URL> AI-Race-Viettel
+!git clone --branch develop --single-branch https://github.com/takumi612/AI-Race-Viettel.git
 %cd /content/AI-Race-Viettel
-!git checkout develop
-!python -m pip install -r requirements-train.txt
+!python -m pip install -U "gdown>=6.0.0"
+!python -m gdown "https://drive.google.com/drive/folders/1WdqC1BHvbcm0xDw2KjJ4uKOqxZsPMiQe?usp=drive_link" \
+  --folder -O "/content/AI-Race-Viettel/data/"
 ```
 
-Drive nên có cấu trúc:
+Output phải có dấu `/` cuối. Với `gdown` 6, không thêm tùy chọn cũ
+`--remaining-ok`. Fresh clone sau download phải có cấu trúc:
 
 ```text
-MyDrive/AI-Race-Viettel/data/
+data/
 ├── synthetic_train_v1/
+│   ├── input/                 # 2.000 .txt
+│   ├── gt/                    # 2.000 .json
+│   ├── qa/validation_report.json
+│   └── manifest.jsonl
 ├── dev/
 ├── kb/metadata.db
-├── models/                 # dùng ở phase training model
-└── input/                  # chỉ dùng inference cuối
+├── models/bge-m3/
+├── models/Qwen2.5-7B-Instruct/  # cần cho QLoRA
+└── input/                      # chỉ inference cuối
 ```
 
-Đoạn setup an toàn dưới đây không tạo đường dẫn lặp
-`data/models/models`. Nó chỉ thay placeholder `.gitkeep`; nếu đích có dữ liệu
-khác thì dừng:
+Không download vào một checkout đã có dataset khác. Không đặt output là
+`data/models`, vì nguồn Drive đã chứa cả folder `models` và sẽ tạo sai đường
+dẫn `data/models/models`.
+
+Cell preflight dưới đây phải in `DATA CHECK PASSED` trước khi build:
 
 ```python
 from pathlib import Path
-import shutil
+import hashlib
+import json
+import sqlite3
 
 repo = Path("/content/AI-Race-Viettel")
-drive_data = Path("/content/drive/MyDrive/AI-Race-Viettel/data")
 repo_data = repo / "data"
-repo_data.mkdir(parents=True, exist_ok=True)
+synthetic = repo_data / "synthetic_train_v1"
+required = [
+    synthetic,
+    repo_data / "dev",
+    repo_data / "models",
+    repo_data / "kb" / "metadata.db",
+]
+missing = [str(path) for path in required if not path.exists()]
+if missing:
+    raise FileNotFoundError(f"Drive download incomplete; missing: {missing}")
 
-def link_source_directory(name: str) -> None:
-    src = drive_data / name
-    dst = repo_data / name
-    if not src.is_dir():
-        raise FileNotFoundError(f"Missing Drive directory: {src}")
-    if dst.is_symlink():
-        if dst.resolve() != src.resolve():
-            raise RuntimeError(f"Wrong existing symlink: {dst} -> {dst.resolve()}")
-        return
-    if dst.exists():
-        unexpected = {item.name for item in dst.iterdir()} - {".gitkeep"}
-        if unexpected:
-            raise RuntimeError(f"Refusing to replace non-placeholder: {dst}")
-        shutil.rmtree(dst)
-    dst.symlink_to(src, target_is_directory=True)
+input_count = len(list((synthetic / "input").glob("*.txt")))
+gt_count = len(list((synthetic / "gt").glob("*.json")))
+if (input_count, gt_count) != (2000, 2000):
+    raise RuntimeError(f"Synthetic count mismatch: input={input_count}, gt={gt_count}")
 
-link_source_directory("synthetic_train_v1")
-link_source_directory("dev")
+qa = json.loads(
+    (synthetic / "qa" / "validation_report.json").read_text(encoding="utf-8")
+)
+if qa.get("passed") is not True:
+    raise RuntimeError("Synthetic QA did not pass")
 
-src_db = drive_data / "kb" / "metadata.db"
-dst_db = repo_data / "kb" / "metadata.db"
-if not src_db.is_file() or src_db.stat().st_size == 0:
-    raise FileNotFoundError(f"metadata.db missing or empty: {src_db}")
-dst_db.parent.mkdir(parents=True, exist_ok=True)
-if dst_db.is_symlink():
-    if dst_db.resolve() != src_db.resolve():
-        raise RuntimeError(f"Wrong metadata.db symlink: {dst_db}")
-elif dst_db.exists():
-    raise RuntimeError(f"Refusing to overwrite existing file: {dst_db}")
-else:
-    dst_db.symlink_to(src_db)
+expected = "66bd0e58ae1adc72ae2b00ed36df42b6b1012a4ec4e8367c43ef5c0d2a54292a"
+actual = hashlib.sha256((synthetic / "manifest.jsonl").read_bytes()).hexdigest()
+if actual != expected:
+    raise RuntimeError(f"Manifest SHA-256 mismatch: {actual}")
+
+db = repo_data / "kb" / "metadata.db"
+if db.stat().st_size == 0:
+    raise RuntimeError("metadata.db is empty")
+with sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True) as connection:
+    tables = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+required_tables = {"icd10", "rxnorm"}
+if not required_tables.issubset(tables):
+    raise RuntimeError(f"metadata.db missing tables: {sorted(required_tables - tables)}")
+
+bge_weights = repo_data / "models" / "bge-m3" / "model.safetensors"
+if not bge_weights.is_file():
+    raise FileNotFoundError(f"BGE-M3 weights missing: {bge_weights}")
+
+qwen = repo_data / "models" / "Qwen2.5-7B-Instruct"
+qwen_ready = (
+    (qwen / "config.json").is_file()
+    and (qwen / "tokenizer.json").is_file()
+    and any(qwen.glob("*.safetensors"))
+)
+print("DATA CHECK PASSED")
+print("Qwen reranker ready:", qwen_ready)
 ```
 
-Chạy build:
+`Qwen reranker ready: False` chỉ chặn stage QLoRA. Config reranker dùng
+`local_files_only: true`, vì vậy phải bổ sung đúng local model trước stage đó.
+
+Cài dependency, test và chạy build:
 
 ```bash
+!python -m pip install -r requirements-train.txt
 !python -m pytest tests/training -q
 !python -m src.training.build_datasets \
   --config configs/training/data.yaml \
   --project-root .
 ```
 
-Output được build trên disk Colab để giữ atomic rename. Sau khi manifest hợp
-lệ, copy sang thư mục versioned trên Drive:
+Build hiện vẫn dừng có chủ ý ở 8 candidate trusted ontology đã liệt kê phía
+trên. Chỉ sau khi xử lý chúng có provenance và build manifest hợp lệ mới lưu
+output/checkpoint lên MyDrive. Mount Drive ở bước này, không dùng symlink làm
+nguồn dataset:
 
 ```python
+from google.colab import drive
 import json
+import shutil
 
+drive.mount("/content/drive")
+drive_data = Path("/content/drive/MyDrive/AI-Race-Viettel/data")
 local_output = repo / "data" / "training"
 manifest = json.loads(
     (local_output / "manifests" / "build.json").read_text(encoding="utf-8")
@@ -217,9 +265,8 @@ shutil.copytree(local_output, drive_output)
 print(drive_output)
 ```
 
-Không xóa thư mục qua symlink trong notebook. Checkpoint NER/BGE/Qwen ở các
-phase sau phải ghi trực tiếp vào thư mục versioned trên Drive và resume theo
-manifest.
+Checkpoint NER/BGE/Qwen phải được copy hoặc ghi vào một thư mục versioned trên
+MyDrive để tồn tại qua lần reset runtime và resume đúng manifest.
 
 ## 6. Verification trước khi bàn giao
 

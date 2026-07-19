@@ -44,6 +44,7 @@ data/raw/*
 !data/raw/.gitkeep
 data/dev/*
 !data/dev/.gitkeep
+data/synthetic_train_v1/
 
 # Dữ liệu tri thức y khoa lớn (cần download cục bộ khi chạy setup hoặc cache)
 data/kb/*

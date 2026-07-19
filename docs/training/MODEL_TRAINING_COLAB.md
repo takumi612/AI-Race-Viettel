@@ -18,122 +18,167 @@ Không train nếu một trong các gate sau chưa đạt:
 đưa vào gradient. IDs 181–200 là holdout, không được dùng chọn model, threshold
 hay epoch.
 
-Tại trạng thái dữ liệu đã audit gần nhất, build còn chặn 8 candidate ontology
+Dataset synthetic canonical hiện tại có 2.000 cặp, seed `20260719`, QA
+`passed=true` và manifest SHA-256
+`66bd0e58ae1adc72ae2b00ed36df42b6b1012a4ec4e8367c43ef5c0d2a54292a`.
+Nguồn canonical thuộc task
+`codex://threads/019f7475-c529-7113-87ee-530fcb4eac16`.
+
+Production build đã qua synthetic nhưng còn chặn 8 candidate trusted ontology
 được liệt kê trong [DATA_FOUNDATION.md](DATA_FOUNDATION.md). Không hardcode các
 code đó vào DB chỉ để vượt validation.
 
-## 2. Cấu trúc Drive
+## 2. Nguồn data và nơi lưu artifact
+
+GitHub không chứa dataset/model lớn. Nguồn `data` canonical được chia sẻ tại:
 
 ```text
-MyDrive/AI-Race-Viettel/
-├── data/
-│   ├── synthetic_train_v1/
-│   ├── dev/
-│   ├── kb/metadata.db
-│   ├── models/
-│   │   ├── bge-m3/
-│   │   └── Qwen2.5-7B-Instruct/
-│   └── training_builds/<build-id>/
-└── artifacts/
+https://drive.google.com/drive/folders/1WdqC1BHvbcm0xDw2KjJ4uKOqxZsPMiQe?usp=drive_link
 ```
 
-Không tạo đường dẫn `data/models/models`. Nguồn chính xác của model là:
+Sau khi tải, repo Colab phải có cấu trúc:
 
 ```text
-/content/drive/MyDrive/AI-Race-Viettel/data/models
+/content/AI-Race-Viettel/data/
+├── synthetic_train_v1/
+│   ├── input/                    # 2.000 .txt
+│   ├── gt/                       # 2.000 .json
+│   ├── qa/validation_report.json
+│   └── manifest.jsonl
+├── dev/
+├── kb/metadata.db
+├── models/
+│   ├── bge-m3/
+│   └── Qwen2.5-7B-Instruct/      # bắt buộc trước QLoRA
+└── input/                        # chỉ inference
+```
+
+MyDrive chỉ dùng để giữ build/checkpoint qua lần reset runtime:
+
+```text
+/content/drive/MyDrive/AI-Race-Viettel/
+├── data/training_builds/<build-id>/
+└── artifacts/
 ```
 
 ## 3. Khởi tạo một runtime Colab
 
-Chọn `Runtime > Change runtime type > T4 GPU`, sau đó:
-
-```python
-from google.colab import drive
-drive.mount("/content/drive")
-```
+Chọn `Runtime > Change runtime type > T4 GPU`. Dùng một fresh runtime để tránh
+trộn dataset cũ, sau đó clone code và tải `data` trước khi cài dependency
+training:
 
 ```bash
 %cd /content
-!git clone <GITHUB_REPOSITORY_URL> AI-Race-Viettel
+!git clone --branch develop --single-branch https://github.com/takumi612/AI-Race-Viettel.git
 %cd /content/AI-Race-Viettel
-!git checkout develop
 !python -m pip install -U pip
-!python -m pip install -r requirements-train.txt
+!python -m pip install -U "gdown>=6.0.0"
+!python -m gdown "https://drive.google.com/drive/folders/1WdqC1BHvbcm0xDw2KjJ4uKOqxZsPMiQe?usp=drive_link" \
+  --folder -O "/content/AI-Race-Viettel/data/"
 ```
 
-Kiểm tra GPU và phiên bản:
+Phải giữ dấu `/` cuối output. `gdown` 6 tải folder lớn đệ quy và không còn tùy
+chọn `--remaining-ok`. Lệnh trên ghi `dev`, `kb`, `models` và
+`synthetic_train_v1` trực tiếp trong `data`; không tạo `data/data`.
+
+Kiểm tra download bằng cell fail-fast sau:
+
+```python
+from pathlib import Path
+import hashlib
+import json
+import sqlite3
+
+repo = Path("/content/AI-Race-Viettel")
+repo_data = repo / "data"
+synthetic = repo_data / "synthetic_train_v1"
+required = [
+    synthetic,
+    repo_data / "dev",
+    repo_data / "models",
+    repo_data / "kb" / "metadata.db",
+]
+missing = [str(path) for path in required if not path.exists()]
+if missing:
+    raise FileNotFoundError(f"Drive download incomplete; missing: {missing}")
+
+input_count = len(list((synthetic / "input").glob("*.txt")))
+gt_count = len(list((synthetic / "gt").glob("*.json")))
+if (input_count, gt_count) != (2000, 2000):
+    raise RuntimeError(f"Synthetic count mismatch: input={input_count}, gt={gt_count}")
+
+qa = json.loads(
+    (synthetic / "qa" / "validation_report.json").read_text(encoding="utf-8")
+)
+if qa.get("passed") is not True:
+    raise RuntimeError("Synthetic QA did not pass")
+
+expected = "66bd0e58ae1adc72ae2b00ed36df42b6b1012a4ec4e8367c43ef5c0d2a54292a"
+actual = hashlib.sha256((synthetic / "manifest.jsonl").read_bytes()).hexdigest()
+if actual != expected:
+    raise RuntimeError(f"Manifest SHA-256 mismatch: {actual}")
+
+db = repo_data / "kb" / "metadata.db"
+if db.stat().st_size == 0:
+    raise RuntimeError("metadata.db is empty")
+with sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True) as connection:
+    tables = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+required_tables = {"icd10", "rxnorm"}
+if not required_tables.issubset(tables):
+    raise RuntimeError(f"metadata.db missing tables: {sorted(required_tables - tables)}")
+
+bge_weights = repo_data / "models" / "bge-m3" / "model.safetensors"
+if not bge_weights.is_file():
+    raise FileNotFoundError(f"BGE-M3 weights missing: {bge_weights}")
+
+qwen = repo_data / "models" / "Qwen2.5-7B-Instruct"
+qwen_ready = (
+    (qwen / "config.json").is_file()
+    and (qwen / "tokenizer.json").is_file()
+    and any(qwen.glob("*.safetensors"))
+)
+print("DATA CHECK PASSED")
+print("Qwen reranker ready:", qwen_ready)
+```
+
+Không tiếp tục nếu chưa thấy `DATA CHECK PASSED`. Giá trị
+`Qwen reranker ready: False` không chặn build/NER/BGE, nhưng chặn QLoRA vì
+`configs/training/reranker_qwen25_7b_qlora.yaml` đặt `local_files_only: true`.
+
+Cài dependency và kiểm tra GPU:
 
 ```bash
+!python -m pip install -r requirements-train.txt
 !nvidia-smi
 !python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
-Tạo link an toàn. Đoạn này không xóa thư mục Drive và từ chối ghi đè dữ liệu
-không phải placeholder:
+Mount MyDrive chỉ để lưu artifact. Cell này không thay thế hoặc symlink source
+dataset:
 
 ```python
-from pathlib import Path
-import shutil
+from google.colab import drive
 
-repo = Path("/content/AI-Race-Viettel")
+drive.mount("/content/drive")
 drive_root = Path("/content/drive/MyDrive/AI-Race-Viettel")
-drive_data = drive_root / "data"
-repo_data = repo / "data"
-repo_data.mkdir(parents=True, exist_ok=True)
-
-def link_directory(src: Path, dst: Path) -> None:
-    if not src.is_dir():
-        raise FileNotFoundError(f"Missing Drive directory: {src}")
-    if dst.is_symlink():
-        if dst.resolve() != src.resolve():
-            raise RuntimeError(f"Wrong symlink: {dst} -> {dst.resolve()}")
-        return
-    if dst.exists():
-        unexpected = {item.name for item in dst.iterdir()} - {".gitkeep"}
-        if unexpected:
-            raise RuntimeError(f"Refusing to replace non-placeholder: {dst}")
-        shutil.rmtree(dst)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.symlink_to(src, target_is_directory=True)
-
-def link_file(src: Path, dst: Path) -> None:
-    if not src.is_file() or src.stat().st_size == 0:
-        raise FileNotFoundError(f"Missing or empty file: {src}")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    if dst.is_symlink():
-        if dst.resolve() != src.resolve():
-            raise RuntimeError(f"Wrong symlink: {dst} -> {dst.resolve()}")
-        return
-    if dst.exists():
-        raise RuntimeError(f"Refusing to overwrite: {dst}")
-    dst.symlink_to(src)
-
-link_directory(drive_data / "models", repo_data / "models")
-link_file(drive_data / "kb" / "metadata.db", repo_data / "kb" / "metadata.db")
-
 drive_artifacts = drive_root / "artifacts"
 drive_artifacts.mkdir(parents=True, exist_ok=True)
-link_directory(drive_artifacts, repo / "artifacts")
-```
-
-Ở runtime build data đầu tiên, link thêm nguồn:
-
-```python
-link_directory(
-    drive_data / "synthetic_train_v1",
-    repo_data / "synthetic_train_v1",
-)
-link_directory(drive_data / "dev", repo_data / "dev")
-```
-
-Ở runtime model sau này, link build đã khóa:
-
-```python
-build_id = "<BUILD_ID_FROM_MANIFEST>"
-link_directory(
-    drive_data / "training_builds" / build_id,
-    repo_data / "training",
-)
+repo_artifacts = repo / "artifacts"
+if repo_artifacts.is_symlink():
+    if repo_artifacts.resolve() != drive_artifacts.resolve():
+        raise RuntimeError(f"Wrong artifacts symlink: {repo_artifacts.resolve()}")
+elif repo_artifacts.exists():
+    if any(repo_artifacts.iterdir()):
+        raise RuntimeError(f"Refusing to replace non-empty directory: {repo_artifacts}")
+    repo_artifacts.rmdir()
+    repo_artifacts.symlink_to(drive_artifacts, target_is_directory=True)
+else:
+    repo_artifacts.symlink_to(drive_artifacts, target_is_directory=True)
 ```
 
 ## 4. Build dữ liệu một lần
@@ -145,16 +190,19 @@ link_directory(
   --project-root .
 ```
 
-Build local trước để giữ atomic rename. Chỉ copy lên Drive sau khi manifest hợp
-lệ:
+Build local trước để giữ atomic rename. Production build hiện còn chặn 8
+candidate trusted ontology; không bypass gate. Chỉ copy lên MyDrive sau khi
+manifest hợp lệ:
 
 ```python
 import json
+import shutil
 
 local_training = repo_data / "training"
 manifest = json.loads(
     (local_training / "manifests" / "build.json").read_text(encoding="utf-8")
 )
+drive_data = drive_root / "data"
 archive = drive_data / "training_builds" / manifest["build_id"]
 if archive.exists():
     raise FileExistsError(f"Training build already exists: {archive}")
