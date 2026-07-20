@@ -16,17 +16,17 @@ def main():
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-7B-Instruct-AWQ", help="vLLM model name.")
     args = parser.parse_args()
 
-    # Import locally to avoid importing vllm if not needed
-    try:
-        from clinical_nlp_lab.reranker import ClinicalLLMReranker
-        from clinical_nlp_lab.assertions import ClinicalLLMAssertionPredictor
-        
-        logging.info(f"Starting LLM engine with model: {args.model_name}")
-        reranker = ClinicalLLMReranker(model_name=args.model_name)
-        llm_assertion = ClinicalLLMAssertionPredictor(reranker.llm)
-    except ImportError as e:
-        logging.warning(f"Could not initialize reranker or assertions: {e}. Skipping LLM subprocess.")
-        # Write empty output file and exit gracefully
+    # 1. Read input queries FIRST (before loading heavy LLM engine)
+    logging.info(f"Loading input queries from: {args.input_path}")
+    with open(args.input_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    rerank_queries = data.get("rerank_queries", [])
+    assertion_queries = data.get("assertion_queries", [])
+
+    # Early exit if no queries
+    if not rerank_queries and not assertion_queries:
+        logging.info("No queries to process. Writing empty output.")
         output_data = {
             "rerank_results": [],
             "assertion_results": []
@@ -35,24 +35,35 @@ def main():
             json.dump(output_data, f, ensure_ascii=False, indent=2)
         return
 
-    logging.info(f"Loading input queries from: {args.input_path}")
-    with open(args.input_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    # 2. Import and initialize LLM engine
+    try:
+        from clinical_nlp_lab.reranker import ClinicalLLMReranker
+        from clinical_nlp_lab.assertions import ClinicalLLMAssertionPredictor
 
-    rerank_queries = data.get("rerank_queries", [])
-    assertion_queries = data.get("assertion_queries", [])
+        logging.info(f"Starting LLM engine with model: {args.model_name}")
+        reranker = ClinicalLLMReranker(model_name=args.model_name)
+        llm_assertion = ClinicalLLMAssertionPredictor(reranker.llm)
+    except ImportError as e:
+        logging.warning(f"Could not initialize reranker or assertions: {e}. Skipping LLM subprocess.")
+        output_data = {
+            "rerank_results": [],
+            "assertion_results": []
+        }
+        with open(args.output_path, "w", encoding="utf-8") as f:
+            json.dump(output_data, f, ensure_ascii=False, indent=2)
+        return
 
     rerank_results = []
     assertion_results = []
 
-    # 1. Run Reranker
+    # 3. Run Reranker
     if rerank_queries:
         logging.info(f"Running rerank batch for {len(rerank_queries)} queries...")
         rerank_results = reranker.rerank_batch(rerank_queries)
     else:
         logging.info("No rerank queries provided.")
 
-    # 2. Run Assertion
+    # 4. Run Assertion
     if assertion_queries:
         logging.info(f"Running assertion batch for {len(assertion_queries)} queries...")
         raw_assertions = llm_assertion.predict_batch(assertion_queries)
@@ -60,11 +71,11 @@ def main():
     else:
         logging.info("No assertion queries provided.")
 
-    # Cleanup LLM engine immediately
+    # 5. Cleanup LLM engine immediately
     logging.info("Cleaning up LLM engine and freeing VRAM...")
     reranker.destroy()
 
-    # Save outputs
+    # 6. Save outputs
     output_data = {
         "rerank_results": rerank_results,
         "assertion_results": assertion_results

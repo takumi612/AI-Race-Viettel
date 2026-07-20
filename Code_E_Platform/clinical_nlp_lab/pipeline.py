@@ -294,6 +294,8 @@ def run_inference(
             
             subprocess_result = subprocess.run(cmd, env=env, check=True, capture_output=True, text=True)
             print("[LLM-SUBPROCESS] Subprocess completed successfully.")
+            if subprocess_result.stderr:
+                print(subprocess_result.stderr)
             if subprocess_result.stdout:
                 print(subprocess_result.stdout)
             
@@ -318,11 +320,12 @@ def run_inference(
                 for entity, labels in zip(flat_entities, assertion_results):
                     entity.assertions = labels
                     
-        except subprocess.CalledProcessError as e:
-            print("[LLM-SUBPROCESS] ERROR running LLM subprocess!")
-            print("Stdout:", e.stdout)
-            print("Stderr:", e.stderr)
-            raise e
+        except (subprocess.CalledProcessError, OSError) as e:
+            print("[LLM-SUBPROCESS] WARNING: LLM subprocess failed. Continuing without LLM reranking/assertion.")
+            if hasattr(e, "stdout") and e.stdout:
+                print("Stdout:", e.stdout)
+            if hasattr(e, "stderr") and e.stderr:
+                print("Stderr:", e.stderr)
         finally:
             # Clean up temporary files
             for path in (temp_input_path, temp_output_path):
