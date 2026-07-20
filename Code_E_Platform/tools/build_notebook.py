@@ -278,7 +278,7 @@ print({
             "TRAIN_DOCUMENTS and VALIDATION_DOCUMENTS.",
             "NER_TRAINING_RESULT.",
             "artifacts/ner_model/ when trained.",
-            """from clinical_nlp_lab.training import train_transformer_ner\nFIT_TRAIN_DOCUMENTS = TRAIN_DOCUMENTS[:2] if CONFIG["fast_dev_run"] else TRAIN_DOCUMENTS\nFIT_VALIDATION_DOCUMENTS = VALIDATION_DOCUMENTS[:1] if CONFIG["fast_dev_run"] else VALIDATION_DOCUMENTS\nNER_MODEL_DIR = TRAINING_OUTPUT_ROOT / "ner_model"\nNER_TRAINING_RESULT = train_transformer_ner(\n    FIT_TRAIN_DOCUMENTS, FIT_VALIDATION_DOCUMENTS, NER_MODEL_DIR,\n    model_name=CONFIG["ner_model_name"], max_length=CONFIG["max_length"], stride=CONFIG["stride"],\n    learning_rate=CONFIG["learning_rate"], epochs=1 if CONFIG["fast_dev_run"] else CONFIG["ner_epochs"],\n    batch_size=CONFIG["batch_size"], seed=CONFIG["seed"]\n)\nprint({"fast_dev_run": CONFIG["fast_dev_run"], "fit_train_documents": len(FIT_TRAIN_DOCUMENTS), "fit_validation_documents": len(FIT_VALIDATION_DOCUMENTS), "model_dir": str(NER_MODEL_DIR), "result": NER_TRAINING_RESULT})""",
+            """from clinical_nlp_lab.training import train_transformer_ner\nFIT_TRAIN_DOCUMENTS = TRAIN_DOCUMENTS[:2] if CONFIG["fast_dev_run"] else TRAIN_DOCUMENTS\nFIT_VALIDATION_DOCUMENTS = VALIDATION_DOCUMENTS[:1] if CONFIG["fast_dev_run"] else VALIDATION_DOCUMENTS\nNER_MODEL_DIR = TRAINING_OUTPUT_ROOT / "ner_model"\nif (NER_MODEL_DIR / "model.safetensors").exists() or (NER_MODEL_DIR / "pytorch_model.bin").exists():\n    print(f"[SKIP] Found existing NER weights at {NER_MODEL_DIR}, skipping training.")\n    NER_TRAINING_RESULT = {"trained": False, "reason": "checkpoint_exists", "model_dir": str(NER_MODEL_DIR)}\nelse:\n    NER_TRAINING_RESULT = train_transformer_ner(\n        FIT_TRAIN_DOCUMENTS, FIT_VALIDATION_DOCUMENTS, NER_MODEL_DIR,\n        model_name=CONFIG["ner_model_name"], max_length=CONFIG["max_length"], stride=CONFIG["stride"],\n        learning_rate=CONFIG["learning_rate"], epochs=1 if CONFIG["fast_dev_run"] else CONFIG["ner_epochs"],\n        batch_size=CONFIG["batch_size"], seed=CONFIG["seed"]\n    )\nprint({"fast_dev_run": CONFIG["fast_dev_run"], "fit_train_documents": len(FIT_TRAIN_DOCUMENTS), "fit_validation_documents": len(FIT_VALIDATION_DOCUMENTS), "model_dir": str(NER_MODEL_DIR), "result": NER_TRAINING_RESULT})""",
         ),
         (
             12,
@@ -289,6 +289,16 @@ print({
             "NER_EVALUATION.",
             "Validation metrics only when annotations exist.",
             """NER_EVALUATION = {"status": "not_scored", "reason": "No annotated validation data"} if not VALIDATION_DOCUMENTS else {"status": "run_after_training"}\nprint(NER_EVALUATION)""",
+        ),
+        (
+            12.5,
+            "Garbage collection",
+            "Giải phóng bộ nhớ GPU sau huấn luyện NER tránh OOM.",
+            "gc, torch.cuda",
+            "None.",
+            "VRAM cleared.",
+            "None.",
+            """import gc\nimport torch\ngc.collect()\nif torch.cuda.is_available():\n    torch.cuda.empty_cache()\n    print("Đã dọn dẹp xong bộ nhớ GPU.")""",
         ),
         (
             13,

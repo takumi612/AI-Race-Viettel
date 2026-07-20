@@ -40,6 +40,7 @@ def initialize_runtime_artifacts(config: dict[str, Any], artifact_dir: str | Pat
                     "DISEASE": "CHẨN_ĐOÁN",
                     "DRUG": "THUỐC",
                     "LAB_RESULT": "KẾT_QUẢ_XÉT_NGHIỆM",
+                    "LAB_NAME": "TÊN_XÉT_NGHIỆM",
                     "PATIENT_INFO": None,
                     "SYMPTOM": "TRIỆU_CHỨNG",
                 },

@@ -305,18 +305,22 @@ print({
 
 TRAINING_AVAILABILITY = transformer_training_availability()
 if DEPENDENCIES_READY and TRAIN_DOCUMENTS:
-    NER_TRAINING_RESULT = train_transformer_ner(
-        TRAIN_DOCUMENTS,
-        VALIDATION_DOCUMENTS,
-        NER_MODEL_DIR,
-        model_name=MODEL_SOURCE,
-        max_length=int(CONFIG["max_length"]),
-        stride=int(CONFIG["stride"]),
-        learning_rate=LEARNING_RATE,
-        epochs=NER_EPOCHS,
-        batch_size=TRAIN_BATCH_SIZE,
-        seed=int(CONFIG["seed"]),
-    )
+    if (NER_MODEL_DIR / "model.safetensors").exists() or (NER_MODEL_DIR / "pytorch_model.bin").exists():
+        print(f"[SKIP] Found existing NER weights at {NER_MODEL_DIR}, skipping training.")
+        NER_TRAINING_RESULT = {"trained": False, "reason": "checkpoint_exists", "model_dir": str(NER_MODEL_DIR)}
+    else:
+        NER_TRAINING_RESULT = train_transformer_ner(
+            TRAIN_DOCUMENTS,
+            VALIDATION_DOCUMENTS,
+            NER_MODEL_DIR,
+            model_name=MODEL_SOURCE,
+            max_length=int(CONFIG["max_length"]),
+            stride=int(CONFIG["stride"]),
+            learning_rate=LEARNING_RATE,
+            epochs=NER_EPOCHS,
+            batch_size=TRAIN_BATCH_SIZE,
+            seed=int(CONFIG["seed"]),
+        )
 else:
     NER_TRAINING_RESULT = {
         "trained": False,
@@ -338,6 +342,12 @@ print(NER_TRAINING_RESULT)'''
 created_archive = shutil.make_archive(str(archive_base), "zip", root_dir=TRAINING_ROOT)
 assert Path(created_archive).is_file()
 print({"trained_artifacts_zip": created_archive, "bytes": Path(created_archive).stat().st_size})'''
+        )
+    )
+    cells.append(markdown_cell("## 6.5 Garbage collection"))
+    cells.append(
+        code_cell(
+            '''import gc\nimport torch\ngc.collect()\nif torch.cuda.is_available():\n    torch.cuda.empty_cache()\n    print("Đã dọn dẹp xong bộ nhớ GPU.")'''
         )
     )
     cells.append(markdown_cell("## 7. Inference with the newly trained NER model"))
