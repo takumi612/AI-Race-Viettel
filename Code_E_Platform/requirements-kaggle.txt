@@ -10,5 +10,7 @@ safetensors>=0.4
 bm25s
 faiss-cpu
 sentence-transformers
-vllm
-autoawq
+# vllm và autoawq được cài riêng trước bước Inference (Step 7)
+# để tránh chiếm VRAM ngay khi cài đặt, gây OOM cho Training.
+# vllm
+# autoawq
