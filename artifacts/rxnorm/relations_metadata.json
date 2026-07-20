@@ -1,0 +1,25 @@
+{
+  "allowed_sources": [
+    "RXNORM"
+  ],
+  "artifact": "D:/2 Code/AI_race/artifacts/rxnorm/rxnorm_relations.jsonl.gz",
+  "member": "rrf/RXNREL.RRF",
+  "member_rows_scanned": 7423180,
+  "relation_counts": {
+    "consists_of": 116818,
+    "has_dose_form": 95804,
+    "has_ingredient": 158909,
+    "tradename_of": 118543
+  },
+  "relations": [
+    "consists_of",
+    "has_dose_form",
+    "has_ingredient",
+    "tradename_of"
+  ],
+  "selected_rows": 490074,
+  "sha256": "d971cf2cfb80683c298cd9e6856e993dcae8f42e75905a8802ab42e9aea3450e",
+  "skipped_missing_rxcui": 0,
+  "source": "D:/2 Code/AI_race/RxNorm_full_07062026.zip",
+  "source_sha256": "53523ee9f1fcd7ee426698edf566aedebe548a6ec8cc372c41271fc5b28e784c"
+}

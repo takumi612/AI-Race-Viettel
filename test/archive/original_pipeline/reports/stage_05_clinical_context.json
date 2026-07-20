@@ -1,0 +1,53 @@
+{
+  "stage": 5,
+  "method": "hybrid clinical cues + section feature; optional multi-task XLM-R heads when annotations exist",
+  "document_count": 100,
+  "entity_count": 845,
+  "offset_errors": 0,
+  "axis_counts": {
+    "polarity": {
+      "AFFIRMED": 696,
+      "NEGATED": 149
+    },
+    "temporality": {
+      "HISTORICAL": 420,
+      "CURRENT": 338,
+      "RESOLVED": 70,
+      "PLANNED": 17
+    },
+    "certainty": {
+      "CONFIRMED": 803,
+      "POSSIBLE": 42
+    },
+    "experiencer": {
+      "PATIENT": 828,
+      "FAMILY": 17
+    }
+  },
+  "internal_label_counts": {
+    "experiencer:PATIENT": 828,
+    "certainty:CONFIRMED": 803,
+    "polarity:AFFIRMED": 696,
+    "temporality:HISTORICAL": 420,
+    "temporality:CURRENT": 338,
+    "polarity:NEGATED": 149,
+    "temporality:RESOLVED": 70,
+    "certainty:POSSIBLE": 42,
+    "temporality:PLANNED": 17,
+    "experiencer:FAMILY": 17
+  },
+  "official_mapping_status": "CONFIRMED_FROM_REPOSITORY_VALIDATOR",
+  "official_assertions": [
+    "isNegated",
+    "isHistorical",
+    "isFamily"
+  ],
+  "threshold_tuning": {
+    "status": "not_run",
+    "reason": "Validation assertion labels are absent; default deterministic rules retained."
+  },
+  "evaluation": {
+    "status": "not_scored",
+    "reason": "No assertion ground truth was provided; no Jaccard or macro-F1 was invented."
+  }
+}
