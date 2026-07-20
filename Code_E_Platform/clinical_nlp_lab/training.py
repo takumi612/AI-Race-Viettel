@@ -238,6 +238,7 @@ def train_transformer_ner(
         "load_best_model_at_end": bool(validation_features),
         "seed": seed,
         "report_to": [],
+        "fp16": torch.cuda.is_available(),
     }
     # Transformers renamed evaluation_strategy to eval_strategy in newer releases.
     argument_parameters = inspect.signature(TrainingArguments.__init__).parameters
