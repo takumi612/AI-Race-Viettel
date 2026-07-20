@@ -41,7 +41,7 @@ data/synthetic_train_v1/input/001.txt
 data/synthetic_train_v1/gt/001.json
 ```
 
-Entity JSON dùng `position: [start, end]`, trong đó `end` exclusive và phải thỏa `raw_text[start:end] == text`. Xem thêm `train/README.md`.
+Entity JSON dùng `position: [start, end]`, trong đó `end` exclusive và phải thỏa `raw_text[start:end] == text`.
 
 Nếu không có annotation, notebook vẫn chạy inference nhưng cell NER training sẽ ghi `trained=false` và không tạo checkpoint giả.
 

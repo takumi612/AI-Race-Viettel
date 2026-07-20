@@ -47,7 +47,7 @@ Notebook end-to-end cho Clinical NER, assertion/context, ICD-10/RxNorm linking, 
 4. Giữ `FAST_DEV_RUN = False` để train đầy đủ; đổi thành `True` cho smoke-test ngắn.
 5. Bootstrap có thể tạo smoke input tạm để hoàn tất khởi tạo, nhưng production gate ngay sau đó vẫn bắt buộc input thật và sẽ dừng với hướng dẫn rõ; smoke input không bao giờ được dùng để tạo ZIP production.
 
-Notebook không gọi external API và không fit trên private/test input. Nguồn sự thật của project: `SPEC.md`, `PROJECT_STATE.md`, `DECISIONS.md`, `ARTIFACT_MANIFEST.json`."""
+Notebook không gọi external API và không fit trên private/test input. Hướng dẫn vận hành được giữ trong `README.md` và `COLAB_RUNBOOK.md`."""
         )
     )
     cells.append(
@@ -207,7 +207,7 @@ print({
             "Custom validator with raw-text slice invariant.",
             "DOCUMENTS and ANNOTATED_DOCUMENTS.",
             "INPUT_VALIDATION and ANNOTATED_VALIDATION.",
-            "reports/stage_03_eda.json.",
+            "In-memory validation report.",
             """INPUT_VALIDATION = validate_documents(DOCUMENTS)\nANNOTATED_VALIDATION = validate_documents(ANNOTATED_DOCUMENTS)\nassert INPUT_VALIDATION["is_valid"]\nprint({"input_validation": INPUT_VALIDATION, "annotation_count": len(ANNOTATED_DOCUMENTS)})""",
         ),
         (
@@ -217,7 +217,7 @@ print({
             "describe_documents and section counters.",
             "DOCUMENTS.",
             "EDA_SUMMARY.",
-            "reports/stage_03_eda.json.",
+            "In-memory EDA summary.",
             """EDA_SUMMARY = describe_documents(DOCUMENTS)\nprint(EDA_SUMMARY)""",
         ),
         (
@@ -417,7 +417,7 @@ print({
             "Diagnostics aggregation.",
             "diagnostics/*.json.",
             "ERROR_ANALYSIS.",
-            "reports/stage_08_integration.json.",
+            "diagnostics/run_summary.json.",
             """summary_path = PROJECT_ROOT / CONFIG["diagnostics_dir"] / "run_summary.json"\nERROR_ANALYSIS = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.exists() else {"status": "not_run"}\nprint(ERROR_ANALYSIS)""",
         ),
         (
@@ -467,7 +467,7 @@ print({
             "Project state and manifest.",
             "All stage reports.",
             "Final completion summary.",
-            "README.md and PROJECT_STATE.md.",
+            "README.md and COLAB_RUNBOOK.md.",
             """print({"completed_stages": list(range(1, 10)), "submission_schema_valid": True, "output_zip": str(OUTPUT_ARCHIVE_PATH), "trained_ner": bool(NER_TRAINING_RESULT.get("trained")), "official_mapping": INTEGRATION_SUMMARY.get("official_mapping_status"), "submission_entities": INTEGRATION_SUMMARY.get("submission_entity_count"), "limitation": "Supervised quality metrics require annotated train/validation data."})""",
         ),
     ]
