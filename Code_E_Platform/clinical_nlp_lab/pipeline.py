@@ -7,7 +7,7 @@ import sys
 import zipfile
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from .assertions import HybridAssertionPredictor
 from .config import load_config
