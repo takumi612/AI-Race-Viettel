@@ -11,7 +11,8 @@ from .config import load_config
 from .data import load_input_documents, natural_document_key
 from .kb import load_candidate_dictionary
 from .linking import EntityLinker, LexicalCandidateIndex, parse_medication_attributes
-from .ner import DictionaryRuleEntityDetector, TransformerNERDetector, refine_boundaries
+from .retrieval import HybridCandidateIndex, HybridEntityLinker
+from .ner import DictionaryRuleEntityDetector, TransformerNERDetector, refine_boundaries, resolve_overlaps
 from .relations import RuleRelationExtractor
 from .schema import ClinicalDocument, EntityAnnotation, validate_submission_payload, write_json
 from .text import containing_section, detect_sections
@@ -35,27 +36,32 @@ class ClinicalNLPPipeline:
             raise FileNotFoundError("Knowledge-base artifacts are missing; run tools/build_knowledge_bases.py first")
         self.icd10_records = load_candidate_dictionary(icd10_path)
         self.rxnorm_records = load_candidate_dictionary(rxnorm_path)
+        self.dict_detector = DictionaryRuleEntityDetector(
+            self.icd10_records,
+            self.rxnorm_records,
+            phrase_confidence=float(self.config["thresholds"]["dictionary_phrase"]),
+            regex_confidence=float(self.config["thresholds"]["regex_rule"]),
+        )
         if ner_model_dir is not None and Path(ner_model_dir).is_dir():
-            self.detector = TransformerNERDetector(
+            self.trans_detector = TransformerNERDetector(
                 ner_model_dir,
                 max_length=int(self.config["max_length"]),
                 stride=int(self.config["stride"]),
             )
-            self.active_ner = "transformer_checkpoint"
+            self.active_ner = "hybrid_transformer_and_dictionary"
         else:
-            self.detector = DictionaryRuleEntityDetector(
-                self.icd10_records,
-                self.rxnorm_records,
-                phrase_confidence=float(self.config["thresholds"]["dictionary_phrase"]),
-                regex_confidence=float(self.config["thresholds"]["regex_rule"]),
-            )
+            self.trans_detector = None
             self.active_ner = "ontology_dictionary_plus_generic_rules"
-        self.linker = EntityLinker(
-            LexicalCandidateIndex(self.icd10_records, "ICD-10"),
-            LexicalCandidateIndex(self.rxnorm_records, "RxNorm"),
-            top_k=int(self.config["candidate_top_k"]),
-            output_k=int(self.config["candidate_output_k"]),
-            minimum_score=float(self.config["thresholds"]["candidate_min_score"]),
+            
+        # Use HybridCandidateIndex & HybridEntityLinker
+        icd10_index = HybridCandidateIndex(self.icd10_records, "ICD-10")
+        icd10_index.build_indexes()
+        rxnorm_index = HybridCandidateIndex(self.rxnorm_records, "RxNorm")
+        rxnorm_index.build_indexes()
+        self.linker = HybridEntityLinker(
+            icd10_index,
+            rxnorm_index,
+            top_k=int(self.config["candidate_top_k"])
         )
         self.assertion_predictor = HybridAssertionPredictor()
         self.relation_extractor = RuleRelationExtractor(int(self.config["relation_max_distance"]))
@@ -72,7 +78,11 @@ class ClinicalNLPPipeline:
     def process_document(self, document: ClinicalDocument) -> dict[str, Any]:
         raw_text = document.raw_text
         sections = detect_sections(raw_text)
-        entities = refine_boundaries(self.detector.detect(raw_text), raw_text)
+        entities = self.dict_detector.detect(raw_text)
+        if self.trans_detector:
+            trans_entities = self.trans_detector.detect(raw_text)
+            entities = resolve_overlaps(entities + trans_entities, raw_text)
+        entities = refine_boundaries(entities, raw_text)
         axes_by_entity = self.assertion_predictor.predict(raw_text, entities)
 
         retrieval_diagnostics: list[dict[str, Any]] = []
@@ -126,6 +136,7 @@ class ClinicalNLPPipeline:
                 "submission_entity_count": len(submission_entities),
                 "offset_validation_passed": True,
             },
+            "raw_entities": entities,
         }
 
 
@@ -149,17 +160,114 @@ def run_inference(
             existing.unlink()
 
     pipeline = ClinicalNLPPipeline(artifact_dir, ner_model_dir=ner_model_dir)
+    
+    # PASS 1: NER, Assertion (Hybrid fallback), Hybrid Retrieval, Relations
+    intermediate_results = {}
+    for document in documents:
+        intermediate_results[document.document_id] = pipeline.process_document(document)
+
+    # UNLOAD NER
+    if pipeline.trans_detector:
+        del pipeline.trans_detector
+        pipeline.trans_detector = None
+        import gc
+        import torch
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    # PASS 2: LLM Assertion & Reranking (Batched)
+    try:
+        from .reranker import ClinicalLLMReranker
+        from .assertions import ClinicalLLMAssertionPredictor
+        
+        reranker = ClinicalLLMReranker()
+        llm_assertion = ClinicalLLMAssertionPredictor(reranker.llm)
+        
+        # Prepare queries
+        rerank_queries = []
+        assertion_queries = []
+        entity_refs = []
+        
+        for document in documents:
+            result = intermediate_results[document.document_id]
+            raw_text = document.raw_text
+            entities = result["raw_entities"]
+            
+            retrieval_diags = result["diagnostics"]["retrieval"]
+            
+            for entity, rdiag in zip(entities, retrieval_diags):
+                cands = rdiag["top_candidates"]
+                if cands:
+                    start_idx = max(0, entity.start - 50)
+                    end_idx = min(len(raw_text), entity.end + 50)
+                    context = raw_text[start_idx:end_idx]
+                    rerank_queries.append({
+                        "context_text": context,
+                        "entity_text": entity.text,
+                        "entity_type": entity.type,
+                        "candidates": cands
+                    })
+                    entity_refs.append(entity)
+                    
+                # Assertion queries
+                start_idx_a = max(0, entity.start - 120)
+                end_idx_a = min(len(raw_text), entity.end + 120)
+                context_a = raw_text[start_idx_a:end_idx_a]
+                assertion_queries.append({
+                    "context": context_a,
+                    "entity_text": entity.text
+                })
+                
+        # Run Rerank
+        if rerank_queries:
+            rerank_results = reranker.rerank_batch(rerank_queries)
+            for entity, selected_id in zip(entity_refs, rerank_results):
+                if selected_id:
+                    entity.candidates = [selected_id]
+                else:
+                    entity.candidates = entity.candidates[:1]
+                    
+        # Run Assertion
+        if assertion_queries:
+            assertion_results = llm_assertion.predict_batch(assertion_queries)
+            flat_entities = [ent for doc in documents for ent in intermediate_results[doc.document_id]["raw_entities"]]
+            for entity, axes in zip(flat_entities, assertion_results):
+                entity.assertions = axes.labels()
+                
+        reranker.destroy()
+    except ImportError:
+        pass
+        
     type_counts = Counter()
     candidate_linked = 0
     relation_count = 0
     submission_entity_count = 0
     unmapped_type_counts: Counter[str] = Counter()
     offset_errors = 0
-    results_by_id: dict[str, dict[str, Any]] = {}
-
+    
     for document in documents:
-        result = pipeline.process_document(document)
-        results_by_id[document.document_id] = result
+        result = intermediate_results[document.document_id]
+        entities = result["raw_entities"]
+        
+        # Re-build submission and diagnostics with updated entities
+        submission_entities = []
+        official_type_mapping = pipeline.entity_mapping.get("internal_to_official", {})
+        drop_unmapped = bool(pipeline.entity_mapping.get("drop_unmapped", pipeline.config.get("drop_unmapped_entity_types", True)))
+        
+        for entity in entities:
+            official_type = official_type_mapping.get(entity.type)
+            if not official_type:
+                if drop_unmapped:
+                    continue
+                official_type = entity.type
+            payload = entity.to_submission(official_type, pipeline._official_assertions(entity.assertions))
+            submission_entities.append(payload)
+            
+        result["submission"] = submission_entities
+        result["diagnostics"]["internal_entities"] = [entity.to_diagnostic() for entity in entities]
+        result["diagnostics"]["submission_entity_count"] = len(submission_entities)
+        
         write_json(output_path / f"{document.document_id}.json", result["submission"])
         write_json(diagnostics_path / f"{document.document_id}.json", result["diagnostics"])
         internal_entities = result["diagnostics"]["internal_entities"]

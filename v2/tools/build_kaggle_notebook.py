@@ -92,7 +92,14 @@ if PROJECT_ROOT is None:
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-required_imports = {"torch": "torch", "transformers": "transformers", "accelerate": "accelerate"}
+required_imports = {
+    "torch": "torch",
+    "transformers": "transformers",
+    "accelerate": "accelerate",
+    "bm25s": "bm25s",
+    "faiss-cpu": "faiss",
+    "sentence-transformers": "sentence_transformers"
+}
 missing = [package for package, module in required_imports.items() if importlib.util.find_spec(module) is None]
 if IS_KAGGLE and missing and INSTALL_MISSING_DEPENDENCIES:
     requirements = PROJECT_ROOT / "requirements-kaggle.txt"

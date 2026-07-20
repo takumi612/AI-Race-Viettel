@@ -5,3 +5,10 @@ transformers>=4.40
 accelerate>=0.30
 sentencepiece>=0.2
 safetensors>=0.4
+
+# Retrieval & Reranking dependencies
+bm25s
+faiss-cpu
+sentence-transformers
+vllm
+autoawq

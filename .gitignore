@@ -28,3 +28,11 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.log
+
+# Large data files and PDFs
+*.zip
+*.rar
+*.pdf
+/data/
+/docs/pdf_images/
+train-ai-race-v2*.ipynb

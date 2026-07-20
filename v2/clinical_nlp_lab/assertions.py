@@ -62,3 +62,73 @@ class HybridAssertionPredictor:
             (entity.start, entity.end, entity.type): self.predict_axes(raw_text, entity)
             for entity in entities
         }
+
+class ClinicalLLMAssertionPredictor:
+    """Sử dụng LLM để dự đoán Assertion (Polarity, Temporality, Certainty, Experiencer)."""
+    
+    def __init__(self, llm_engine):
+        self.llm = llm_engine
+        
+    def _build_prompt(self, context_text: str, entity_text: str) -> str:
+        system_prompt = (
+            "Bạn là chuyên gia phân tích hồ sơ bệnh án. "
+            "Nhiệm vụ của bạn là trích xuất 4 thuộc tính (Assertion) cho thực thể được chỉ định dựa trên ngữ cảnh bệnh án.\n"
+            "- Polarity: AFFIRMED (khẳng định) hoặc NEGATED (phủ định)\n"
+            "- Temporality: CURRENT (hiện tại), HISTORICAL (tiền sử), PLANNED (dự kiến), RESOLVED (đã khỏi)\n"
+            "- Certainty: CONFIRMED (chắc chắn), POSSIBLE (nghi ngờ/có thể)\n"
+            "- Experiencer: PATIENT (bệnh nhân), FAMILY (người nhà)"
+        )
+        user_prompt = (
+            f"Ngữ cảnh:\n\"\"\"{context_text}\"\"\"\n\n"
+            f"Thực thể: [{entity_text}]\n\n"
+            "Hãy trả về kết quả dưới định dạng JSON với 4 trường: polarity, temporality, certainty, experiencer."
+        )
+        return f"<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
+        
+    def _build_json_schema(self) -> str:
+        import json
+        schema = {
+            "type": "object",
+            "properties": {
+                "polarity": {"enum": ["AFFIRMED", "NEGATED"]},
+                "temporality": {"enum": ["CURRENT", "HISTORICAL", "PLANNED", "RESOLVED"]},
+                "certainty": {"enum": ["CONFIRMED", "POSSIBLE"]},
+                "experiencer": {"enum": ["PATIENT", "FAMILY"]}
+            },
+            "required": ["polarity", "temporality", "certainty", "experiencer"]
+        }
+        return json.dumps(schema)
+
+    def predict_batch(self, queries: list[dict]) -> list[AssertionAxes]:
+        if not self.llm or not queries:
+            return []
+            
+        import json
+        from vllm import SamplingParams
+        
+        prompts = []
+        for q in queries:
+            prompts.append(self._build_prompt(q["context"], q["entity_text"]))
+            
+        sp = SamplingParams(
+            temperature=0.0,
+            max_tokens=64,
+            guided_json=self._build_json_schema()
+        )
+        
+        outputs = self.llm.generate(prompts, sampling_params=sp, use_tqdm=True)
+        results = []
+        for output in outputs:
+            generated_text = output.outputs[0].text
+            try:
+                data = json.loads(generated_text)
+                axes = AssertionAxes(
+                    polarity=data.get("polarity", "AFFIRMED"),
+                    temporality=data.get("temporality", "CURRENT"),
+                    certainty=data.get("certainty", "CONFIRMED"),
+                    experiencer=data.get("experiencer", "PATIENT")
+                )
+                results.append(axes)
+            except Exception:
+                results.append(AssertionAxes())
+        return results
