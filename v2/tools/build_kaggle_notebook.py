@@ -375,6 +375,101 @@ INFERENCE_SUMMARY = run_inference(
 print(INFERENCE_SUMMARY)'''
         )
     )
+    cells.append(markdown_cell("## 7.5 Benchmark Evaluation (eval/gt + eval/input)"))
+    cells.append(
+        code_cell(
+            '''eval_roots = []
+if IS_KAGGLE:
+    for root in KAGGLE_INPUT_ROOT.rglob("eval"):
+        if (root / "gt").is_dir() and ((root / "input").is_dir() or (root / "input.zip").is_file()):
+            eval_roots.append(root)
+else:
+    eval_local = PROJECT_ROOT.parent / "ai-race-clinical-data/eval"
+    if (eval_local / "gt").is_dir():
+        eval_roots.append(eval_local)
+
+if eval_roots:
+    eval_dir = eval_roots[0]
+    print(f"[EVAL] Found evaluation benchmark dataset at: {eval_dir}")
+    eval_input = eval_dir / "input" if (eval_dir / "input").is_dir() else eval_dir / "input.zip"
+    eval_gt_dir = eval_dir / "gt"
+    eval_output_dir = RUN_ROOT / "eval_output"
+    eval_output_dir.mkdir(parents=True, exist_ok=True)
+
+    run_inference(
+        eval_input,
+        eval_output_dir,
+        PROJECT_ROOT / "artifacts",
+        create_zip=False,
+        ner_model_dir=ACTIVE_NER_MODEL,
+    )
+
+    gt_files = list(eval_gt_dir.glob("*.json"))
+    total_gt_entities = 0
+    total_pred_entities = 0
+    correct_ner = 0
+    correct_linking = 0
+    correct_assertion = 0
+    per_type_stats = {}
+
+    for gt_file in gt_files:
+        pred_file = eval_output_dir / gt_file.name
+        if not pred_file.is_file():
+            continue
+        gt_data = json.loads(gt_file.read_text(encoding="utf-8"))
+        pred_data = json.loads(pred_file.read_text(encoding="utf-8"))
+
+        gt_ents = gt_data.get("entities", [])
+        pred_ents = pred_data.get("entities", [])
+
+        total_gt_entities += len(gt_ents)
+        total_pred_entities += len(pred_ents)
+
+        pred_map = {(e["start"], e["end"], e["label"]): e for e in pred_ents}
+
+        for ge in gt_ents:
+            etype = ge.get("label", "UNKNOWN")
+            if etype not in per_type_stats:
+                per_type_stats[etype] = {"gt": 0, "correct_ner": 0, "correct_code": 0}
+            per_type_stats[etype]["gt"] += 1
+
+            key = (ge["start"], ge["end"], ge["label"])
+            if key in pred_map:
+                correct_ner += 1
+                per_type_stats[etype]["correct_ner"] += 1
+                pe = pred_map[key]
+                if ge.get("code") == pe.get("code"):
+                    correct_linking += 1
+                    per_type_stats[etype]["correct_code"] += 1
+
+    precision = (correct_ner / total_pred_entities) if total_pred_entities > 0 else 0.0
+    recall = (correct_ner / total_gt_entities) if total_gt_entities > 0 else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+    linking_acc = (correct_linking / correct_ner) if correct_ner > 0 else 0.0
+
+    print("\\n" + "="*50)
+    print(f"📊 BENCHMARK EVALUATION RESULTS ({len(gt_files)} documents)")
+    print("="*50)
+    print(f"Total GT Entities   : {total_gt_entities}")
+    print(f"Total Pred Entities : {total_pred_entities}")
+    print(f"NER Precision       : {precision:.4f}")
+    print(f"NER Recall          : {recall:.4f}")
+    print(f"NER F1-Score        : {f1:.4f}")
+    print(f"Entity Linking Acc  : {linking_acc:.4f} ({correct_linking}/{correct_ner} matched entities)")
+    print("-" * 50)
+    print("Per-Entity Type Breakdown:")
+    for etype, stats in sorted(per_type_stats.items()):
+        gt_c = stats["gt"]
+        ner_c = stats["correct_ner"]
+        code_c = stats["correct_code"]
+        rec = (ner_c / gt_c) if gt_c > 0 else 0.0
+        acc = (code_c / ner_c) if ner_c > 0 else 0.0
+        print(f"  [{etype:<13}] GT: {gt_c:<4} | NER Recall: {rec:.2%} | Linking Acc: {acc:.2%}")
+    print("="*50 + "\\n")
+else:
+    print("[EVAL] No benchmark `eval` dataset attached. Skipping evaluation.")'''
+        )
+    )
     cells.append(markdown_cell("## 8. Validate submission and write run manifest"))
     cells.append(
         code_cell(
