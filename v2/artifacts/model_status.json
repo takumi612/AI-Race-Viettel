@@ -1,0 +1,17 @@
+{
+  "active_assertion": "hybrid_rule_baseline",
+  "active_ner": "ontology_dictionary_plus_generic_rules",
+  "active_relation": "rule_baseline_diagnostics_only",
+  "assertion_model": {
+    "reason": "No annotated assertion labels",
+    "trained": false
+  },
+  "ner_model": {
+    "reason": "No annotated training data",
+    "trained": false
+  },
+  "relation_model": {
+    "reason": "No annotated relation labels",
+    "trained": false
+  }
+}
