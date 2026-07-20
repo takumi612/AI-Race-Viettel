@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 import zipfile
 from collections import Counter
 from pathlib import Path
@@ -226,68 +229,108 @@ def run_inference(
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    # PASS 2: LLM Assertion & Reranking (Batched)
-    try:
-        from .reranker import ClinicalLLMReranker
-        from .assertions import ClinicalLLMAssertionPredictor
+    # PASS 2: LLM Assertion & Reranking (Batched via Subprocess)
+    # Prepare queries
+    rerank_queries = []
+    assertion_queries = []
+    entity_refs = []
+    
+    for document in documents:
+        result = intermediate_results[document.document_id]
+        raw_text = document.raw_text
+        entities = result["raw_entities"]
         
-        reranker = ClinicalLLMReranker()
-        llm_assertion = ClinicalLLMAssertionPredictor(reranker.llm)
+        retrieval_diags = result["diagnostics"]["retrieval"]
         
-        # Prepare queries
-        rerank_queries = []
-        assertion_queries = []
-        entity_refs = []
-        
-        for document in documents:
-            result = intermediate_results[document.document_id]
-            raw_text = document.raw_text
-            entities = result["raw_entities"]
-            
-            retrieval_diags = result["diagnostics"]["retrieval"]
-            
-            for entity, rdiag in zip(entities, retrieval_diags):
-                cands = rdiag["top_candidates"]
-                if cands:
-                    start_idx = max(0, entity.start - 50)
-                    end_idx = min(len(raw_text), entity.end + 50)
-                    context = raw_text[start_idx:end_idx]
-                    rerank_queries.append({
-                        "context_text": context,
-                        "entity_text": entity.text,
-                        "entity_type": entity.type,
-                        "candidates": cands
-                    })
-                    entity_refs.append(entity)
-                    
-                # Assertion queries
-                start_idx_a = max(0, entity.start - 120)
-                end_idx_a = min(len(raw_text), entity.end + 120)
-                context_a = raw_text[start_idx_a:end_idx_a]
-                assertion_queries.append({
-                    "context": context_a,
-                    "entity_text": entity.text
+        for entity, rdiag in zip(entities, retrieval_diags):
+            cands = rdiag["top_candidates"]
+            if cands:
+                start_idx = max(0, entity.start - 50)
+                end_idx = min(len(raw_text), entity.end + 50)
+                context = raw_text[start_idx:end_idx]
+                rerank_queries.append({
+                    "context_text": context,
+                    "entity_text": entity.text,
+                    "entity_type": entity.type,
+                    "candidates": cands
                 })
+                entity_refs.append(entity)
                 
-        # Run Rerank
-        if rerank_queries:
-            rerank_results = reranker.rerank_batch(rerank_queries)
-            for entity, selected_id in zip(entity_refs, rerank_results):
-                if selected_id:
-                    entity.candidates = [selected_id]
-                else:
-                    entity.candidates = entity.candidates[:1]
+            # Assertion queries
+            start_idx_a = max(0, entity.start - 120)
+            end_idx_a = min(len(raw_text), entity.end + 120)
+            context_a = raw_text[start_idx_a:end_idx_a]
+            assertion_queries.append({
+                "context": context_a,
+                "entity_text": entity.text
+            })
+
+    # Run Rerank and Assertion in a subprocess if there are queries
+    if rerank_queries or assertion_queries:
+        temp_dir = output_path.parent
+        temp_input_path = temp_dir / "temp_llm_queries.json"
+        temp_output_path = temp_dir / "temp_llm_results.json"
+        
+        with open(temp_input_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "rerank_queries": rerank_queries,
+                "assertion_queries": assertion_queries
+            }, f, ensure_ascii=False, indent=2)
+            
+        model_name = pipeline.config.get("reranker_model_name", "Qwen/Qwen2.5-7B-Instruct-AWQ")
+        cmd = [
+            sys.executable,
+            "-m",
+            "clinical_nlp_lab.rerank_subprocess",
+            "--input_path", str(temp_input_path),
+            "--output_path", str(temp_output_path),
+            "--model_name", model_name
+        ]
+        
+        try:
+            print("[LLM-SUBPROCESS] Running LLM Reranking & Assertion in subprocess...")
+            env = os.environ.copy()
+            env["PYTHONPATH"] = os.pathsep.join(sys.path)
+            
+            subprocess_result = subprocess.run(cmd, env=env, check=True, capture_output=True, text=True)
+            print("[LLM-SUBPROCESS] Subprocess completed successfully.")
+            if subprocess_result.stdout:
+                print(subprocess_result.stdout)
+            
+            # Read back results
+            with open(temp_output_path, "r", encoding="utf-8") as f:
+                output_data = json.load(f)
+                
+            rerank_results = output_data.get("rerank_results", [])
+            assertion_results = output_data.get("assertion_results", [])
+            
+            # Update entities with Rerank results
+            if rerank_results:
+                for entity, selected_id in zip(entity_refs, rerank_results):
+                    if selected_id:
+                        entity.candidates = [selected_id]
+                    else:
+                        entity.candidates = entity.candidates[:1]
+                        
+            # Update entities with Assertion results
+            if assertion_results:
+                flat_entities = [ent for doc in documents for ent in intermediate_results[doc.document_id]["raw_entities"]]
+                for entity, labels in zip(flat_entities, assertion_results):
+                    entity.assertions = labels
                     
-        # Run Assertion
-        if assertion_queries:
-            assertion_results = llm_assertion.predict_batch(assertion_queries)
-            flat_entities = [ent for doc in documents for ent in intermediate_results[doc.document_id]["raw_entities"]]
-            for entity, axes in zip(flat_entities, assertion_results):
-                entity.assertions = axes.labels()
-                
-        reranker.destroy()
-    except ImportError:
-        pass
+        except subprocess.CalledProcessError as e:
+            print("[LLM-SUBPROCESS] ERROR running LLM subprocess!")
+            print("Stdout:", e.stdout)
+            print("Stderr:", e.stderr)
+            raise e
+        finally:
+            # Clean up temporary files
+            for path in (temp_input_path, temp_output_path):
+                if path.exists():
+                    try:
+                        path.unlink()
+                    except Exception:
+                        pass
         
     type_counts = Counter()
     candidate_linked = 0
