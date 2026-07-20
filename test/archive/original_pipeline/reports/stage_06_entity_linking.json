@@ -1,0 +1,239 @@
+{
+  "stage": 6,
+  "method": "type-routed exact lookup + fuzzy SequenceMatcher + character n-gram retrieval + weighted lexical reranking",
+  "ontology_sizes": {
+    "icd10": 12137,
+    "rxnorm": 56053
+  },
+  "input_documents": 100,
+  "detected_type_counts": {
+    "SYMPTOM": 337,
+    "DISEASE": 250,
+    "DRUG": 212,
+    "LAB_RESULT": 43,
+    "PATIENT_INFO": 3
+  },
+  "linked_type_counts": {
+    "DISEASE": 250,
+    "DRUG": 212
+  },
+  "drug_attribute_counts": {
+    "drug_name": 212,
+    "strength": 26,
+    "route": 8,
+    "frequency": 7
+  },
+  "offset_errors": 0,
+  "score_threshold_counts": {
+    "score_ge_0_5": 462,
+    "score_ge_0_8": 462
+  },
+  "ontology_self_lookup_sanity": {
+    "sample_size": 1000,
+    "top1_hits": 1000,
+    "top1_recall": 1.0,
+    "note": "Sanity check on ontology aliases only; not a competition validation score."
+  },
+  "candidate_recall_at_k": {
+    "status": "not_scored",
+    "reason": "No annotated ground truth; private input was not used to fit or tune retrieval."
+  },
+  "semantic_embedding": {
+    "status": "optional_not_active",
+    "reason": "No sentence-transformers/FAISS dependency is required for the verified offline baseline."
+  },
+  "examples": [
+    {
+      "document_id": "1",
+      "text": "metoprolol 25mg po bid",
+      "type": "DRUG",
+      "candidates": [
+        "6918"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "6918",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "metoprolol"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "doxycycline",
+      "type": "DRUG",
+      "candidates": [
+        "3640"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "3640",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "doxycycline"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "atenolol",
+      "type": "DRUG",
+      "candidates": [
+        "1202"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "1202",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "atenolol"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "Căng thẳng",
+      "type": "DISEASE",
+      "candidates": [
+        "R45.0"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "R45.0",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "R45.0"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "caffeine",
+      "type": "DRUG",
+      "candidates": [
+        "1886"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "1886",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "caffeine"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "caffeine",
+      "type": "DRUG",
+      "candidates": [
+        "1886"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "1886",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "caffeine"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "ngoại tâm thu nhĩ",
+      "type": "DISEASE",
+      "candidates": [
+        "I49.1"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "I49.1",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "I49.1"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "ngoại tâm thu thất",
+      "type": "DISEASE",
+      "candidates": [
+        "I49.3"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "I49.3",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "I49.3"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "metoprolol 25mg po bid",
+      "type": "DRUG",
+      "candidates": [
+        "6918"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "6918",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "metoprolol"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "aspirin 325mg",
+      "type": "DRUG",
+      "candidates": [
+        "1191"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "1191",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "aspirin"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "ngoại tâm thu nhĩ",
+      "type": "DISEASE",
+      "candidates": [
+        "I49.1"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "I49.1",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "I49.1"
+        }
+      ]
+    },
+    {
+      "document_id": "1",
+      "text": "ngoại tâm thu thất",
+      "type": "DISEASE",
+      "candidates": [
+        "I49.3"
+      ],
+      "ranked": [
+        {
+          "candidate_id": "I49.3",
+          "score": 1.0,
+          "method": "detector_exact_phrase",
+          "name": "I49.3"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# Clinical NLP notebook dependencies for Google Colab
+numpy>=1.26,<3
+pandas>=2.1,<4
+openpyxl>=3.1,<4
+pydantic>=2.6,<3
+nbformat>=5.9,<6
+torch>=2.2,<3
+transformers>=4.40,<5
+datasets>=2.18,<4
+seqeval>=1.2,<2
+jiwer>=3,<5
+rapidfuzz>=3,<4
+sentence-transformers>=3,<4

@@ -1,76 +1,30 @@
-# Python
+# Python / notebook caches
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.toast
+*.py[cod]
 .pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
-.superpowers/
+.ipynb_checkpoints/
+.venv/
 
-# IDE / Editors
+# Runtime data and generated output are supplied through Google Drive
+/input.zip
+/ICD10.xlsx
+/RxNorm_full_*.zip
+/output/
+/diagnostics/
+/output.zip
+/test/runtime_evidence/
+/Code_E_Platform/output/
+/Code_E_Platform/diagnostics/
+/Code_E_Platform/output.zip
+
+# Model checkpoints belong on Google Drive
+/artifacts/ner_model/
+/artifacts/assertion_model/
+/artifacts/relation_model/
+
+# Editors / OS
 .vscode/
 .idea/
-.worktrees/
-.obsidian/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.swp
-*~
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Project Specific Data
-# Giữ cấu trúc thư mục bằng .gitkeep nhưng ignore các tệp dữ liệu thực tế
-data/input/*
-!data/input/.gitkeep
-data/output/*
-!data/output/.gitkeep
-data/processed/*
-!data/processed/.gitkeep
-data/raw/*
-!data/raw/.gitkeep
-data/dev/*
-!data/dev/.gitkeep
-data/synthetic_train_v1/
-
-# Dữ liệu tri thức y khoa lớn (cần download cục bộ khi chạy setup hoặc cache)
-data/kb/*
-!data/kb/override_dict.json
-!data/kb/.gitkeep
-
-# Tránh đẩy file đề bài PDF lớn lên repo
-*.pdf
-docs/pdf_images/
-
-# Các thư mục code tham khảo không thuộc dự án chính
-Other Source/
-
-# Dữ liệu lớn và index FAISS
-data/models/
-
-# Các file zip
-*.zip
-data/*.zip
-
-# Thư mục nháp và output phụ
-scratch/
-reports/*
-!reports/.gitkeep
-data/output_*/
-data/input_*/
-data/training/
-data/.training-build-*/
-data/.training-backup-*/
+*.log

@@ -1,0 +1,41 @@
+{
+  "axes": {
+    "certainty": [
+      "CONFIRMED",
+      "SUSPECTED",
+      "POSSIBLE",
+      "CONDITIONAL"
+    ],
+    "experiencer": [
+      "PATIENT",
+      "FAMILY",
+      "OTHER"
+    ],
+    "polarity": [
+      "AFFIRMED",
+      "NEGATED"
+    ],
+    "temporality": [
+      "CURRENT",
+      "HISTORICAL",
+      "PLANNED",
+      "RESOLVED"
+    ]
+  },
+  "internal_to_official": {
+    "certainty:CONDITIONAL": null,
+    "certainty:CONFIRMED": null,
+    "certainty:POSSIBLE": null,
+    "certainty:SUSPECTED": null,
+    "experiencer:FAMILY": "isFamily",
+    "experiencer:OTHER": null,
+    "experiencer:PATIENT": null,
+    "polarity:AFFIRMED": null,
+    "polarity:NEGATED": "isNegated",
+    "temporality:CURRENT": null,
+    "temporality:HISTORICAL": "isHistorical",
+    "temporality:PLANNED": null,
+    "temporality:RESOLVED": null
+  },
+  "status": "CONFIRMED_FROM_REPOSITORY_VALIDATOR"
+}

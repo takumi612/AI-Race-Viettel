@@ -1,0 +1,917 @@
+{
+  "audit_version": "1.0.0",
+  "root": "D:\\2 Code\\AI_race",
+  "files": {
+    "input.zip": {
+      "exists": true,
+      "path": "input.zip",
+      "size_bytes": 85874,
+      "sha256": "46fe4a578b2c4478faa7c570b218218f539c0bbf1ea409168ae67a14ad86ca35"
+    },
+    "ICD10.xlsx": {
+      "exists": true,
+      "path": "ICD10.xlsx",
+      "size_bytes": 2011137,
+      "sha256": "4737e36d65698de987b718485c4f2c7dab8c8b71fdd263854798c27ee89e528e"
+    },
+    "RxNorm_full_07062026.zip": {
+      "exists": true,
+      "path": "RxNorm_full_07062026.zip",
+      "size_bytes": 259313098,
+      "sha256": "53523ee9f1fcd7ee426698edf566aedebe548a6ec8cc372c41271fc5b28e784c"
+    }
+  },
+  "input_zip": {
+    "archive": {
+      "member_count": 101,
+      "file_count": 100,
+      "directory_count": 1,
+      "compressed_bytes": 72144,
+      "uncompressed_bytes": 170948,
+      "extension_counts": {
+        ".txt": 100
+      },
+      "root_counts": {
+        "input": 101
+      },
+      "unsafe_members": [],
+      "duplicate_member_names": [],
+      "crc_error_member": null
+    },
+    "documents": {
+      "txt_count": 100,
+      "numeric_id_min": 1,
+      "numeric_id_max": 100,
+      "missing_numeric_ids": [],
+      "duplicate_numeric_ids": [],
+      "all_strict_utf8": true,
+      "utf8_failures": [],
+      "utf8_bom_files": [],
+      "empty_files": [],
+      "whitespace_only_files": [],
+      "null_byte_files": [],
+      "unexpected_control_char_files": [],
+      "non_nfc_files": [],
+      "newline_styles": {
+        "lf_files": 100
+      },
+      "byte_length": {
+        "count": 100,
+        "min": 182,
+        "p25": 797.0,
+        "median": 1582.5,
+        "p75": 2204.5,
+        "p95": 3832.3,
+        "max": 5702,
+        "mean": 1709.48
+      },
+      "character_length": {
+        "count": 100,
+        "min": 136,
+        "p25": 611.75,
+        "median": 1222.5,
+        "p75": 1741.0,
+        "p95": 2942.7,
+        "max": 4428,
+        "mean": 1323.36
+      },
+      "line_count": {
+        "count": 100,
+        "min": 3,
+        "p25": 14.0,
+        "median": 29.5,
+        "p75": 36.25,
+        "p95": 60.05,
+        "max": 140,
+        "mean": 29.64
+      },
+      "duplicate_content_groups": [],
+      "samples": {
+        "input/1.txt": "1.  Tiền sử bệnh\n    Thuốc trước khi nhập viện\n    - metoprolol 25mg po bid\n    - doxycycline cho viêm tuyến mồ hôi\n    - atenolol (uống hôm nay)\n    Các yếu tố nguy cơ liên quan\n    - Theo lời bệnh nhân kể lại bệnh nhân có   Căng thẳng  nhiều trong công việc\n    - Mất việc làm 8 ngày trước\n    -  Một ngày người bệnh có thể uống hàng chục tách cà phê có caffeine\n    -  và 1 tách cà phê không caffeine\n\n2.  Tiền sử bệnh hiện tại\n    Lý do nhập viện:  Bệnh nhân vào viện vì xuất hiện triệu chứng đán",
+        "input/100.txt": "1.  Tiền sử bệnh\n    Các bệnh đã điều trị trước đây: tiền sử tăng calci máu trước đây; 11.6\n    Các bệnh lý mãn tính\n    - U ác của đại tràng\n    - cường cận giáp nguyên phát\n    - Xơ vữa động mạch\n    - cơn đau thắt ngực ổn định\n\n2. Bệnh sử\n    Lý do nhập viện: đến khám vì tăng calci máu\n    Triệu chứng hiện tại: tăng calci máu\n    Các lần khám và xét nghiệm trước khi nhập viện\n    - xét nghiệm xét nghiệm ngoại trú được thực hiện hôm nay và canxi là 12.0; canxi ion hóa 6.8 \n    - xuất hiện hai ",
+        "input/31.txt": "Lý do nhập viện: Khởi phát chuyển dạBệnh sử: Thai 41 tuần, nhập viện để khởi phát chuyển dạ. Hiện có cơn co tử cung, \nthai máy tốt (FM +), \nchưa  ra huyết âm đạo (VB -), chưa vỡ ối/rỉ ối (LOF -).\n",
+        "input/55.txt": "2. Lịch sử bệnh hiện tại\nLý do nhập viện: sốt, đau quanh vết mổ\nTriệu chứng hiện tại\n- sốt\n- đau quanh vết mổ\n\n3. Đánh giá tại bệnh viện"
+      }
+    },
+    "annotations": {
+      "annotation_files_found": 0,
+      "train_split_found": false,
+      "validation_split_found": false,
+      "ground_truth_schema_available": false,
+      "detected_entity_labels": [],
+      "detected_assertion_labels": [],
+      "detected_relation_labels": []
+    }
+  },
+  "icd10": {
+    "sheet_summary": [
+      {
+        "name": "ICD10",
+        "max_row": 12222,
+        "max_column": 22
+      },
+      {
+        "name": "E - ICD10 Mã bệnh chính",
+        "max_row": 13069,
+        "max_column": 4
+      },
+      {
+        "name": "E1 - Không ghép DRG",
+        "max_row": 1266,
+        "max_column": 4
+      },
+      {
+        "name": "A1",
+        "max_row": 2290,
+        "max_column": 6
+      },
+      {
+        "name": "A3.1",
+        "max_row": 340,
+        "max_column": 3
+      },
+      {
+        "name": "A2 Mã ICD10 ko mã bệnh chính",
+        "max_row": 1266,
+        "max_column": 4
+      },
+      {
+        "name": "A3.2-A3.3-A3.4",
+        "max_row": 41,
+        "max_column": 3
+      },
+      {
+        "name": "A3.5",
+        "max_row": 314,
+        "max_column": 3
+      },
+      {
+        "name": "A3.6",
+        "max_row": 317,
+        "max_column": 3
+      },
+      {
+        "name": "A3.7 - A3.8",
+        "max_row": 527,
+        "max_column": 3
+      },
+      {
+        "name": "A3.9",
+        "max_row": 268,
+        "max_column": 3
+      },
+      {
+        "name": "A4.1",
+        "max_row": 846,
+        "max_column": 3
+      },
+      {
+        "name": "A4.2",
+        "max_row": 115,
+        "max_column": 3
+      },
+      {
+        "name": "A3.10",
+        "max_row": 45,
+        "max_column": 3
+      }
+    ],
+    "expected_sheet_found": true,
+    "header_row": 3,
+    "headers": [
+      "STT CHƯƠNG",
+      "MÃ CHƯƠNG",
+      "CHAPTER NAME",
+      "TÊN CHƯƠNG",
+      "MÃ NHÓM CHÍNH",
+      "MAIN GROUP NAME I",
+      "TÊN NHÓM CHÍNH",
+      "MÃ NHÓM PHỤ 1",
+      "SUB GROUP NAME I",
+      "TÊN NHÓM PHỤ 1",
+      "MÃ NHÓM PHỤ 2",
+      "SUB GROUP NAME II",
+      "TÊN NHÓM PHỤ 2",
+      "MÃ LOẠI",
+      "TYPE NAME",
+      "TÊN LOẠI",
+      "MÃ BỆNH",
+      "MÃ BỆNH KHÔNG DẤU",
+      "DISEASE NAME",
+      "TÊN BỆNH",
+      "GHI CHÚ",
+      "NGÀY CẬP NHẬT"
+    ],
+    "required_headers": [
+      "MÃ BỆNH",
+      "MÃ BỆNH KHÔNG DẤU",
+      "DISEASE NAME",
+      "TÊN BỆNH"
+    ],
+    "missing_required_headers": [],
+    "data_start_row": 4,
+    "record_count": 12219,
+    "all_blank_rows": 0,
+    "unique_code_count": 12218,
+    "unique_code_without_dot_count": 12137,
+    "missing_values": {
+      "name_en": 1
+    },
+    "missing_value_samples": [
+      {
+        "row": 456,
+        "code": "A97",
+        "code_without_dot": "A97",
+        "name_en": "",
+        "name_vi": "Sốt xuất huyết Dengue"
+      }
+    ],
+    "exact_duplicate_group_count": 1,
+    "exact_duplicate_extra_row_count": 1,
+    "exact_duplicate_row_samples": [
+      {
+        "first_row": 4238,
+        "duplicate_row": 4239,
+        "record": [
+          "J13",
+          "J13",
+          "Pneumonia due to Streptococcus pneumoniae",
+          "Viêm phổi do phế cầu Streptococcus pneumoniae"
+        ]
+      }
+    ],
+    "duplicate_code_group_count": 1,
+    "duplicate_code_extra_row_count": 1,
+    "duplicate_code_samples": [
+      {
+        "code": "J13",
+        "count": 2,
+        "distinct_name_pairs": 1
+      }
+    ],
+    "duplicate_code_without_dot_group_count": 82,
+    "duplicate_code_without_dot_extra_row_count": 82,
+    "code_without_dot_mismatch_count": 858,
+    "canonical_code_without_dot_mismatch_count": 0,
+    "code_without_dot_mismatch_samples": [
+      {
+        "row": 17,
+        "code": "A02.2†",
+        "code_without_dot": "A022",
+        "canonical_code_without_dot": "A022"
+      },
+      {
+        "row": 52,
+        "code": "A06.5†",
+        "code_without_dot": "A065",
+        "canonical_code_without_dot": "A065"
+      },
+      {
+        "row": 53,
+        "code": "A06.6†",
+        "code_without_dot": "A066",
+        "canonical_code_without_dot": "A066"
+      },
+      {
+        "row": 55,
+        "code": "A06.8†",
+        "code_without_dot": "A068",
+        "canonical_code_without_dot": "A068"
+      },
+      {
+        "row": 96,
+        "code": "A17.0†",
+        "code_without_dot": "A170",
+        "canonical_code_without_dot": "A170"
+      },
+      {
+        "row": 97,
+        "code": "A17.1†",
+        "code_without_dot": "A171",
+        "canonical_code_without_dot": "A171"
+      },
+      {
+        "row": 98,
+        "code": "A17.8†",
+        "code_without_dot": "A178",
+        "canonical_code_without_dot": "A178"
+      },
+      {
+        "row": 99,
+        "code": "A17.9†",
+        "code_without_dot": "A179",
+        "canonical_code_without_dot": "A179"
+      },
+      {
+        "row": 100,
+        "code": "A17†",
+        "code_without_dot": "A17",
+        "canonical_code_without_dot": "A17"
+      },
+      {
+        "row": 102,
+        "code": "A18.0†",
+        "code_without_dot": "A180",
+        "canonical_code_without_dot": "A180"
+      },
+      {
+        "row": 109,
+        "code": "A18.7†",
+        "code_without_dot": "A187",
+        "canonical_code_without_dot": "A187"
+      },
+      {
+        "row": 188,
+        "code": "A32.1†",
+        "code_without_dot": "A321",
+        "canonical_code_without_dot": "A321"
+      },
+      {
+        "row": 209,
+        "code": "A39.0†",
+        "code_without_dot": "A390",
+        "canonical_code_without_dot": "A390"
+      },
+      {
+        "row": 210,
+        "code": "A39.1†",
+        "code_without_dot": "A391",
+        "canonical_code_without_dot": "A391"
+      },
+      {
+        "row": 214,
+        "code": "A39.5†",
+        "code_without_dot": "A395",
+        "canonical_code_without_dot": "A395"
+      },
+      {
+        "row": 284,
+        "code": "A52.0†",
+        "code_without_dot": "A520",
+        "canonical_code_without_dot": "A520"
+      },
+      {
+        "row": 299,
+        "code": "A54.4†",
+        "code_without_dot": "A544",
+        "canonical_code_without_dot": "A544"
+      },
+      {
+        "row": 360,
+        "code": "A74.0†",
+        "code_without_dot": "A740",
+        "canonical_code_without_dot": "A740"
+      },
+      {
+        "row": 415,
+        "code": "A85.0†",
+        "code_without_dot": "A850",
+        "canonical_code_without_dot": "A850"
+      },
+      {
+        "row": 416,
+        "code": "A85.1†",
+        "code_without_dot": "A851",
+        "canonical_code_without_dot": "A851"
+      },
+      {
+        "row": 421,
+        "code": "A87.0†",
+        "code_without_dot": "A870",
+        "canonical_code_without_dot": "A870"
+      },
+      {
+        "row": 422,
+        "code": "A87.1†",
+        "code_without_dot": "A871",
+        "canonical_code_without_dot": "A871"
+      },
+      {
+        "row": 474,
+        "code": "B00.3†",
+        "code_without_dot": "B003",
+        "canonical_code_without_dot": "B003"
+      },
+      {
+        "row": 475,
+        "code": "B00.4†",
+        "code_without_dot": "B004",
+        "canonical_code_without_dot": "B004"
+      },
+      {
+        "row": 481,
+        "code": "B01.0†",
+        "code_without_dot": "B010",
+        "canonical_code_without_dot": "B010"
+      },
+      {
+        "row": 482,
+        "code": "B01.1†",
+        "code_without_dot": "B011",
+        "canonical_code_without_dot": "B011"
+      },
+      {
+        "row": 483,
+        "code": "B01.2†",
+        "code_without_dot": "B012",
+        "canonical_code_without_dot": "B012"
+      },
+      {
+        "row": 487,
+        "code": "B02.0†",
+        "code_without_dot": "B020",
+        "canonical_code_without_dot": "B020"
+      },
+      {
+        "row": 488,
+        "code": "B02.1†",
+        "code_without_dot": "B021",
+        "canonical_code_without_dot": "B021"
+      },
+      {
+        "row": 489,
+        "code": "B02.2†",
+        "code_without_dot": "B022",
+        "canonical_code_without_dot": "B022"
+      }
+    ],
+    "code_regex_mismatch_count": 858,
+    "canonical_code_regex_mismatch_count": 0,
+    "code_regex_mismatch_samples": [
+      "A02.2†",
+      "A06.5†",
+      "A06.6†",
+      "A06.8†",
+      "A17.0†",
+      "A17.1†",
+      "A17.8†",
+      "A17.9†",
+      "A17†",
+      "A18.0†",
+      "A18.7†",
+      "A32.1†",
+      "A39.0†",
+      "A39.1†",
+      "A39.5†",
+      "A52.0†",
+      "A54.4†",
+      "A74.0†",
+      "A85.0†",
+      "A85.1†",
+      "A87.0†",
+      "A87.1†",
+      "B00.3†",
+      "B00.4†",
+      "B01.0†",
+      "B01.1†",
+      "B01.2†",
+      "B02.0†",
+      "B02.1†",
+      "B02.2†"
+    ],
+    "code_marker_counts": {
+      "dagger": 82,
+      "asterisk": 776
+    },
+    "chapter_counts": {
+      "A": 466,
+      "B": 455,
+      "C": 553,
+      "D": 532,
+      "E": 414,
+      "F": 445,
+      "G": 405,
+      "H": 459,
+      "I": 461,
+      "J": 282,
+      "K": 512,
+      "L": 406,
+      "M": 1074,
+      "N": 513,
+      "O": 501,
+      "P": 388,
+      "Q": 705,
+      "R": 338,
+      "S": 930,
+      "T": 769,
+      "U": 45,
+      "V": 273,
+      "W": 88,
+      "X": 103,
+      "Y": 390,
+      "Z": 712
+    },
+    "date_value_types": {
+      "str": 12219
+    },
+    "samples": [
+      {
+        "row": 4,
+        "code": "A00",
+        "code_without_dot": "A00",
+        "name_en": "Cholera",
+        "name_vi": "Bệnh tả"
+      },
+      {
+        "row": 5,
+        "code": "A00.0",
+        "code_without_dot": "A000",
+        "name_en": "Cholera due to Vibrio cholerae 01, biovar cholerae",
+        "name_vi": "Bệnh tả do Vibrio cholerae 01, typ sinh học cholerae"
+      },
+      {
+        "row": 6,
+        "code": "A00.1",
+        "code_without_dot": "A001",
+        "name_en": "Cholera due to Vibrio cholerae 01, biovar eltor",
+        "name_vi": "Bệnh tả do Vibrio cholerae 01, typ sinh học eltor"
+      },
+      {
+        "row": 7,
+        "code": "A00.9",
+        "code_without_dot": "A009",
+        "name_en": "Cholera, unspecified",
+        "name_vi": "Bệnh tả, không đặc hiệu"
+      },
+      {
+        "row": 8,
+        "code": "A01",
+        "code_without_dot": "A01",
+        "name_en": "Typhoid and paratyphoid fevers",
+        "name_vi": "Bệnh thương hàn và phó thương hàn"
+      }
+    ]
+  },
+  "rxnorm": {
+    "archive": {
+      "member_count": 44,
+      "compressed_bytes": 259304664,
+      "uncompressed_bytes": 1828225005,
+      "unsafe_members": [],
+      "required_members": {
+        "rrf/RXNCONSO.RRF": true,
+        "rrf/RXNREL.RRF": true
+      },
+      "required_member_sizes": {
+        "rrf/RXNCONSO.RRF": {
+          "compressed_bytes": 24642602,
+          "uncompressed_bytes": 131620308
+        },
+        "rrf/RXNREL.RRF": {
+          "compressed_bytes": 63498115,
+          "uncompressed_bytes": 527774099
+        }
+      },
+      "prescribe_variant_present": true
+    },
+    "readme": {
+      "member": "Readme_Full_07062026.txt",
+      "preview": "July 06, 2026\n\nREADME: RxNorm 07/06/2026 Full Update Release\n===================================================\n\n-----------------------------------------------------------------\nThis Full release contains data that is consistent with the\n2020AA version of the UMLS.\n-----------------------------------------------------------------\nThis release contains updates to the following sources:\n\nATC -  2026_01_28 (Anatomical Therapeutic Chemical Classification System)\nGS -  05/29/2026 (Gold Standard Alchemy)\nCVX -  04/21/2026 (Vaccines Administered,  2026_04_21)\nMMSL -  06/01/2026 (Multum MediSource Lexicon)\nMMX -  05/29/2026 (Micromedex DRUGDEX)\nMTHSPL -  06/27/2026 (FDA Structured Product Labels)\nNDDF -  06/03/2026 (First Databank FDB MedKnowledge (formerly NDDF Plus))\n#NDFRT -  (National Drug File - Reference Terminology)\nVANDF -  05/29/2026 (Veterans Health Administration National Drug File)\nDRUGBANK -  05/29/2026 (DrugBank,  5.0_2026_05_29)\nUSP -  02/24/2026 (USP Compendial Nomenclature)\n\nFor full details, please refer to the RxNorm documentation at\nhttps://www.nlm.nih.gov/research/umls/rxnorm/docs/index.html.\n\nThis release contains database control files and SQL\ncommands for use in the automation of the loading process of\nthese files into an Oracle RDBMS.In addition, scripts are now\nprovided for loading the RxNorm files into a MySQL database.\n\nRxNorm release data files are available by download from\nthe NLM download server at:\n\n        https://www.nlm.nih.gov/research/umls/rxnorm/docs/rxnormfiles.html\n\nThis link will take you to a page for downloading the latest files:\nRxNorm_full_07062026.zip\nOnce downloaded, it must be unzipped in order to access the files.\n\nHARDWARE AND SOFTWARE RECOMMENDATIONS\n-------------------------------------\n- Supported operating systems:\n        Windows: 7\n        Linux\n        Solaris: Solaris 10\n\n- Hardware Requirements\n\n  - A MINIMUM 2.05 GB of free hard disk space (To accomodate ZIP files and\n        unzipped contents).\n\nCONTENTS OF THE"
+    },
+    "rxnconso": {
+      "member": "rrf/RXNCONSO.RRF",
+      "expected_field_count": 18,
+      "row_count": 1202603,
+      "field_count_distribution": {
+        "18": 1202603
+      },
+      "malformed_row_sample_count": 0,
+      "malformed_row_samples": [],
+      "utf8_decode_error": null,
+      "language_counts": {
+        "ENG": 1202603
+      },
+      "source_counts_top_25": {
+        "RXNORM": 362409,
+        "MTHSPL": 216583,
+        "NDDF": 131753,
+        "SNOMEDCT_US": 116477,
+        "MMSL": 102880,
+        "MMX": 78114,
+        "VANDF": 76236,
+        "GS": 62716,
+        "DRUGBANK": 40486,
+        "ATC": 7660,
+        "USP": 6260,
+        "CVX": 1018,
+        "MTHCMSFRF": 11
+      },
+      "tty_counts": {
+        "DP": 190538,
+        "BD": 132887,
+        "SY": 113638,
+        "CD": 88163,
+        "IN": 70270,
+        "PT": 48620,
+        "FN": 46424,
+        "SCD": 40027,
+        "PSN": 38936,
+        "BN": 38152,
+        "CDA": 38024,
+        "CDC": 38024,
+        "CDD": 38024,
+        "AB": 31823,
+        "SCDC": 28326,
+        "TMSY": 27235,
+        "SU": 24146,
+        "SBD": 24060,
+        "SBDG": 20254,
+        "SBDC": 19514,
+        "SCDG": 16443,
+        "MS": 16111,
+        "SCDF": 15179,
+        "SBDF": 14605,
+        "SBDFP": 5165,
+        "SCDGP": 4816,
+        "FSY": 4679,
+        "SCDFP": 4542,
+        "GN": 4284,
+        "MIN": 3841,
+        "PIN": 3643,
+        "MTH_RXN_BD": 2070,
+        "MTH_RXN_CD": 1912,
+        "MTH_RXN_DP": 1899,
+        "DF": 1048,
+        "RXN_PT": 1037,
+        "PTGB": 1031,
+        "BPCK": 1008,
+        "GPCK": 925,
+        "SYGB": 752,
+        "MTH_RXN_CDC": 386,
+        "RXN_IN": 61,
+        "DFG": 47,
+        "SC": 23,
+        "ET": 11
+      },
+      "suppress_counts": {
+        "N": 807980,
+        "O": 387468,
+        "E": 7155
+      },
+      "default_filter": {
+        "LAT": [
+          "ENG"
+        ],
+        "SAB": [
+          "RXNORM"
+        ],
+        "SUPPRESS": [
+          "N"
+        ],
+        "TTY": [
+          "BN",
+          "BPCK",
+          "DF",
+          "DFG",
+          "GPCK",
+          "IN",
+          "MIN",
+          "PIN",
+          "SBD",
+          "SCD"
+        ]
+      },
+      "filtered_row_count": 56053,
+      "filtered_unique_rxcui_count": 56053,
+      "filtered_tty_counts": {
+        "SCD": 17552,
+        "IN": 14648,
+        "SBD": 9696,
+        "BN": 5110,
+        "MIN": 3841,
+        "PIN": 3643,
+        "BPCK": 740,
+        "GPCK": 653,
+        "DF": 126,
+        "DFG": 44
+      },
+      "filtered_samples": [
+        {
+          "RXCUI": "38",
+          "TTY": "BN",
+          "STR": "Parlodel",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "44",
+          "TTY": "IN",
+          "STR": "mesna",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "61",
+          "TTY": "IN",
+          "STR": "beta-alanine",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "73",
+          "TTY": "IN",
+          "STR": "docosahexaenoate",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "74",
+          "TTY": "IN",
+          "STR": "4-aminobenzoic acid",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "90",
+          "TTY": "PIN",
+          "STR": "eicosapentaenoic acid",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "94",
+          "TTY": "IN",
+          "STR": "5-hydroxytryptophan",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "97",
+          "TTY": "PIN",
+          "STR": "ticlopidine hydrochloride",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "99",
+          "TTY": "IN",
+          "STR": "6-aminocaproic acid",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "103",
+          "TTY": "IN",
+          "STR": "mercaptopurine",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "110",
+          "TTY": "IN",
+          "STR": "oxyquinoline",
+          "ISPREF": ""
+        },
+        {
+          "RXCUI": "149",
+          "TTY": "IN",
+          "STR": "acebutolol",
+          "ISPREF": ""
+        }
+      ]
+    },
+    "rxnrel": {
+      "member": "rrf/RXNREL.RRF",
+      "expected_field_count": 16,
+      "row_count": 7423180,
+      "field_count_distribution": {
+        "16": 7423180
+      },
+      "malformed_row_sample_count": 0,
+      "malformed_row_samples": [],
+      "utf8_decode_error": null,
+      "rel_counts": {
+        "RO": 5885574,
+        "SY": 634096,
+        "RB": 444773,
+        "RN": 444773,
+        "PAR": 6982,
+        "CHD": 6982
+      },
+      "rela_counts_top_40": {
+        "has_inactive_ingredient": 1673734,
+        "inactive_ingredient_of": 1673734,
+        "<blank>": 569988,
+        "has_ingredient": 355165,
+        "ingredient_of": 355165,
+        "inverse_isa": 292028,
+        "isa": 292028,
+        "has_active_ingredient": 288367,
+        "active_ingredient_of": 288367,
+        "has_active_moiety": 266440,
+        "active_moiety_of": 266440,
+        "has_dose_form": 135757,
+        "dose_form_of": 135757,
+        "has_tradename": 118543,
+        "tradename_of": 118543,
+        "constitutes": 116818,
+        "consists_of": 116818,
+        "has_doseformgroup": 36697,
+        "doseformgroup_of": 36697,
+        "print_name_of": 32054,
+        "has_print_name": 32054,
+        "form_of": 18169,
+        "has_form": 18169,
+        "has_precise_ingredient": 12287,
+        "precise_ingredient_of": 12287,
+        "has_ingredients": 11967,
+        "ingredients_of": 11967,
+        "has_part": 10549,
+        "part_of": 10549,
+        "has_precise_active_ingredient": 9878,
+        "precise_active_ingredient_of": 9878,
+        "has_basis_of_strength_substance": 9877,
+        "basis_of_strength_substance_of": 9877,
+        "has_boss": 8774,
+        "boss_of": 8774,
+        "quantified_form_of": 6834,
+        "has_quantified_form": 6834,
+        "contains": 6570,
+        "contained_in": 6570,
+        "included_in": 6267
+      },
+      "source_counts_top_25": {
+        "MTHSPL": 4414464,
+        "RXNORM": 2259114,
+        "MMSL": 295232,
+        "VANDF": 269980,
+        "SNOMEDCT_US": 86486,
+        "NDDF": 80118,
+        "ATC": 13964,
+        "USP": 2942,
+        "CVX": 880
+      },
+      "suppress_counts": {
+        "": 7423180
+      },
+      "requested_relation_counts": {
+        "has_ingredient": 355165,
+        "has_dose_form": 135757,
+        "tradename_of": 118543,
+        "consists_of": 116818
+      },
+      "samples": [
+        {
+          "RXCUI1": "",
+          "REL": "RO",
+          "RXCUI2": "",
+          "RELA": "has_ingredient",
+          "SAB": "MMSL",
+          "SUPPRESS": ""
+        },
+        {
+          "RXCUI1": "",
+          "REL": "RO",
+          "RXCUI2": "",
+          "RELA": "has_ingredient",
+          "SAB": "MMSL",
+          "SUPPRESS": ""
+        },
+        {
+          "RXCUI1": "",
+          "REL": "SY",
+          "RXCUI2": "",
+          "RELA": "",
+          "SAB": "RXNORM",
+          "SUPPRESS": ""
+        },
+        {
+          "RXCUI1": "",
+          "REL": "RO",
+          "RXCUI2": "",
+          "RELA": "has_ingredient",
+          "SAB": "MMSL",
+          "SUPPRESS": ""
+        },
+        {
+          "RXCUI1": "",
+          "REL": "RO",
+          "RXCUI2": "",
+          "RELA": "has_ingredient",
+          "SAB": "MMSL",
+          "SUPPRESS": ""
+        },
+        {
+          "RXCUI1": "",
+          "REL": "RO",
+          "RXCUI2": "",
+          "RELA": "has_basis_of_strength_substance",
+          "SAB": "SNOMEDCT_US",
+          "SUPPRESS": ""
+        },
+        {
+          "RXCUI1": "",
+          "REL": "RO",
+          "RXCUI2": "",
+          "RELA": "has_precise_active_ingredient",
+          "SAB": "SNOMEDCT_US",
+          "SUPPRESS": ""
+        },
+        {
+          "RXCUI1": "",
+          "REL": "RO",
+          "RXCUI2": "",
+          "RELA": "has_basis_of_strength_substance",
+          "SAB": "SNOMEDCT_US",
+          "SUPPRESS": ""
+        }
+      ]
+    }
+  },
+  "phase1_constraints": {
+    "training_authorized": false,
+    "training_performed": false,
+    "private_test_used_for_fitting": false
+  },
+  "elapsed_seconds": 34.47
+}

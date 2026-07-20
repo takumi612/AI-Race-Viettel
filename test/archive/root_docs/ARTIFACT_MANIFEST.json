@@ -1,0 +1,2632 @@
+{
+  "manifest_version": "2.0.0",
+  "project": "clinical-nlp-end-to-end-lab",
+  "current_stage": 9,
+  "stage_status": "completed",
+  "generated_at": "2026-07-20T00:21:14+07:00",
+  "source_files": [],
+  "artifacts": [
+    {
+      "path": ".gitignore",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1526,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "494ec2b5a9db359f499233b002cfb517e7bdbc0193ffbcf2edd26e501adc4108"
+    },
+    {
+      "path": "artifacts/assertion_mapping.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 886,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "56bede68274c8e290ba66cc94b7d3a4b210856c1218dd8a166f3b36f0934c689"
+    },
+    {
+      "path": "artifacts/config.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1795,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2b7e0af9507554b7567553d1a08e403f1a24f25ddab611bd4b8471e85842351f"
+    },
+    {
+      "path": "artifacts/entity_type_mapping.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 364,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "35b67761bdc94129104ba6fb38d2988a528357017a52c210e1b8448b451c705e"
+    },
+    {
+      "path": "artifacts/icd10/icd10_dictionary.jsonl.gz",
+      "artifact_type": "compressed_knowledge_cache",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 630718,
+      "required_for_inference": true,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "50ff6a412503352f7c5648e8c47031f943fa9261943f36d856c64810bd868064"
+    },
+    {
+      "path": "artifacts/icd10/metadata.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 573,
+      "required_for_inference": false,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "3632ed61d9f392bd6a1c480ac7e9bdd38272dc7692f96d8dfe4546682202b1d2"
+    },
+    {
+      "path": "artifacts/kb_build_report.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1340,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e13844296b6044d47c03d622383a2de1933cf1414b1a86fddeb907e33447b2ee"
+    },
+    {
+      "path": "artifacts/model_status.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 456,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "53f70360661921295a83dbd819dc9084ed499743bfe5671dd26679bb4d5e385a"
+    },
+    {
+      "path": "artifacts/relation_mapping.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 235,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e23f2ce9a9e86f4487a766ea222eeaec55a92745f518b38e4ce3126c93142d78"
+    },
+    {
+      "path": "artifacts/rxnorm/metadata.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 965,
+      "required_for_inference": false,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "2b9519f3a52450e189f94f0dee0dc4cc3599acc8d6f218432120e3627756e8ba"
+    },
+    {
+      "path": "artifacts/rxnorm/relations_metadata.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 736,
+      "required_for_inference": false,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "0832a6decc0dcc4224161e187d4af54e14f054fb13848015fcc64e8cf4b85ce7"
+    },
+    {
+      "path": "artifacts/rxnorm/rxnorm_dictionary.jsonl.gz",
+      "artifact_type": "compressed_knowledge_cache",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1444746,
+      "required_for_inference": true,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "974774e29c397e865d17d3bfb22f8ddf1efa6dd2fe31bcac4141cef6095b2497"
+    },
+    {
+      "path": "artifacts/rxnorm/rxnorm_relations.jsonl.gz",
+      "artifact_type": "compressed_knowledge_cache",
+      "created_by": "stage_2_knowledge_base_preprocessing",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2123808,
+      "required_for_inference": true,
+      "rebuild": "Run tools/build_knowledge_bases.py from the project root.",
+      "sha256": "d971cf2cfb80683c298cd9e6856e993dcae8f42e75905a8802ab42e9aea3450e"
+    },
+    {
+      "path": "artifacts/thresholds.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 155,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "75286f57f673e82bfe15ea785f3b6042110910929d7a21b8676f78abcc88d829"
+    },
+    {
+      "path": "CLINICAL_NLP_COLAB.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3749,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2d2a676b65735b517d41887d58b781a67b29d86428bb58368d0686a83add809e"
+    },
+    {
+      "path": "CLINICAL_NLP_DECISIONS.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 14832,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e17d757f70af3190e65051a73d8f924c256d8886c00bef20e6fe281c92439e17"
+    },
+    {
+      "path": "clinical_nlp_lab/__init__.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 327,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "a26e54d85e7465cd6c4c85f2437da1b324123a0d3ab56f437ae00dc479135533"
+    },
+    {
+      "path": "clinical_nlp_lab/artifacts.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4428,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "1b3caf60f136a4131e2fe8a27a41526a89bce92a47a34a31a2ef0c3cab810ceb"
+    },
+    {
+      "path": "clinical_nlp_lab/assertions.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_5_clinical_context",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2879,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "fc4d3f6d465a5a600a34a103353baa49e3ce8853b8b190a3fad667effaa3bb60"
+    },
+    {
+      "path": "clinical_nlp_lab/config.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3557,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2bf5b9b61a812fbd8a59afa7b8d661e1298f5e7515a754d10685fd868a848a4d"
+    },
+    {
+      "path": "clinical_nlp_lab/data.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_3_data_baseline",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9118,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e8565016b17a431951e6f359ddd56c6375319225c2b127394fe3b8371a45b10d"
+    },
+    {
+      "path": "clinical_nlp_lab/evaluation.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7393,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f681a3e50149b2cf25d2654dba0053949bea86535a73744fee37124031a1dbcc"
+    },
+    {
+      "path": "clinical_nlp_lab/kb.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 15266,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "884d529efdb13d700c73771b314214e4f710bd7e79b8891e3a0773c731578277"
+    },
+    {
+      "path": "clinical_nlp_lab/linking.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_6_entity_linking",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8743,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "91e1d96a11a4427f6e6b744d5e4df7b8053c27a3fa9defb1d8443413e070d41a"
+    },
+    {
+      "path": "clinical_nlp_lab/ner.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_4_entity_extraction",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9301,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "fa14824198e92262c655b3ccb6433e4c686ce0e4982641f371cb04571d976c5f"
+    },
+    {
+      "path": "clinical_nlp_lab/pipeline.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 11069,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "ec754dfbd975cbb8be38be2acd4d8d1323658fe5929eb2da738fbee7e19f0efe"
+    },
+    {
+      "path": "clinical_nlp_lab/relations.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_7_relation_extraction",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3033,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8441449cbd8e310e486f83839f4736bc4f53e6a2d2168660fee0b6d03f04e52c"
+    },
+    {
+      "path": "clinical_nlp_lab/schema.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6113,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "82f05ac2d5570958ac511b245916c31ae8b140161cc3cef307369ba5733f1537"
+    },
+    {
+      "path": "clinical_nlp_lab/text.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5552,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "4088836fb71aee94855ae54b4d035699fdbb2f43023697cfd08dbe8aca94f2b4"
+    },
+    {
+      "path": "clinical_nlp_lab/training.py",
+      "artifact_type": "python_source",
+      "created_by": "stage_4_entity_extraction",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 13622,
+      "required_for_inference": true,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "043d713a16ab8a07ff0bab309f970a10a90ddde8345dc67425dae7df796a8272"
+    },
+    {
+      "path": "CLINICAL_NLP_PROJECT_STATE.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6879,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c040d35f0558d62ce3292d1d91a19643cbf7a6f826bf049b1630ffe627621a5e"
+    },
+    {
+      "path": "CLINICAL_NLP_SPEC.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7453,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "67bf945ee7ecec436fd317633060e0e42aae5031512386ba00ee989ff4635d89"
+    },
+    {
+      "path": "COLAB_RUNBOOK.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3751,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c84dd1dcf25e5dae8d4a8ede629ef850e912cc19d313f54a7f2fde914117b86a"
+    },
+    {
+      "path": "configs/training/data.yaml",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 324,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "89dadf7669e86166841b24224fa69d5f22b16aeab68fb156db3c1dc3705690f1"
+    },
+    {
+      "path": "configs/training/embedding_bge_m3_lora.yaml",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 499,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c8372fa8fe67864f48161f07cc95893d948c215d6781f1f5074cc2821bde9567"
+    },
+    {
+      "path": "configs/training/ner_xlmr_base.yaml",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 466,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "78c1d03bf61b76fba3db47bf628f694417270d814202e4b2be20aae77b68b840"
+    },
+    {
+      "path": "configs/training/reranker_qwen25_7b_qlora.yaml",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 600,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "dfb720530ad83453ccaa1191da759eb01c1eb2d9c75b03bf902ba3e7a7af3b0f"
+    },
+    {
+      "path": "data/dev/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "data/input/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "data/kb/override_dict.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 16101,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "54f393f19f1a71d33a1ccc8db9dd2c7366cda4ba6d14d724436ab1954d816574"
+    },
+    {
+      "path": "data/output/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "data/processed/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "data/raw/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "DECISIONS.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 14842,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "4ceabe734c2fb396364305414929340184964618fcbeb1cfed32d7fccf208a8e"
+    },
+    {
+      "path": "diagnostics/1.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2032,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "f6efd1cf2bb3e8151e724d44e3b2f25705456c97680bae0c9d334d883b98b5fd"
+    },
+    {
+      "path": "diagnostics/run_summary.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 521,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "e610249b8c4740016e1636320fe070ccf1cd886e5fe1ce8f5363689c9e9198df"
+    },
+    {
+      "path": "docs/Bao_cao_Toi_uu_Retriever.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10510,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "830784b7099a5acb751ed8adb8267849ef88a69a646058202e580756008a0311"
+    },
+    {
+      "path": "docs/eval_assumptions.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6172,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8cd869e26efec1b19dafdd22e5735c929c908849025503befd4141372d1fe448"
+    },
+    {
+      "path": "docs/experiment_log.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1318,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "674c6d5065ecde373e53e123458a1f74fd564c9f3a5f245b7f0909443a6bc991"
+    },
+    {
+      "path": "docs/Huong_dan_Build_Index_va_Toi_uu.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 15590,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e259f32cbf4eead6d19c9c487d7a016dddca70e607ac7cf3f53967b3953edfb8"
+    },
+    {
+      "path": "docs/Huong_dan_Train_Embedding.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4473,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "56f1f2153d0067e5c8b1672d94bc7b5bd23ba0715af0ee6849b469a536eff986"
+    },
+    {
+      "path": "docs/Huong_dan_Train_LLM_Reranker.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5057,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "7905ede95e78e942498f35b2403781efcf30bbcc56fd4514c4e9b65f3a1daa51"
+    },
+    {
+      "path": "docs/Huong_dan_Train_NER.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5585,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f05f385fc146b06f0b9443d89bffa079b659f80df1e239abe9e20b3fc759b177"
+    },
+    {
+      "path": "docs/icd10_context.txt",
+      "artifact_type": "text_configuration",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1828088,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "b7c1894ed89a937c35ebf9d4f420d517388c7ccc52fb5314afcebe7a515f35cc"
+    },
+    {
+      "path": "docs/icd10_dictionary.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2732468,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "93a7e687e23661654c6113f11c971e575467ccd00119866be0c21d6534e77136"
+    },
+    {
+      "path": "docs/Kế hoạch triển khai.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 26336,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c451c33e34d4f9049582d5d43c3edebae415a5ba1a69a79176dd6ba630cbcaeb"
+    },
+    {
+      "path": "docs/Phân tích và Tích hợp ICD-10.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4506,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "9e1eba50b409e2c3c1f21860772d4e5245eab2733556ec97eb6c513143a5bf37"
+    },
+    {
+      "path": "docs/Phân tích và Tích hợp RxNorm.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5188,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "dd82ae65b17a7f4df7ec3c1d5c9ff2229d1379e8c101a58c1cf445d7f34d4bc0"
+    },
+    {
+      "path": "docs/Phân tích đề bài.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 16811,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "30a8713f540594b1dcfd1f1baf6cff17975b8c4a1df8925e5d71a116b2f208cf"
+    },
+    {
+      "path": "docs/Pipeline Chi tiết.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6791,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "44db0f1388adfd5b7f305d8d38086fc171fb0d85311c31dda918cd808dccb674"
+    },
+    {
+      "path": "docs/Q&A_Thiet_Ke_He_Thong.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 29579,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "b766a75aaaa47dd47e56c7c5437032b409d966bb56993ffd91604a7e44456226"
+    },
+    {
+      "path": "docs/rxnorm_context.txt",
+      "artifact_type": "text_configuration",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 41,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2513de73152b16568a1a6a53b4b95f32ccad3d1a2f4ddf14ca53a720d62c2cca"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-07-18-precision-first-hybrid-pipeline.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 68313,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "649cbeab917076c320e4999d11749520702bd8d502da59ca2b987aa45d0da8da"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-07-19-drive-data-bootstrap.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5288,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "96a8ba0cbb7882ff1937bf0d6ad7b59f90a7ae6b89a99e54ed3868268961a0ac"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-07-19-model-training-pipelines.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5895,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2a985339f7c37d8acd1d8b0ddfeb560c6c56b4d472c437215cd1d3b2cda02848"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-07-19-training-data-foundation.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 23088,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "b289e71eb7803b501c76ad64309b4598968497113232549692bb1e4be8ca50b4"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-07-18-precision-first-hybrid-pipeline-design.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 16361,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "36eb01ecfbfb184544011e51620e015748ad6a5303e1f2bcc6ccbbdeeaeca534"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-07-19-colab-modular-training-pipelines-design.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 15738,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "b074b7356cfbf94fe06cb008322f676ddaa2c73841e1e792d26ac50e5d865414"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-07-19-drive-data-bootstrap-design.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3174,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "129a98bec736e1ac10288e3c6af9f8124765019199bc480274ff1605c6e9203a"
+    },
+    {
+      "path": "docs/training/DATA_FOUNDATION.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 11850,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "d09c379c488045365cf8fa07094b60e39f9e6f2df53e774ee766425e61ced7db"
+    },
+    {
+      "path": "docs/training/MODEL_TRAINING_COLAB.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 17278,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "5609fc0340880831be72c3824e290fd351a9d8e9cf7af7655f0ed073f7c49c1e"
+    },
+    {
+      "path": "docs/training/QWEN_QLORA_COLAB.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8196,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "da31673c1ddebd38533f48073ce6b97debffc7ebd02a02c90c506ab8ecde10d5"
+    },
+    {
+      "path": "medical_information_extraction_lab.ipynb",
+      "artifact_type": "executable_notebook",
+      "created_by": "stage_9_final_generation",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 45018,
+      "required_for_inference": false,
+      "rebuild": "Run tools/build_notebook.py from the project root.",
+      "sha256": "b74553ad2c469408c2e52dc5455ea77dbbed1b10fd8d7b2b9c5214c3b7c37cfe"
+    },
+    {
+      "path": "output/1.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "output.zip",
+      "artifact_type": "submission_archive",
+      "created_by": "stage_8_integration",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 129,
+      "required_for_inference": false,
+      "rebuild": "Run tools/run_pipeline.py from the project root.",
+      "sha256": "9cf8bf0eab3084fa8179afb00884e5c4f3e23c1651be3f108bdcdfb3d42c81e2"
+    },
+    {
+      "path": "PROJECT_STATE.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6879,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c040d35f0558d62ce3292d1d91a19643cbf7a6f826bf049b1630ffe627621a5e"
+    },
+    {
+      "path": "pytest.ini",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 70,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "3921c09bc729b5b47589c78f581e07e0656cf3a859759be401ff66740e96d88b"
+    },
+    {
+      "path": "README.md",
+      "artifact_type": "readme",
+      "created_by": "stage_9_final_generation",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 15464,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "be2687453a613ecdc68f173e50ac4bb10ee8ab8c3ec447a8c1269d1a58f16b2e"
+    },
+    {
+      "path": "README_TASKS_7_10.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 24991,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "38d6784b7199ab98f5b345bfc715b8dffa757e99189e262d2e3279c17c99abdf"
+    },
+    {
+      "path": "reports/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "reports/final_verification.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1102,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "121f2e709f9233fde88ebaf3cb4bc125a6be3ebf81831f05f9e0cd49a701fe0a"
+    },
+    {
+      "path": "reports/phase1_audit.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 26256,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "46224e7177a11cc8294812a927dc1f05fa9fc643937d28c14e0a9e500956fba4"
+    },
+    {
+      "path": "reports/PHASE1_DATA_AUDIT.md",
+      "artifact_type": "project_documentation",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10624,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "1f0b714d5b2029016b4b1ee68c0ff9830dda2dcd66939e320df7878c95c23d4c"
+    },
+    {
+      "path": "reports/stage_03_eda.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2216,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "825dd72db78565e8ac65b278ec75ae4c6d4d3805457441108c08a7abbbadef91"
+    },
+    {
+      "path": "reports/stage_04_entity_extraction.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 924,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "cb1a3882693e7b35c9f3eedf82ec9dc33ca5989fc87ae487a207e9250476814c"
+    },
+    {
+      "path": "reports/stage_05_clinical_context.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1336,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "9e9210c0b69ca19d2cd103e23611bb42af08a784e1982e6a6fec677b573bbfeb"
+    },
+    {
+      "path": "reports/stage_06_entity_linking.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5286,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e0401f9504eb75c449623410d3c48a1d16e4122f787163ff8c9009a43bcdf868"
+    },
+    {
+      "path": "reports/stage_07_relations.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7524,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "810445889c8ffbdd1db651b55b0f8004c31e2b307b5bfa3457b45fd4a3a889a6"
+    },
+    {
+      "path": "reports/stage_08_integration.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1209,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "bfdee2da1a27dfdcbaccafe8c9f7b16a520c71b2b6e4f179b27b5ff12333280a"
+    },
+    {
+      "path": "requirements-colab.txt",
+      "artifact_type": "text_configuration",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 261,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "be2af114bdd14d9c9de85dcc4e576b61969d9b97387b493f4b6aa8de32981f33"
+    },
+    {
+      "path": "requirements-train.txt",
+      "artifact_type": "text_configuration",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 158,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "198fd1e5c75373233872535c6f30f563b0ab6baddb74efbda0891849fbb3e0c3"
+    },
+    {
+      "path": "requirements.txt",
+      "artifact_type": "text_configuration",
+      "created_by": "stage_9_final_generation",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 170,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "0bf7765661e470383e06313d2a5d5c11be6f192c3219f468a75fcc4143288213"
+    },
+    {
+      "path": "scripts/aggregate_data.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2916,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "83e8f6f94a74e8e6f2f2c3cc6da2fdee5a1dab6cce1eb1242ea12a49b9d05e5d"
+    },
+    {
+      "path": "scripts/audit_overrides.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3622,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "fe92c0c432b3f2abb98a47494ee676129ea30f8c788b6e844858b834d94ab840"
+    },
+    {
+      "path": "scripts/create_gt_all.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 29034,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "ac736dd17a0f502c7d6e0668913779d65855cb70911eaaa57a928feca341aead"
+    },
+    {
+      "path": "scripts/package_submission.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1751,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "bb4bb527f3c8e675d219905afe37fb4d5a4b47082b4c8c98b29e493cf0435cc9"
+    },
+    {
+      "path": "src/assertion/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/assertion/rule_based.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 17754,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "ac2e0051ac0b3338ff79b830f8b9fcfbd151530ec0e7383ff6a829e7c4de3007"
+    },
+    {
+      "path": "src/chunking/__init__.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 159,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "4243597d422591dbcd9909bdf05b9eae187ba215ecb3c9598b72f5d355d283f6"
+    },
+    {
+      "path": "src/chunking/clinical_chunker.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 15193,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "97d0c3f6ee39f29e9ab6bb4991e8e408e57ec813cdd0052bfaa6b7986170144b"
+    },
+    {
+      "path": "src/config.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 14605,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "201090de01f3cebfa1b1f1d1a1e3202edbf403250edf3efa783a5e2c6d57c53a"
+    },
+    {
+      "path": "src/data_generation/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/evaluate.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10688,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "407d6d4fb1f8fffad1fe205c0a3f23bb9a1ec4d3cb0cccd80b5b2c65f7b26e44"
+    },
+    {
+      "path": "src/evaluation/__init__.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 70,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "bd8fa4ccaf8db6ef2adad0e2286fef7f661140d878abf18d11f8d29ed349b98c"
+    },
+    {
+      "path": "src/evaluation/benchmark.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6179,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f145ee50c5fd2c0a37d6639134e27d8e5f2b1dfab4cdcf8290f01aacdd2380fb"
+    },
+    {
+      "path": "src/evaluation/precision_metrics.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5526,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "03b8c6425eb402f768a0dbe07959a0858f9c09f37c27ac60274333a9a6a44f57"
+    },
+    {
+      "path": "src/evaluation/trusted_split.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 226,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "3b5f3a8595d70291860daf78f81952390cc7b782eb78cee22b2fbd4ae37b0b07"
+    },
+    {
+      "path": "src/metrics.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 22180,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "3d80b2fcc78f56621e510696012b54df7ad57bdeb259c4418a7722c7c5a063cb"
+    },
+    {
+      "path": "src/ner/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/ner/extractor.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 13584,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "9b4ae78f73edb138ee0f7f6d8e3fb52f4de9975ee6790b63238621ca453d436d"
+    },
+    {
+      "path": "src/ner/lexicon_loader.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4302,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8769a1277e0efc93037a13e9828a834f7573e1cae306d0aea6849c6a6e1ab2fc"
+    },
+    {
+      "path": "src/ner/model_extractor.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6376,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "122c2f48ea77f9b7afc6e761530a752035eae63c3d5387c555556d688c175b47"
+    },
+    {
+      "path": "src/ner/type_resolver.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 18921,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "b25c2361b306f3056a91f4d191f74a6539dc220bf2a3a76c9baa37f8d00c9d0f"
+    },
+    {
+      "path": "src/ner/types.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3145,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "25fec79de3045b522d9c6bed97b2073e9f85085b0ef81697d9c576aa46009d13"
+    },
+    {
+      "path": "src/pipeline/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/pipeline/main.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 16725,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8a8433468975671399f9b5124c05ff6db48cc988a6eb5425d51ff70f7033407e"
+    },
+    {
+      "path": "src/ranking/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/ranking/llm_reranker.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 7723,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "935ea3b93526e60bedbfc9f17ae424089c054f595404a1c1ca6f9deb739f1137"
+    },
+    {
+      "path": "src/resources/assertion_rules.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3904,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "67150e5fddba92cd59fe39942954be2a434018799247a618b07698bcb6b7030f"
+    },
+    {
+      "path": "src/resources/clinical_lexicon.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 70848,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "aaba8e218486757b86dbf1cc95f9e50ba7f954c21b138500df0f734b09410a1a"
+    },
+    {
+      "path": "src/resources/clinical_validation_rules.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1481,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2c627034aaa85f2504bac51c5b98c8917f9ae865ed25b1855e3a7f5f28e6ff70"
+    },
+    {
+      "path": "src/resources/section_patterns.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1518,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "bfd9843b8bf073b035006cf9e3a35b5624f91e36e1a984c26ac812c5c2604f4a"
+    },
+    {
+      "path": "src/resources/type_rules.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5276,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "3178d03d2995afdf15cdc13806e2ccc3116a861dbcb881fd4e38498a1d6c8e8c"
+    },
+    {
+      "path": "src/resources/verified_overrides.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 47,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c7d4a74a82ba212c992a6df27292d33ec591043d68ba53a4c3b3c75d88c78fd6"
+    },
+    {
+      "path": "src/retrieval/.gitkeep",
+      "artifact_type": "project_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 0,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/retrieval/abbreviations.json",
+      "artifact_type": "machine_readable_artifact",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3669,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8392af7c9e905c8cc594f89c8a0d7a8cb6d4a04f7a1446f11001f44bd89d4410"
+    },
+    {
+      "path": "src/retrieval/bm25_retriever.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3659,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "47a32bf620999cd669b04878c62c78e30c02072d4c4e6e147e48dbba97eecce0"
+    },
+    {
+      "path": "src/retrieval/build_faiss_index.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5569,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f0e1e64717abceae2e7784608590453e490b83dbe31a2a2f5610109ac7599c40"
+    },
+    {
+      "path": "src/retrieval/candidate_selector.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3889,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e301127e5f2ba135981832fcb32d18fa73544b7bac5ae503301d3e2e11a8d82c"
+    },
+    {
+      "path": "src/retrieval/eval_recall.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5357,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c438024c6d20d0278f729f8eab34df1734e52ba4c07044e22275bb43cc3a585d"
+    },
+    {
+      "path": "src/retrieval/generate_embeddings.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9841,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "0fb5a953a407083a79adddab5e1962f601becf6f36ab22cf0758bb6bfb4e6106"
+    },
+    {
+      "path": "src/retrieval/hybrid_retriever.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 13574,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2dca564dd8a22a3858f8a7d3b13f8de1565d2101a97facf85377207bc80c1563"
+    },
+    {
+      "path": "src/retrieval/normalizer.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6786,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "95a40cfc3982d78ff4fe06d58f5d6005b8a82fd7037b456d90dcef56c3a7cabd"
+    },
+    {
+      "path": "src/retrieval/score_fusion.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4054,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "43d1d95ebacb4b4b33e449afe982892bd51e4e1eda7b197140cc3b857e7c8947"
+    },
+    {
+      "path": "src/retrieval/types.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 480,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "d8fa9a837e2d88a8377c5d11eb5d9d037c2c35db5b54fdbcb68cb1650ac980ab"
+    },
+    {
+      "path": "src/training/__init__.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1182,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c35fc0436bc5f25c2ff14cb6a2e375f28ba3f8662c0f0d316e898d5028305c17"
+    },
+    {
+      "path": "src/training/artifacts.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10599,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "51a109447baf9d68ee680d2ea966c06469d976a2410fb0f3b2089b59d7d57764"
+    },
+    {
+      "path": "src/training/build_datasets.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 24367,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f3caf7d36d5a3faae2bf3702535aa703d7b61d777126004964d4d219c4dfda8c"
+    },
+    {
+      "path": "src/training/contracts.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6112,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "7b5a58ec93339c241e76a4d999d61a8f679f8daca6dfb9d73410a6f3500b7697"
+    },
+    {
+      "path": "src/training/embedding/__init__.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 779,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "3b0d4c7af32abfebe1eb06e5e1103aed45d52aa08367a88366346edbdba1e3ed"
+    },
+    {
+      "path": "src/training/embedding/config.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5054,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "68e911ceec014d391a15c44af55b79fc37ba0bc574b795e50eeab2f9ca7936bb"
+    },
+    {
+      "path": "src/training/embedding/data.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10024,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "94904d2b6ccaf91048cf17adc53a3a5986b375171a204ec60a73ed827bde0a22"
+    },
+    {
+      "path": "src/training/embedding/index_manifest.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4750,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "894ecb079b43766ef301cbd0f2d1ff3f62fc834d341fe6e7a670b001b630a494"
+    },
+    {
+      "path": "src/training/embedding/train.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 13320,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "147ed69a12b5a5bd1fa973d33801de0fe7c5dc568e9cfff60b4991d7a001b2c5"
+    },
+    {
+      "path": "src/training/fingerprints.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1572,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "97273d5de02d81e043247413095bdddc41fc58725f2294998faed06580ac9362"
+    },
+    {
+      "path": "src/training/metrics.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4642,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "b110dd1435a8e4cb645e1e60d125adf1b1e84ac888ba9f955bf34a61e0123fc3"
+    },
+    {
+      "path": "src/training/ner/__init__.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 670,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2f657508c40dbd2f5e8711a3d34f3ff152844be23d5e70136f24a3b7eaab3c2b"
+    },
+    {
+      "path": "src/training/ner/bio.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8654,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "6a8b0977d08b2021e3b52f7e4c577148d7995ca8dd8afce53ef2ef08de1221b0"
+    },
+    {
+      "path": "src/training/ner/config.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5405,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "22845700d6578d4ced1b2022681bd787893dfe4a7bdc3043e6437e7ab1e553dd"
+    },
+    {
+      "path": "src/training/ner/data.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8266,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8255a1e4b32aa7cb8ef0e10377ecd5cbf62bacc91e566fded9ed5d89239a20be"
+    },
+    {
+      "path": "src/training/ner/test_data_alignment.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6458,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "a13f6449e1830ebd802d242fbfd29d1ab7c8ee830e956cc0f15b4210d7a8bf5f"
+    },
+    {
+      "path": "src/training/ner/train.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 16235,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "21fce3ada5f8ffb11336b2624387247b078b68f6c9cf9fd5e4608843884e7a71"
+    },
+    {
+      "path": "src/training/projections.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4193,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "4464bd3a813419e659b5268d2c1b5578487e3d24508e1a6310085b9de8382ede"
+    },
+    {
+      "path": "src/training/promote.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2182,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "dae5be6a6cfd15db06a17a2ba7d3d950b36fcb305d5a6f63e331f6a72c017970"
+    },
+    {
+      "path": "src/training/reranker/__init__.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 59,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "0ec2b5c064090da64390d7274334b226dd5d6c2925b0eafd72da2686050c109a"
+    },
+    {
+      "path": "src/training/reranker/config.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5132,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "5bc435ef1039fca78763f18ff44f4c23c4282ee291ccb047e0514ea04eb72003"
+    },
+    {
+      "path": "src/training/reranker/data.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 17335,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "b217d1bb3618503c440d93c7d2508572aee0f97a94ef883142c7299638658d04"
+    },
+    {
+      "path": "src/training/reranker/inference.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4374,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "2598dffc8763aeae63a7c5ab9e24eb5ce1c24b5fc36477dad3e3ad6dc05025a7"
+    },
+    {
+      "path": "src/training/reranker/train.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 21644,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8edd58769270ef61ce2e18d635ef78894708167e442ab0bea14f5c0e919dffa5"
+    },
+    {
+      "path": "src/training/sources.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10424,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8b51ca848566f99255f3871b25f12e71d37c8b7fa4a8f1090d62647c9c505888"
+    },
+    {
+      "path": "src/training/splits.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9981,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "859280332ba3bf24da30cbb6049b7ce1eeba75a4649d215e4327c0096576df9f"
+    },
+    {
+      "path": "src/training/validation.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10157,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "688e1f2be0dc7edec2459fe79bd7c75bfd24d245976219cdb7ac01c0292a0163"
+    },
+    {
+      "path": "src/utils/check_env.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3124,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "89ea16015b60f0fef42a9256395aadcac421c9b0e537b61d3f6c588daae1310b"
+    },
+    {
+      "path": "src/utils/download_models.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2597,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "fa70bc17094e429baed596520bfa16038a50759a4e6e6efc1d676265a6c51099"
+    },
+    {
+      "path": "src/utils/paths.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 731,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f5b64207fe7afd60cbde12ed938b73b53faea2ed3a0ca621b48ec09fb72996a4"
+    },
+    {
+      "path": "src/utils/setup_db.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8825,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "89b1efb91b3427186457a32551634487a9d849f783f89edc7e97d4fbac750a8d"
+    },
+    {
+      "path": "src/utils/setup_rxnorm.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6687,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "ddeaa08b0449d73effde03e35aee878af99b9355de26dbb9a728cef6640232d3"
+    },
+    {
+      "path": "src/validation/clinical_validator.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9378,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "6643de09842faf396d154e4e105d6ce2b181b2bbc92cabb596f073cb406f590c"
+    },
+    {
+      "path": "src/validation/override_validator.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6720,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "4d83b959e3d0321eecbfb80e1006fadf8db9ab9d8d22f50c8f5b4a87f1933dd6"
+    },
+    {
+      "path": "src/validation/patient_extractor.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4831,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "cb9145472721077b6d84bdfffb3f93455ee0b5473a4641fdb1c3a7b3a1c7aa68"
+    },
+    {
+      "path": "src/validation/submission.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9438,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "a1c0806b0440b660850f73a6f8951ecdb2b61a7f88c32ea7d0b0c1633ce9a832"
+    },
+    {
+      "path": "stages/stage_01/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 966,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "9c6c52f19e021c08bfa29a475adb1630f4cdc87d6397b06c885551575b0f01bb"
+    },
+    {
+      "path": "stages/stage_02/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1730,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "1e05ea5aecb08d118704938133ab31fada1808fc7ce4b4900877073b38108d84"
+    },
+    {
+      "path": "stages/stage_03/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1405,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "37f072097bd1ff31d406c0144a1eac8825fabe21c7d72f88ddd44233daf5a8e1"
+    },
+    {
+      "path": "stages/stage_04/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1523,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "7b2b168bef8c9f94dbefa2fb7886acf53e45cdf27255eec278ba78e24ac3e676"
+    },
+    {
+      "path": "stages/stage_05/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1360,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "49b2bccde78234cdf7f031cbd3c3ede0b1b2b980be64b1b6b2249cdd45eecd91"
+    },
+    {
+      "path": "stages/stage_06/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1352,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "6ffd2c52cb46256bc9d546531caed91f638b5c028aba1c80ab64816e69cc01db"
+    },
+    {
+      "path": "stages/stage_07/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1087,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "a8565b521c7194421c0597eea9e15236ec3b9c0a1ab875dc4e3f903c9f836db2"
+    },
+    {
+      "path": "stages/stage_08/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1669,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "1c7ccc052930a748ddcc8edb697d23353244c89565d34297d39cd2d9cd9c8212"
+    },
+    {
+      "path": "stages/stage_09/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1583,
+      "required_for_inference": false,
+      "rebuild": "Regenerate from verified stage evidence and test reports.",
+      "sha256": "84d58ac7467ea3f0e830c63b7b46ecbd7b46367b452ff89da77c22bd4e989e6c"
+    },
+    {
+      "path": "tests/conftest.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 403,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f35de401c396c192d85ecf743bfffcbff0ac9238d81111183982c82c4e980451"
+    },
+    {
+      "path": "tests/test_assertion_analyzer.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 18036,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "79d6c12696f0910e4c468e9a5799c9b6d9a168afe7faf5363298b1ad0b815d36"
+    },
+    {
+      "path": "tests/test_candidate_selector.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5266,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f4a0081438fc7d0d86c54cfc42442e7b4feaf1273ac193487aa6a7c96e9967e7"
+    },
+    {
+      "path": "tests/test_clinical_chunker.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8693,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "4b34c4072820d7f50e65a213da87f5defdee38f3a471a57706eee9272cdaa36f"
+    },
+    {
+      "path": "tests/test_config.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8236,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "86ad1f2525b5df8308c0830baf4ab854444e1da007b4b6332bc78a72a5df4869"
+    },
+    {
+      "path": "tests/test_override_validator.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4207,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "fcf10bc02a1f4db7ce3bc9a8d45a83e67e05de695e6f6e8bdfd2c610a7d97b68"
+    },
+    {
+      "path": "tests/test_pipeline_regressions.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1993,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "41a8989fdc2cb9844c5f3076230d2f843dbac711b7891f3331ffbe0f46771252"
+    },
+    {
+      "path": "tests/test_precision_metrics.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2784,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "0b73faf9b1a32d5616d28d0b8b5457f93c2eb920ffa9a719f53950f340e8aa4f"
+    },
+    {
+      "path": "tests/test_score_fusion.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8080,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "f235fa85221a18a46ec857333f5d757d2fd9e9c4436d331362719ecf85c1cf45"
+    },
+    {
+      "path": "tests/test_submission.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5812,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "800c7bb85399769d673402b69c8ed0a148a578e95bb891f69e27ffdd09621535"
+    },
+    {
+      "path": "tests/test_type_resolver.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 17845,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "ad610643d12d389c6c0c641f44ac0d63d7150022f0c11149f207fd6d2961f128"
+    },
+    {
+      "path": "tests/training/test_build_datasets.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9874,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "86eac198eb1b623d0e294e70c8cd9bc1685b5dac59610324803fb7d717b196b0"
+    },
+    {
+      "path": "tests/training/test_contracts.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3088,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "630af54436d1a6de0373f2e6b3ee5a93ccc18887ce753d87793a3db9685f5e76"
+    },
+    {
+      "path": "tests/training/test_embedding_training.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 9870,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "22d962dc6a3c4e2b53e951fe16dd28ffb72bcbb6853acbad6b5416398a350373"
+    },
+    {
+      "path": "tests/training/test_fingerprints.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1581,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "b1185dbc13d55bcfdcf1c01f8e712fb2ac41e122c3148107f38b00d77f45e550"
+    },
+    {
+      "path": "tests/training/test_ner_trainer.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6168,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c82d25d9f697063bca73473b971542ef1e4d81fa6d163951a831b6b6ad3c131d"
+    },
+    {
+      "path": "tests/training/test_ner_training.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4280,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "71d7825646fc3d158dc7d5b07f3b76cbd4ac8dfc92e840d40e995d47381939c9"
+    },
+    {
+      "path": "tests/training/test_projections.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4106,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "c8593636074dadf29c36897790eaf3476f635025cd4d4e0f1393a9d858da1907"
+    },
+    {
+      "path": "tests/training/test_reranker_training.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 8193,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "788ba890fdf836c1d9ce6618ded999976ef8f8e45321e94a7d66bca6065c0deb"
+    },
+    {
+      "path": "tests/training/test_sources_validation.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 10927,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "320ec0190c0a90528239a1632cb00b994e4a5706264695c23c11191eaa36d662"
+    },
+    {
+      "path": "tests/training/test_splits.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3588,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "23ded372854f698b87f8fecf786f341be9d42d4cee9df9063aff5743e13992f5"
+    },
+    {
+      "path": "tests/training/test_training_runtime.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 5274,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "8efa9a41ac89419b36005931cd4e76c2effefe33f45f837c7543e6fda13d7193"
+    },
+    {
+      "path": "tools/build_knowledge_bases.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3470,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "932f8be60f593d3daee1b19b0ff788dcb2bcd645183f4f8a85cea073b8a75618"
+    },
+    {
+      "path": "tools/build_notebook.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 33957,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "4fd1d3e4aa808f00ddd549352a9b23e758333698b73f4f1621f6392571f8d4b1"
+    },
+    {
+      "path": "tools/execute_notebook.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1198,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "0147d2608b598ef845ce5bebf2ebaf3e1326c9c45aaacf7b1862e3d91ab44e1b"
+    },
+    {
+      "path": "tools/phase1_data_audit.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 26826,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "45f55d491807b37d92cfe7b6cef893d0b0d0bb18a7329c53035ff5171d14683c"
+    },
+    {
+      "path": "tools/run_pipeline.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1504,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "9985c8fd32f5df4d5ff180f0a97d5a6fbcd77b9d5f5355efdd06f0f0b23d7b0e"
+    },
+    {
+      "path": "tools/run_stage3_baseline.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2891,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e4499298fdd7975ea74b26233d2ae7d2b1255712235278e8878732cdb69539c3"
+    },
+    {
+      "path": "tools/run_stage4_ner.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3007,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "61afa54a10d5e1681e7c621398ad2ebe91129cb529ef18aaae49f95be15af154"
+    },
+    {
+      "path": "tools/run_stage5_context.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2922,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "ad6330044d52a8c5e0fe2f6bc64b398353d640bdd6f7312f778bd5987dbb9aa3"
+    },
+    {
+      "path": "tools/run_stage6_linking.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 4851,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e219c7ad26ba0b4086bb7c14a364060926852fefcb5e8fde106b19557d76ee17"
+    },
+    {
+      "path": "tools/run_stage7_relations.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 2806,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "3b0c5f60b237c8a1c99b258ed06e4262fc7a15f46f7d22bfda9aecdf18933bf5"
+    },
+    {
+      "path": "tools/run_stage8_integration.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 3236,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "80e73ef931bbdb92086c4afa8075f47215c377add7385652e5df8173a56901c3"
+    },
+    {
+      "path": "tools/update_manifest.py",
+      "artifact_type": "python_source",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 6907,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "e5cbc81e9ff3f4c3b782dadb44d7c74d127a8192280e532b790bc42053a2f11c"
+    },
+    {
+      "path": "train/README.md",
+      "artifact_type": "readme",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "project_pipeline"
+      ],
+      "size_bytes": 1272,
+      "required_for_inference": false,
+      "rebuild": "Restore from the project source tree or rerun the owning stage.",
+      "sha256": "6b7a180c8baf9acb2956757fab7c2cf958e0d78312eb761359e756b4abce6dfb"
+    },
+    {
+      "path": "ARTIFACT_MANIFEST.json",
+      "artifact_type": "artifact_manifest",
+      "created_by": "project_maintenance",
+      "used_by": [
+        "all_stages"
+      ],
+      "size_bytes": null,
+      "required_for_inference": false,
+      "rebuild": "Run tools/update_manifest.py with the latest completed stage.",
+      "sha256": null,
+      "checksum_note": "Self-checksum omitted to avoid recursive manifest dependency."
+    }
+  ],
+  "artifact_count_excluding_self": 215,
+  "inference_artifacts_created": [
+    "artifacts/assertion_mapping.json",
+    "artifacts/config.json",
+    "artifacts/entity_type_mapping.json",
+    "artifacts/icd10/icd10_dictionary.jsonl.gz",
+    "artifacts/model_status.json",
+    "artifacts/relation_mapping.json",
+    "artifacts/rxnorm/rxnorm_dictionary.jsonl.gz",
+    "artifacts/rxnorm/rxnorm_relations.jsonl.gz",
+    "artifacts/thresholds.json",
+    "clinical_nlp_lab/__init__.py",
+    "clinical_nlp_lab/artifacts.py",
+    "clinical_nlp_lab/assertions.py",
+    "clinical_nlp_lab/config.py",
+    "clinical_nlp_lab/data.py",
+    "clinical_nlp_lab/evaluation.py",
+    "clinical_nlp_lab/kb.py",
+    "clinical_nlp_lab/linking.py",
+    "clinical_nlp_lab/ner.py",
+    "clinical_nlp_lab/pipeline.py",
+    "clinical_nlp_lab/relations.py",
+    "clinical_nlp_lab/schema.py",
+    "clinical_nlp_lab/text.py",
+    "clinical_nlp_lab/training.py"
+  ],
+  "training_performed": false,
+  "training_status_reason": "No annotated train/validation data was provided; supervised code is implemented but not executed.",
+  "private_test_used_for_fitting": false
+}

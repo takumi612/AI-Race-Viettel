@@ -1,0 +1,42 @@
+{
+  "stage": 4,
+  "annotated_documents": 0,
+  "train_documents": 0,
+  "validation_documents": 0,
+  "document_split_leakage": false,
+  "bio_label_count": 1,
+  "bio_labels": {
+    "O": 0
+  },
+  "sliding_window_example": [
+    [
+      0,
+      512
+    ],
+    [
+      384,
+      896
+    ],
+    [
+      768,
+      1200
+    ]
+  ],
+  "offset_contract": "return_offsets_mapping=True + return_overflowing_tokens=True + raw slice reconstruction",
+  "transformer_availability": {
+    "available": false,
+    "missing_packages": [
+      "torch",
+      "transformers"
+    ],
+    "reason": "Missing optional packages: torch, transformers"
+  },
+  "training_result": {
+    "trained": false,
+    "reason": "No annotated training documents were provided"
+  },
+  "evaluation": {
+    "status": "not_scored",
+    "reason": "No annotation was supplied in the workspace; no NER score was invented."
+  }
+}
