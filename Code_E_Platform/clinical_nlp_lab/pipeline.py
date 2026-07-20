@@ -11,14 +11,18 @@ from .config import load_config
 from .data import load_input_documents, natural_document_key
 from .kb import load_candidate_dictionary
 from .linking import EntityLinker, LexicalCandidateIndex, parse_medication_attributes
-from .ner import DictionaryRuleEntityDetector, refine_boundaries
+from .ner import DictionaryRuleEntityDetector, TransformerNERDetector, refine_boundaries
 from .relations import RuleRelationExtractor
 from .schema import ClinicalDocument, EntityAnnotation, validate_submission_payload, write_json
 from .text import containing_section, detect_sections
 
 
 class ClinicalNLPPipeline:
-    def __init__(self, artifact_dir: str | Path = "artifacts") -> None:
+    def __init__(
+        self,
+        artifact_dir: str | Path = "artifacts",
+        ner_model_dir: str | Path | None = None,
+    ) -> None:
         self.artifact_dir = Path(artifact_dir)
         self.config = load_config(self.artifact_dir / "config.json")
         self.entity_mapping = self._read_json(self.artifact_dir / "entity_type_mapping.json")
@@ -31,12 +35,21 @@ class ClinicalNLPPipeline:
             raise FileNotFoundError("Knowledge-base artifacts are missing; run tools/build_knowledge_bases.py first")
         self.icd10_records = load_candidate_dictionary(icd10_path)
         self.rxnorm_records = load_candidate_dictionary(rxnorm_path)
-        self.detector = DictionaryRuleEntityDetector(
-            self.icd10_records,
-            self.rxnorm_records,
-            phrase_confidence=float(self.config["thresholds"]["dictionary_phrase"]),
-            regex_confidence=float(self.config["thresholds"]["regex_rule"]),
-        )
+        if ner_model_dir is not None and Path(ner_model_dir).is_dir():
+            self.detector = TransformerNERDetector(
+                ner_model_dir,
+                max_length=int(self.config["max_length"]),
+                stride=int(self.config["stride"]),
+            )
+            self.active_ner = "transformer_checkpoint"
+        else:
+            self.detector = DictionaryRuleEntityDetector(
+                self.icd10_records,
+                self.rxnorm_records,
+                phrase_confidence=float(self.config["thresholds"]["dictionary_phrase"]),
+                regex_confidence=float(self.config["thresholds"]["regex_rule"]),
+            )
+            self.active_ner = "ontology_dictionary_plus_generic_rules"
         self.linker = EntityLinker(
             LexicalCandidateIndex(self.icd10_records, "ICD-10"),
             LexicalCandidateIndex(self.rxnorm_records, "RxNorm"),
@@ -123,6 +136,7 @@ def run_inference(
     create_zip: bool = True,
     diagnostics_dir: str | Path | None = None,
     zip_path: str | Path | None = None,
+    ner_model_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     documents = load_input_documents(input_source)
     output_path = Path(output_dir)
@@ -134,7 +148,7 @@ def run_inference(
         for existing in directory.glob("*.json"):
             existing.unlink()
 
-    pipeline = ClinicalNLPPipeline(artifact_dir)
+    pipeline = ClinicalNLPPipeline(artifact_dir, ner_model_dir=ner_model_dir)
     type_counts = Counter()
     candidate_linked = 0
     relation_count = 0
@@ -199,6 +213,7 @@ def run_inference(
         "unmapped_type_counts": dict(unmapped_type_counts),
         "offset_error_count": offset_errors,
         "official_mapping_status": pipeline.entity_mapping.get("status"),
+        "active_ner": pipeline.active_ner,
         "unmapped_entities_dropped": bool(unmapped_type_counts),
         "zip_path": str(final_zip) if final_zip else None,
         "zip_structure_valid": bool(final_zip),
@@ -209,14 +224,17 @@ def run_inference(
 
 
 def reload_equivalence_check(
-    input_source: str | Path, artifact_dir: str | Path, sample_index: int = 0
+    input_source: str | Path,
+    artifact_dir: str | Path,
+    sample_index: int = 0,
+    ner_model_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     documents = load_input_documents(input_source)
     if not documents:
         raise ValueError("No documents available for reload check")
     document = documents[sample_index]
-    before = ClinicalNLPPipeline(artifact_dir).process_document(document)
-    after = ClinicalNLPPipeline(artifact_dir).process_document(document)
+    before = ClinicalNLPPipeline(artifact_dir, ner_model_dir=ner_model_dir).process_document(document)
+    after = ClinicalNLPPipeline(artifact_dir, ner_model_dir=ner_model_dir).process_document(document)
     equivalent = before == after
     if not equivalent:
         raise AssertionError("Pipeline output changed after artifact reload")

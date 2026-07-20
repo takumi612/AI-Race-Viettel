@@ -20,6 +20,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--artifact-dir", type=Path, default=Path("artifacts"))
     parser.add_argument("--diagnostics-dir", type=Path, default=Path("diagnostics"))
     parser.add_argument("--zip-path", type=Path, default=Path("output.zip"))
+    parser.add_argument(
+        "--ner-model-dir",
+        type=Path,
+        default=None,
+        help="Optional saved Hugging Face token-classification checkpoint.",
+    )
     return parser.parse_args()
 
 
@@ -32,8 +38,13 @@ def main() -> None:
         create_zip=True,
         diagnostics_dir=args.diagnostics_dir,
         zip_path=args.zip_path,
+        ner_model_dir=args.ner_model_dir,
     )
-    reload_check = reload_equivalence_check(args.input, args.artifact_dir)
+    reload_check = reload_equivalence_check(
+        args.input,
+        args.artifact_dir,
+        ner_model_dir=args.ner_model_dir,
+    )
     report = {"inference": summary, "reload_check": reload_check}
     write_json(args.diagnostics_dir / "integration_report.json", report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
