@@ -131,7 +131,7 @@ class ClinicalNLPPipeline:
 
         retrieval_diagnostics: list[dict[str, Any]] = []
         for entity in entities:
-            candidate_ids, ranked = self.linker.retrieve(entity)
+            candidate_ids, ranked = self.linker.retrieve(entity.type, entity.text)
             entity.candidates = candidate_ids
             axes = axes_by_entity[(entity.start, entity.end, entity.type)]
             entity.assertions = axes.labels()
