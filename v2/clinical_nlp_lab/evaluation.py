@@ -163,3 +163,250 @@ def competition_score(
         "is_official": False,
         "limitation": "Organizer matching and WER details were not provided; this evaluator is provisional.",
     }
+
+
+def evaluate_benchmark(
+    eval_input: str | Path,
+    eval_gt_dir: str | Path,
+    pipeline: Any,
+    run_root: str | Path,
+) -> dict[str, Any]:
+    """
+    Đánh giá bóc tách theo 3 Stage (NER, Retrieval Top-K, Linking) và xuất báo cáo phân tích lỗi (Error Diagnostics).
+    """
+    import json
+    from pathlib import Path
+    from .schema import write_json
+
+    eval_input = Path(eval_input)
+    eval_gt_dir = Path(eval_gt_dir)
+    run_root = Path(run_root)
+    eval_output_dir = run_root / "eval_output"
+    diagnostics_dir = run_root / "diagnostics"
+    eval_output_dir.mkdir(parents=True, exist_ok=True)
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Run Pipeline Inference
+    from .pipeline import run_inference
+    run_inference(
+        eval_input,
+        eval_output_dir,
+        pipeline.artifact_dir,
+        create_zip=False,
+        ner_model_dir=pipeline.trans_detector.model_dir if pipeline.trans_detector else None,
+    )
+
+    gt_files = list(eval_gt_dir.glob("*.json"))
+    
+    # Stage 1 (NER) Stats
+    total_gt_entities = 0
+    total_pred_entities = 0
+    correct_ner_exact = 0
+    boundary_mismatch_count = 0
+    
+    # Stage 2 (Retrieval) Stats
+    retrieval_eval_count = 0
+    top5_hits = 0
+    top10_hits = 0
+    
+    # Stage 3 (Linking) Stats
+    correct_linking_strict = 0
+
+    # Error Diagnostics Categories
+    error_analysis = {
+        "missed_entities": [],
+        "boundary_mismatches": [],
+        "retrieval_misses": [],
+        "wrong_code_links": [],
+        "spurious_entities": [],
+    }
+
+    per_type_stats: dict[str, dict[str, int]] = {}
+
+    for gt_file in gt_files:
+        doc_id = gt_file.stem
+        pred_file = eval_output_dir / f"{doc_id}.json"
+        if not pred_file.is_file():
+            continue
+
+        gt_data = json.loads(gt_file.read_text(encoding="utf-8"))
+        pred_data = json.loads(pred_file.read_text(encoding="utf-8"))
+
+        gt_ents = gt_data.get("entities", [])
+        pred_ents = pred_data.get("entities", [])
+
+        total_gt_entities += len(gt_ents)
+        total_pred_entities += len(pred_ents)
+
+        pred_exact_map = {(e["start"], e["end"], e["label"]): e for e in pred_ents}
+        gt_exact_map = {(e["start"], e["end"], e["label"]): e for e in gt_ents}
+
+        # Track matched predictions
+        matched_pred_indices = set()
+
+        for ge in gt_ents:
+            etype = ge.get("label", "UNKNOWN")
+            if etype not in per_type_stats:
+                per_type_stats[etype] = {"gt": 0, "correct_ner": 0, "correct_code": 0}
+            per_type_stats[etype]["gt"] += 1
+
+            gt_code = ge.get("code")
+            gt_text = ge.get("text", "")
+            gt_key = (ge["start"], ge["end"], ge["label"])
+
+            # --- STAGE 1: NER EVALUATION ---
+            if gt_key in pred_exact_map:
+                correct_ner_exact += 1
+                per_type_stats[etype]["correct_ner"] += 1
+                pe = pred_exact_map[gt_key]
+                pred_idx = pred_ents.index(pe)
+                matched_pred_indices.add(pred_idx)
+
+                # --- STAGE 3: LINKING EVALUATION ---
+                pred_code = pe.get("code")
+                if gt_code and gt_code == pred_code:
+                    correct_linking_strict += 1
+                    per_type_stats[etype]["correct_code"] += 1
+                elif gt_code and pred_code != gt_code:
+                    error_analysis["wrong_code_links"].append({
+                        "doc_id": doc_id,
+                        "text": gt_text,
+                        "label": etype,
+                        "gt_code": gt_code,
+                        "pred_code": pred_code,
+                    })
+            else:
+                # Check for boundary mismatch (overlapping span)
+                overlapping_preds = [
+                    (idx, pe) for idx, pe in enumerate(pred_ents)
+                    if pe["label"] == ge["label"]
+                    and max(0, min(ge["end"], pe["end"]) - max(ge["start"], pe["start"])) > 0
+                ]
+                if overlapping_preds:
+                    boundary_mismatch_count += 1
+                    best_idx, pe = overlapping_preds[0]
+                    matched_pred_indices.add(best_idx)
+                    error_analysis["boundary_mismatches"].append({
+                        "doc_id": doc_id,
+                        "gt_text": gt_text,
+                        "pred_text": pe.get("text", ""),
+                        "gt_offsets": [ge["start"], ge["end"]],
+                        "pred_offsets": [pe["start"], pe["end"]],
+                        "label": etype,
+                    })
+                else:
+                    error_analysis["missed_entities"].append({
+                        "doc_id": doc_id,
+                        "text": gt_text,
+                        "offsets": [ge["start"], ge["end"]],
+                        "label": etype,
+                        "gt_code": gt_code,
+                    })
+
+            # --- STAGE 2: RETRIEVAL TOP-K EVALUATION ---
+            if gt_code and hasattr(pipeline, "icd10_index") and hasattr(pipeline, "rxnorm_index"):
+                retrieval_eval_count += 1
+                index = pipeline.icd10_index if etype in {"DISEASE", "SYMPTOM", "LAB_RESULT"} else pipeline.rxnorm_index
+                try:
+                    cands = index.retrieve(gt_text, top_k=10)
+                    cand_codes = [str(c.get("candidate_id") or c.get("code")) for c in cands]
+                    if str(gt_code) in cand_codes[:5]:
+                        top5_hits += 1
+                    if str(gt_code) in cand_codes[:10]:
+                        top10_hits += 1
+                    else:
+                        error_analysis["retrieval_misses"].append({
+                            "doc_id": doc_id,
+                            "text": gt_text,
+                            "label": etype,
+                            "gt_code": gt_code,
+                            "top_candidates": [c.get("name") for c in cands[:3]],
+                        })
+                except Exception:
+                    pass
+
+        # Spurious entities (False Positives)
+        for idx, pe in enumerate(pred_ents):
+            if idx not in matched_pred_indices:
+                error_analysis["spurious_entities"].append({
+                    "doc_id": doc_id,
+                    "text": pe.get("text", ""),
+                    "offsets": [pe["start"], pe["end"]],
+                    "label": pe.get("label"),
+                    "pred_code": pe.get("code"),
+                })
+
+    # Metrics calculation
+    ner_precision = safe_divide(correct_ner_exact, total_pred_entities)
+    ner_recall = safe_divide(correct_ner_exact, total_gt_entities)
+    ner_f1 = safe_divide(2 * ner_precision * ner_recall, ner_precision + ner_recall)
+    
+    top5_recall = safe_divide(top5_hits, retrieval_eval_count)
+    top10_recall = safe_divide(top10_hits, retrieval_eval_count)
+    linking_acc = safe_divide(correct_linking_strict, correct_ner_exact)
+
+    report = {
+        "documents_evaluated": len(gt_files),
+        "stage1_ner": {
+            "gt_entities": total_gt_entities,
+            "pred_entities": total_pred_entities,
+            "exact_matched": correct_ner_exact,
+            "boundary_mismatches": boundary_mismatch_count,
+            "precision": round(ner_precision, 4),
+            "recall": round(ner_recall, 4),
+            "f1": round(ner_f1, 4),
+        },
+        "stage2_retrieval": {
+            "evaluated_entities": retrieval_eval_count,
+            "top5_hit_count": top5_hits,
+            "top10_hit_count": top10_hits,
+            "top5_recall": round(top5_recall, 4),
+            "top10_recall": round(top10_recall, 4),
+        },
+        "stage3_linking": {
+            "strict_linking_matched": correct_linking_strict,
+            "strict_linking_accuracy": round(linking_acc, 4),
+        },
+        "per_type_breakdown": per_type_stats,
+        "error_counts": {
+            "missed_entities": len(error_analysis["missed_entities"]),
+            "boundary_mismatches": len(error_analysis["boundary_mismatches"]),
+            "retrieval_misses": len(error_analysis["retrieval_misses"]),
+            "wrong_code_links": len(error_analysis["wrong_code_links"]),
+            "spurious_entities": len(error_analysis["spurious_entities"]),
+        }
+    }
+
+    # Save Error Diagnostics Report
+    write_json(diagnostics_dir / "benchmark_error_analysis.json", error_analysis)
+    write_json(diagnostics_dir / "benchmark_summary.json", report)
+
+    # Print Formatted Output
+    print("\n" + "="*60)
+    print(f"📊 STAGE-BY-STAGE BENCHMARK EVALUATION RESULTS ({len(gt_files)} docs)")
+    print("="*60)
+    print("🔹 STAGE 1: NER (Entity Recognition)")
+    print(f"   - Total GT / Pred Entities : {total_gt_entities} / {total_pred_entities}")
+    print(f"   - Precision                : {ner_precision:.2%}")
+    print(f"   - Recall                   : {ner_recall:.2%}")
+    print(f"   - F1-Score                 : {ner_f1:.2%}")
+    print(f"   - Boundary Mismatches      : {boundary_mismatch_count}")
+    print("-" * 60)
+    print("🔹 STAGE 2: CANDIDATE RETRIEVAL (BM25 + FAISS)")
+    print(f"   - Evaluated GT Entities    : {retrieval_eval_count}")
+    print(f"   - Top-5 Recall  (Hit@5)    : {top5_recall:.2%} ({top5_hits}/{retrieval_eval_count})")
+    print(f"   - Top-10 Recall (Hit@10)   : {top10_recall:.2%} ({top10_hits}/{retrieval_eval_count})")
+    print("-" * 60)
+    print("🔹 STAGE 3: LLM RERANKER & LINKING")
+    print(f"   - Strict Linking Accuracy  : {linking_acc:.2%} ({correct_linking_strict}/{correct_ner_exact})")
+    print("-" * 60)
+    print("📋 ERROR DIAGNOSTICS SUMMARY")
+    print(f"   - Lỗi bỏ sót thực thể (Missed)      : {len(error_analysis['missed_entities'])}")
+    print(f"   - Lỗi lệch ranh giới (Boundary)    : {len(error_analysis['boundary_mismatches'])}")
+    print(f"   - Lỗi Candidate sót (Retrieval Miss): {len(error_analysis['retrieval_misses'])}")
+    print(f"   - Lỗi Reranker gán sai mã (Wrong Code): {len(error_analysis['wrong_code_links'])}")
+    print(f"   - Lỗi bắt nhầm rác (Spurious FP)   : {len(error_analysis['spurious_entities'])}")
+    print("="*60)
+    print(f"💾 Detailed error analysis saved to: {diagnostics_dir / 'benchmark_error_analysis.json'}\n")
+
+    return report
