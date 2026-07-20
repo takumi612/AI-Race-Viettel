@@ -56,13 +56,19 @@ print(f"Đã chuẩn bị thư mục trên Google Drive an toàn tại: {drive_r
 
 !python -m pip install -U pip
 !python -m pip install -U "gdown>=6.0.0"
-# Tải dữ liệu data (đã nén zip) từ Drive
+
+# 1. Tải dữ liệu data (đã nén zip) từ Drive
 !python -m gdown 1_A059PDaXvDTxGQl86QDRXZ5eyRQrBKT -O /content/data.zip
 
 # Giải nén data
 !mkdir -p /content/AI-Race-Viettel/data
 !unzip -q -o /content/data.zip -d /content/AI-Race-Viettel/data/
-!rm /content/data.zip"""),
+!rm /content/data.zip
+
+# 2. (Tùy chọn) Tải sẵn bộ Trọng số (Artifacts) nếu chạy trên tài khoản Google mới
+# Nếu bạn đã có sẵn thư mục artifacts trong Drive cá nhân thì KHÔNG CẦN chạy dòng gdown bên dưới.
+# Bỏ dấu # ở dòng dưới để tải folder artifacts từ link được share:
+# !python -m gdown --folder 1hpJOPEwX67J6I2uZRFSv1B80jlKuKG64 -O /content/drive/MyDrive/AI-Race-Viettel/artifacts"""),
     
     create_markdown_cell("## Bước 3: Sửa lỗi đường dẫn và thiết lập Symlink\nXử lý triệt để lỗi gdown sinh thư mục lồng nhau (`data/data`) và thiết lập liên kết `artifacts` thông minh sang Google Drive."),
     create_code_cell("""import shutil
@@ -229,58 +235,115 @@ else:
 
     create_markdown_cell("## Bước 7: Huấn luyện NER (XLM-RoBERTa)"),
     create_code_cell("""# 1. Train Synthetic stage
-!python -m src.training.ner.train \\
-  --stage synthetic \\
-  --run-dir artifacts/training/ner/synthetic-candidate"""),
+import os
+if os.path.exists("artifacts/training/ner/synthetic-candidate/final/model.safetensors") or os.path.exists("artifacts/training/ner/synthetic-candidate/final/pytorch_model.bin"):
+    print("[SKIP] Đã có trọng số NER (synthetic) trên Drive, bỏ qua huấn luyện.")
+else:
+    !python -m src.training.ner.train \\
+      --stage synthetic \\
+      --run-dir artifacts/training/ner/synthetic-candidate"""),
   
     create_code_cell("""# 2. Train Trusted Fold 0 (bạn có thể lặp lại cho các fold khác)
-!python -m src.training.ner.train \\
-  --stage trusted-fold \\
-  --fold 0 \\
-  --initial-checkpoint artifacts/training/ner/synthetic-candidate/final \\
-  --run-dir artifacts/training/ner/trusted-fold-0-candidate"""),
+import os
+if os.path.exists("artifacts/training/ner/trusted-fold-0-candidate/final/model.safetensors") or os.path.exists("artifacts/training/ner/trusted-fold-0-candidate/final/pytorch_model.bin"):
+    print("[SKIP] Đã có trọng số NER (trusted fold 0) trên Drive, bỏ qua huấn luyện.")
+else:
+    !python -m src.training.ner.train \\
+      --stage trusted-fold \\
+      --fold 0 \\
+      --initial-checkpoint artifacts/training/ner/synthetic-candidate/final \\
+      --run-dir artifacts/training/ner/trusted-fold-0-candidate"""),
 
     create_markdown_cell("## Bước 8: Huấn luyện BGE-M3 Embedding và FAISS"),
     create_code_cell("""# 1. Train BGE-M3
-!python -m src.training.embedding.train \\
-  --stage synthetic \\
-  --run-dir artifacts/training/embedding/synthetic-candidate"""),
+import os
+if os.path.exists("artifacts/training/embedding/synthetic-candidate/final/model.safetensors") or os.path.exists("artifacts/training/embedding/synthetic-candidate/final/pytorch_model.bin"):
+    print("[SKIP] Đã có trọng số BGE-M3 trên Drive, bỏ qua huấn luyện.")
+else:
+    !python -m src.training.embedding.train \\
+      --stage synthetic \\
+      --run-dir artifacts/training/embedding/synthetic-candidate"""),
 
     create_code_cell("""# 2. Generate Embeddings (chạy lâu, chú ý theo dõi GPU RAM)
-!python -m src.retrieval.generate_embeddings \\
-  --model BGE-M3 \\
-  --table icd10 \\
-  --model-path artifacts/training/embedding/synthetic-candidate/final \\
-  --output-dir artifacts/index-build \\
-  --db data/kb/metadata.db \\
-  --batch-size 16
+import os
+if os.path.exists("artifacts/index-build/icd10_BGE-M3.npy") and os.path.exists("artifacts/index-build/rxnorm_BGE-M3.npy"):
+    print("[SKIP] Đã có file embeddings build sẵn trên Drive, bỏ qua bước sinh embeddings.")
+else:
+    !python -m src.retrieval.generate_embeddings \\
+      --model BGE-M3 \\
+      --table icd10 \\
+      --model-path artifacts/training/embedding/synthetic-candidate/final \\
+      --output-dir artifacts/index-build \\
+      --db data/kb/metadata.db \\
+      --batch-size 16
 
-!python -m src.retrieval.generate_embeddings \\
-  --model BGE-M3 \\
-  --table rxnorm \\
-  --model-path artifacts/training/embedding/synthetic-candidate/final \\
-  --output-dir artifacts/index-build \\
-  --db data/kb/metadata.db \\
-  --batch-size 16"""),
+    !python -m src.retrieval.generate_embeddings \\
+      --model BGE-M3 \\
+      --table rxnorm \\
+      --model-path artifacts/training/embedding/synthetic-candidate/final \\
+      --output-dir artifacts/index-build \\
+      --db data/kb/metadata.db \\
+      --batch-size 16"""),
 
     create_code_cell("""# 3. Build Faiss Index
-!python -m src.retrieval.build_faiss_index \\
-  --model BGE-M3 \\
-  --table icd10 \\
-  --embedding-dir artifacts/index-build \\
-  --output-dir artifacts/indexes/icd10-bge-m3 \\
-  --adapter-dir artifacts/training/embedding/synthetic-candidate/final \\
-  --base-model data/models/bge-m3 \\
-  --db data/kb/metadata.db
+import os
+if os.path.exists("artifacts/indexes/icd10-bge-m3/index.faiss") and os.path.exists("artifacts/indexes/rxnorm-bge-m3/index.faiss"):
+    print("[SKIP] Đã có file Faiss Index trên Drive, bỏ qua bước build index.")
+else:
+    !python -m src.retrieval.build_faiss_index \\
+      --model BGE-M3 \\
+      --table icd10 \\
+      --embedding-dir artifacts/index-build \\
+      --output-dir artifacts/indexes/icd10-bge-m3 \\
+      --adapter-dir artifacts/training/embedding/synthetic-candidate/final \\
+      --base-model data/models/bge-m3 \\
+      --db data/kb/metadata.db
 
-!python -m src.retrieval.build_faiss_index \\
-  --model BGE-M3 \\
-  --table rxnorm \\
-  --embedding-dir artifacts/index-build \\
-  --output-dir artifacts/indexes/rxnorm-bge-m3 \\
-  --adapter-dir artifacts/training/embedding/synthetic-candidate/final \\
-  --base-model data/models/bge-m3 \\
-  --db data/kb/metadata.db"""),
+    !python -m src.retrieval.build_faiss_index \\
+      --model BGE-M3 \\
+      --table rxnorm \\
+      --embedding-dir artifacts/index-build \\
+      --output-dir artifacts/indexes/rxnorm-bge-m3 \\
+      --adapter-dir artifacts/training/embedding/synthetic-candidate/final \\
+      --base-model data/models/bge-m3 \\
+      --db data/kb/metadata.db"""),
+
+    create_markdown_cell("## Bước 8.5: Giải phóng bộ nhớ GPU\nDọn dẹp rác bộ nhớ (Garbage Collection) và làm trống cache của GPU sau các quá trình huấn luyện NER/Embedding nặng nề phía trên, tránh lỗi tràn RAM (OOM) khi sang bước Reranker."),
+    create_code_cell("""import torch
+import gc
+
+gc.collect()
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+    print("Đã dọn dẹp xong bộ nhớ GPU. Dung lượng còn lại:")
+    !nvidia-smi"""),
+
+    create_markdown_cell("## Bước 8.8: (Tùy chọn) Chạy thử Inference KHÔNG dùng Reranker\nBước này giúp bạn chạy pipeline dự đoán chỉ dùng NER và BGE-M3 (tắt Reranker) để xem thử kết quả đạt được trước khi huấn luyện mô hình LLM nặng nề. Kết quả sẽ được nén vào file `output_no_reranker.zip`.\n\n*Lưu ý: Bạn KHÔNG cần phải copy thủ công các file trọng số (weights) mô hình sang Google Drive vì ở **Bước 3** chúng ta đã tạo Symlink, toàn bộ thư mục `artifacts/` đã tự động lưu thẳng vào MyDrive của bạn ngay trong lúc train rồi!*"),
+    create_code_cell("""# 1. Tạo file config_no_reranker.json (tắt Reranker)
+import json
+pipeline_config_no_rr = {
+    "ner": {
+        "mode": "hybrid",
+        "model_artifact": "artifacts/training/ner/trusted-fold-0-candidate/final"
+    },
+    "retrieval": {
+        "embedding_model_artifact": "artifacts/training/embedding/synthetic-candidate/final",
+        "icd_index_artifact": "artifacts/indexes/icd10-bge-m3",
+        "rxnorm_index_artifact": "artifacts/indexes/rxnorm-bge-m3"
+    },
+    "reranker": {
+        "enabled": False
+    }
+}
+with open('config_no_reranker.json', 'w', encoding='utf-8') as f:
+    json.dump({"config": pipeline_config_no_rr}, f, ensure_ascii=False, indent=2)
+
+# 2. Chạy pipeline inference
+!python -m src.pipeline.main --input data/input --output data/output_no_reranker --config config_no_reranker.json
+
+# 3. Nén kết quả thành file output_no_reranker.zip
+!cd data/output_no_reranker && zip -q -r ../../output_no_reranker.zip .
+print("\\n[v] Đã chạy xong pipeline (KHÔNG RERANKER) và tạo file output_no_reranker.zip thành công!")"""),
 
     create_markdown_cell("## Bước 9: Chuẩn bị Reranker (Qwen2.5)"),
     create_code_cell("""# 1. Tải Base Model (nếu chưa có)
@@ -303,9 +366,44 @@ else:
   --candidate-top-k 10"""),
     
     create_code_cell("""# 3. Train QLoRA Reranker
-!python -m src.training.reranker.train \\
-  --stage synthetic \\
-  --run-dir artifacts/training/reranker/synthetic-candidate""")
+import os
+if os.path.exists("artifacts/training/reranker/synthetic-candidate/final/adapter_model.safetensors") or os.path.exists("artifacts/training/reranker/synthetic-candidate/final/adapter_model.bin"):
+    print("[SKIP] Đã có trọng số Reranker trên Drive, bỏ qua huấn luyện.")
+else:
+    !python -m src.training.reranker.train \\
+      --stage synthetic \\
+      --run-dir artifacts/training/reranker/synthetic-candidate"""),
+
+    create_markdown_cell("## Bước 10: Chạy Inference và Xuất kết quả\nTạo file cấu hình (`config.json`) trỏ tới các mô hình vừa huấn luyện (NER, BGE-M3, Reranker) sau đó chạy pipeline dự đoán trên tập dữ liệu đầu vào và nén kết quả thành file zip để nộp."),
+    create_code_cell("""# 1. Tạo file config.json cho Pipeline trỏ tới các mô hình đã huấn luyện
+import json
+pipeline_config = {
+    "ner": {
+        "mode": "hybrid",
+        "model_artifact": "artifacts/training/ner/trusted-fold-0-candidate/final"
+    },
+    "retrieval": {
+        "embedding_model_artifact": "artifacts/training/embedding/synthetic-candidate/final",
+        "icd_index_artifact": "artifacts/indexes/icd10-bge-m3",
+        "rxnorm_index_artifact": "artifacts/indexes/rxnorm-bge-m3"
+    },
+    "reranker": {
+        "enabled": True,
+        "backend": "local_transformers",
+        "model_artifact": "artifacts/training/reranker/synthetic-candidate/final"
+    }
+}
+with open('config.json', 'w', encoding='utf-8') as f:
+    json.dump({"config": pipeline_config}, f, ensure_ascii=False, indent=2)
+print("[v] Đã tạo file cấu hình config.json")
+
+# 2. Chạy pipeline inference với cấu hình vừa tạo
+!python -m src.pipeline.main --input data/input --output data/output --config config.json
+
+# 3. Nén kết quả thành file output.zip (đặt tại thư mục gốc của project)
+!cd data/output && zip -q -r ../../output.zip .
+print("\\n[v] Đã chạy xong pipeline và tạo file output.zip thành công!")
+print("    Bạn có thể tải file output.zip về từ tab Files bên trái hoặc xem trong Google Drive nếu đã đồng bộ.")""")
 ])
 
 output_file = Path(r"d:\AI Race Viettel\Colab_Training_Runbook.ipynb")
