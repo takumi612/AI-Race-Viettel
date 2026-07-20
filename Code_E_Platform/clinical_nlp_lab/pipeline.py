@@ -18,11 +18,43 @@ from .schema import ClinicalDocument, EntityAnnotation, validate_submission_payl
 from .text import containing_section, detect_sections
 
 
+def enrich_records_from_train_documents(
+    icd10_records: list[dict[str, Any]],
+    rxnorm_records: list[dict[str, Any]],
+    train_documents: Iterable[ClinicalDocument],
+) -> tuple[int, int]:
+    icd10_map = {str(r["candidate_id"]): r for r in icd10_records}
+    rxnorm_map = {str(r["candidate_id"]): r for r in rxnorm_records}
+    icd10_added = 0
+    rxnorm_added = 0
+
+    for doc in train_documents:
+        for entity in doc.entities:
+            text = entity.text.strip()
+            if not text or not entity.candidates:
+                continue
+            for code in entity.candidates:
+                code_str = str(code).strip()
+                if code_str in icd10_map:
+                    aliases = icd10_map[code_str].setdefault("aliases", [])
+                    if text not in aliases:
+                        aliases.append(text)
+                        icd10_added += 1
+                elif code_str in rxnorm_map:
+                    aliases = rxnorm_map[code_str].setdefault("aliases", [])
+                    if text not in aliases:
+                        aliases.append(text)
+                        rxnorm_added += 1
+
+    return icd10_added, rxnorm_added
+
+
 class ClinicalNLPPipeline:
     def __init__(
         self,
         artifact_dir: str | Path = "artifacts",
         ner_model_dir: str | Path | None = None,
+        train_documents: Iterable[ClinicalDocument] | None = None,
     ) -> None:
         self.artifact_dir = Path(artifact_dir)
         self.config = load_config(self.artifact_dir / "config.json")
@@ -36,6 +68,13 @@ class ClinicalNLPPipeline:
             raise FileNotFoundError("Knowledge-base artifacts are missing; run tools/build_knowledge_bases.py first")
         self.icd10_records = load_candidate_dictionary(icd10_path)
         self.rxnorm_records = load_candidate_dictionary(rxnorm_path)
+
+        if train_documents:
+            added_icd, added_rx = enrich_records_from_train_documents(
+                self.icd10_records, self.rxnorm_records, train_documents
+            )
+            print(f"[RE-INDEX] Enriched BM25+FAISS candidate records from train data: +{added_icd} ICD-10 aliases, +{added_rx} RxNorm aliases.")
+
         self.dict_detector = DictionaryRuleEntityDetector(
             self.icd10_records,
             self.rxnorm_records,
@@ -58,6 +97,8 @@ class ClinicalNLPPipeline:
         icd10_index.build_indexes()
         rxnorm_index = HybridCandidateIndex(self.rxnorm_records, "RxNorm")
         rxnorm_index.build_indexes()
+        self.icd10_index = icd10_index
+        self.rxnorm_index = rxnorm_index
         self.linker = HybridEntityLinker(
             icd10_index,
             rxnorm_index,
@@ -148,6 +189,8 @@ def run_inference(
     diagnostics_dir: str | Path | None = None,
     zip_path: str | Path | None = None,
     ner_model_dir: str | Path | None = None,
+    train_source: str | Path | None = None,
+    train_documents: Sequence[ClinicalDocument] | None = None,
 ) -> dict[str, Any]:
     documents = load_input_documents(input_source)
     output_path = Path(output_dir)
@@ -159,7 +202,14 @@ def run_inference(
         for existing in directory.glob("*.json"):
             existing.unlink()
 
-    pipeline = ClinicalNLPPipeline(artifact_dir, ner_model_dir=ner_model_dir)
+    if train_documents is None and train_source is not None:
+        try:
+            from .data import load_annotated_documents
+            train_documents = load_annotated_documents(train_source)
+        except Exception:
+            train_documents = None
+
+    pipeline = ClinicalNLPPipeline(artifact_dir, ner_model_dir=ner_model_dir, train_documents=train_documents)
     
     # PASS 1: NER, Assertion (Hybrid fallback), Hybrid Retrieval, Relations
     intermediate_results = {}

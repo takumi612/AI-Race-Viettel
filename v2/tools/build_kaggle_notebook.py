@@ -425,6 +425,7 @@ INFERENCE_SUMMARY = run_inference(
     diagnostics_dir=DIAGNOSTICS_DIR,
     zip_path=OUTPUT_ZIP,
     ner_model_dir=ACTIVE_NER_MODEL,
+    train_source=TRAIN_SOURCE,
 )
 
 print()
