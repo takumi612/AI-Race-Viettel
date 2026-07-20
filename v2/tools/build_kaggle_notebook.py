@@ -116,12 +116,25 @@ DEPENDENCIES_READY = not missing_after
 if IS_KAGGLE and missing_after:
     raise RuntimeError(f"Missing training dependencies after setup: {missing_after}")
 
-print({
-    "is_kaggle": IS_KAGGLE,
-    "project_root": str(PROJECT_ROOT),
-    "dependencies_ready": DEPENDENCIES_READY,
-    "missing_dependencies": missing_after,
-})'''
+print("\n" + "="*55)
+print("📌 STEP 1: RUNTIME AND ENVIRONMENT BOOTSTRAP LOG")
+print("="*55)
+print(f"Is Kaggle Environment : {IS_KAGGLE}")
+print(f"Project Root Directory: {PROJECT_ROOT}")
+print(f"Python Version       : {sys.version.split()[0]}")
+try:
+    import torch
+    print(f"PyTorch Version      : {torch.__version__}")
+    print(f"CUDA Available       : {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"GPU Device Name      : {torch.cuda.get_device_name(0)}")
+        print(f"GPU Total VRAM       : {torch.cuda.get_device_properties(0).total_memory / (1024**3):.2f} GB")
+except Exception:
+    pass
+print(f"Dependencies Ready   : {DEPENDENCIES_READY}")
+if missing_after:
+    print(f"Missing Dependencies : {missing_after}")
+print("="*55 + "\n")'''
         )
     )
     cells.append(markdown_cell("## 2. Discover attached input and annotations"))
@@ -205,12 +218,14 @@ DIAGNOSTICS_DIR = RUN_ROOT / "diagnostics"
 OUTPUT_ZIP = RUN_ROOT / "output.zip"
 TRAINED_ARTIFACTS_ZIP = RUN_ROOT / "trained_ner_artifacts.zip"
 
-print({
-    "input_source": str(INPUT_SOURCE),
-    "train_source": str(TRAIN_SOURCE) if TRAIN_SOURCE else None,
-    "run_root": str(RUN_ROOT),
-    "output_zip": str(OUTPUT_ZIP),
-})'''
+print("\n" + "="*55)
+print("📂 STEP 2: DATASET DISCOVERY LOG")
+print("="*55)
+print(f"Inference Input Source: {INPUT_SOURCE}")
+print(f"Training Data Source  : {TRAIN_SOURCE}")
+print(f"Run Working Directory : {RUN_ROOT}")
+print(f"Output Zip Target     : {OUTPUT_ZIP}")
+print("="*55 + "\n")'''
         )
     )
     cells.append(markdown_cell("## 3. Validate data, split by document, and check GPU"))
@@ -254,15 +269,21 @@ if DEPENDENCIES_READY:
 if IS_KAGGLE and REQUIRE_GPU and not GPU_STATUS["available"]:
     raise RuntimeError("GPU is required. Open Kaggle Settings and select a GPU accelerator.")
 
-print({
-    "input_documents": len(INPUT_DOCUMENTS),
-    "annotated_documents": len(ANNOTATED_DOCUMENTS),
-    "train_documents": len(TRAIN_DOCUMENTS),
-    "validation_documents": len(VALIDATION_DOCUMENTS),
-    "entities": ANNOTATION_REPORT["entity_count"],
-    "gpu": GPU_STATUS,
-    "seed": SEED_STATUS,
-})'''
+print("\n" + "="*55)
+print("📊 STEP 3: DATASET STATISTICS & VALIDATION LOG")
+print("="*55)
+print(f"Input Inference Docs  : {len(INPUT_DOCUMENTS)}")
+print(f"Annotated Train Docs  : {len(ANNOTATED_DOCUMENTS)}")
+print(f"Train Split Docs      : {len(TRAIN_DOCUMENTS)}")
+print(f"Validation Split Docs : {len(VALIDATION_DOCUMENTS)}")
+print(f"Total GT Entities     : {ANNOTATION_REPORT.get('entity_count', 0)}")
+if ANNOTATION_REPORT.get("by_type"):
+    print("Entity Type Breakdown :")
+    for etype, count in ANNOTATION_REPORT["by_type"].items():
+        print(f"  - {etype:<15}: {count}")
+print(f"GPU Accelerator Status: {GPU_STATUS}")
+print(f"Reproducible Seed     : {SEED_STATUS.get('seed')}")
+print("="*55 + "\n")'''
         )
     )
     cells.append(markdown_cell("## 4. Training configuration"))
@@ -296,13 +317,17 @@ NER_EPOCHS = 1 if FAST_DEV_RUN else int(CONFIG["ner_epochs"])
 TRAIN_BATCH_SIZE = 2 if FAST_DEV_RUN else int(CONFIG["batch_size"])
 LEARNING_RATE = float(CONFIG["learning_rate"])
 
-print({
-    "model_source": MODEL_SOURCE,
-    "epochs": NER_EPOCHS,
-    "batch_size": TRAIN_BATCH_SIZE,
-    "learning_rate": LEARNING_RATE,
-    "fast_dev_run": FAST_DEV_RUN,
-})'''
+print("\n" + "="*55)
+print("⚙️ STEP 4: TRAINING HYPERPARAMETERS & CONFIGURATION")
+print("="*55)
+print(f"Base Model Source     : {MODEL_SOURCE}")
+print(f"Training Epochs       : {NER_EPOCHS}")
+print(f"Batch Size (per GPU)  : {TRAIN_BATCH_SIZE}")
+print(f"Learning Rate         : {LEARNING_RATE}")
+print(f"Max Sequence Length   : {CONFIG.get('max_length')}")
+print(f"Window Stride         : {CONFIG.get('stride')}")
+print(f"Fast Dev Mode Run     : {FAST_DEV_RUN}")
+print("="*55 + "\n")'''
         )
     )
     cells.append(markdown_cell("## 5. Train XLM-R token classifier"))
@@ -339,7 +364,20 @@ write_json(TRAINING_ROOT / "training_result.json", NER_TRAINING_RESULT)
 if IS_KAGGLE and not NER_TRAINING_RESULT.get("trained") and NER_TRAINING_RESULT.get("reason") != "checkpoint_exists":
     raise RuntimeError(f"NER training did not complete: {NER_TRAINING_RESULT}")
 
-print(NER_TRAINING_RESULT)'''
+print("\n" + "="*55)
+print("🚀 STEP 5: XLM-R NER MODEL TRAINING EXECUTION")
+print("="*55)
+if NER_TRAINING_RESULT.get("trained"):
+    print(f"✅ Training Status     : COMPLETED SUCCESSFULLY")
+    print(f"   - Train Chunks      : {NER_TRAINING_RESULT.get('train_chunks')}")
+    print(f"   - Validation Chunks : {NER_TRAINING_RESULT.get('validation_chunks')}")
+    print(f"   - Final Loss        : {NER_TRAINING_RESULT.get('training_loss'):.6f}")
+    print(f"   - Saved Checkpoint  : {NER_TRAINING_RESULT.get('output_dir')}")
+elif NER_TRAINING_RESULT.get("reason") == "checkpoint_exists":
+    print(f"⏭️ Training Status     : SKIPPED (Checkpoint already exists)")
+else:
+    print(f"⚠️ Training Status     : SKIPPED ({NER_TRAINING_RESULT.get('reason')})")
+print("="*55 + "\n")'''
         )
     )
     cells.append(markdown_cell("## 6. Package the trained checkpoint"))
@@ -348,13 +386,19 @@ print(NER_TRAINING_RESULT)'''
             '''archive_base = TRAINED_ARTIFACTS_ZIP.with_suffix("")
 created_archive = shutil.make_archive(str(archive_base), "zip", root_dir=TRAINING_ROOT)
 assert Path(created_archive).is_file()
-print({"trained_artifacts_zip": created_archive, "bytes": Path(created_archive).stat().st_size})'''
+zip_size_mb = Path(created_archive).stat().st_size / (1024 * 1024)
+print(f"📦 Checkpoint Packaged: {created_archive} ({zip_size_mb:.2f} MB)")'''
         )
     )
     cells.append(markdown_cell("## 6.5 Garbage collection"))
     cells.append(
         code_cell(
-            '''import gc\nimport torch\ngc.collect()\nif torch.cuda.is_available():\n    torch.cuda.empty_cache()\n    print("Đã dọn dẹp xong bộ nhớ GPU.")'''
+            '''import gc
+import torch
+gc.collect()
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+    print("🧹 GPU Memory Cleaned (empty_cache & gc.collect).")'''
         )
     )
     cells.append(markdown_cell("## 7. Inference with the newly trained NER model"))
@@ -372,7 +416,19 @@ INFERENCE_SUMMARY = run_inference(
     zip_path=OUTPUT_ZIP,
     ner_model_dir=ACTIVE_NER_MODEL,
 )
-print(INFERENCE_SUMMARY)'''
+
+print("\n" + "="*55)
+print("⚡ STEP 7: INFERENCE PIPELINE EXECUTION LOG")
+print("="*55)
+print(f"Active NER Model      : {INFERENCE_SUMMARY.get('active_ner')}")
+print(f"Documents Inferred    : {INFERENCE_SUMMARY.get('documents_processed')}")
+print(f"Total Entities Output : {INFERENCE_SUMMARY.get('submission_entity_count')}")
+if INFERENCE_SUMMARY.get("by_type"):
+    print("Entity Type Breakdown :")
+    for etype, count in INFERENCE_SUMMARY["by_type"].items():
+        print(f"  - {etype:<15}: {count}")
+print(f"Output Zip Path       : {INFERENCE_SUMMARY.get('zip_path')}")
+print("="*55 + "\n")'''
         )
     )
     cells.append(markdown_cell("## 7.5 Stage-by-Stage Benchmark Evaluation & Error Diagnostics"))
