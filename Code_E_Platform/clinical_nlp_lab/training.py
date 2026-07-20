@@ -175,6 +175,7 @@ def train_transformer_ner(
     epochs: int = 3,
     batch_size: int = 8,
     seed: int = 42,
+    gradient_accumulation_steps: int = 1,
 ) -> dict[str, Any]:
     if not train_documents:
         return {"trained": False, "reason": "No annotated training documents were provided"}
@@ -239,6 +240,8 @@ def train_transformer_ner(
         "seed": seed,
         "report_to": [],
         "fp16": torch.cuda.is_available(),
+        "gradient_accumulation_steps": gradient_accumulation_steps,
+        "gradient_checkpointing": True,
     }
     # Transformers renamed evaluation_strategy to eval_strategy in newer releases.
     argument_parameters = inspect.signature(TrainingArguments.__init__).parameters
