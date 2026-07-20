@@ -1,0 +1,7 @@
+# Kaggle usually preinstalls these packages. The notebook installs this file
+# only when an import is missing.
+torch>=2.2
+transformers>=4.40
+accelerate>=0.30
+sentencepiece>=0.2
+safetensors>=0.4

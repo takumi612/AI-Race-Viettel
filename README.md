@@ -1,7 +1,10 @@
 # Clinical NLP Colab Pipeline
 
-Repository tối giản để upload riêng `medical_information_extraction_lab.ipynb`
-lên Google Colab và chọn **Runtime → Run all**.
+Repository tối giản với hai notebook:
+
+- `medical_information_extraction_lab.ipynb`: Colab Run all.
+- `medical_information_extraction_kaggle.ipynb`: train XLM-R bằng GPU Kaggle,
+  dùng checkpoint vừa train để tạo `output.zip`.
 
 ## File runtime được giữ lại
 
@@ -12,8 +15,11 @@ AI-Race-Viettel/
 ├── tools/                             # build notebook/KB và CLI inference
 ├── test/                              # archive, không dùng khi Run all
 ├── medical_information_extraction_lab.ipynb
+├── medical_information_extraction_kaggle.ipynb
 ├── requirements-colab.txt
+├── requirements-kaggle.txt
 ├── COLAB_RUNBOOK.md
+├── KAGGLE_RUNBOOK.md
 └── README.md
 ```
 
@@ -48,6 +54,13 @@ MyDrive/AI-Race-Viettel/output/output.zip
 ```
 
 Hướng dẫn đầy đủ nằm trong `COLAB_RUNBOOK.md`.
+
+## Training trên Kaggle
+
+Import `medical_information_extraction_kaggle.ipynb`, attach Dataset có input
+và annotation, bật GPU rồi Run All. Kết quả được lưu tại
+`/kaggle/working/output.zip` và `/kaggle/working/trained_ner_artifacts.zip`.
+Xem `KAGGLE_RUNBOOK.md` để setup Internet-on hoặc offline bằng attached Dataset.
 
 ## Training tùy chọn
 

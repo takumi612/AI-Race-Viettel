@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import replace
+from pathlib import Path
 from typing import Any, Iterable
 
 from .schema import EntityAnnotation
@@ -173,6 +174,76 @@ class DictionaryRuleEntityDetector:
         ]
         detected = dictionary_entities + regex_entities
         return resolve_overlaps(detected, raw_text)
+
+
+class TransformerNERDetector:
+    """Load a saved Hugging Face token-classification checkpoint for inference."""
+
+    def __init__(
+        self,
+        model_dir: str | Path,
+        max_length: int = 512,
+        stride: int = 128,
+        device: str | None = None,
+    ) -> None:
+        try:
+            import torch
+            from transformers import AutoModelForTokenClassification, AutoTokenizer
+        except ImportError as exc:
+            raise RuntimeError(
+                "Transformer NER inference requires torch and transformers"
+            ) from exc
+
+        self.torch = torch
+        self.model_dir = Path(model_dir)
+        if not self.model_dir.is_dir():
+            raise FileNotFoundError(f"NER checkpoint directory not found: {self.model_dir}")
+        self.max_length = max_length
+        self.stride = stride
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_dir), use_fast=True)
+        self.model = AutoModelForTokenClassification.from_pretrained(str(self.model_dir))
+        self.model.to(self.device)
+        self.model.eval()
+        self.id_to_label = {
+            int(index): str(label)
+            for index, label in self.model.config.id2label.items()
+        }
+
+    def detect(self, raw_text: str) -> list[EntityAnnotation]:
+        from .training import bio_predictions_to_spans
+
+        encoded = self.tokenizer(
+            raw_text,
+            truncation=True,
+            max_length=self.max_length,
+            stride=self.stride,
+            return_offsets_mapping=True,
+            return_overflowing_tokens=True,
+            return_tensors="pt",
+            padding=True,
+        )
+        offsets = encoded.pop("offset_mapping")
+        encoded.pop("overflow_to_sample_mapping", None)
+        model_inputs = {key: value.to(self.device) for key, value in encoded.items()}
+        with self.torch.inference_mode():
+            probabilities = self.model(**model_inputs).logits.softmax(dim=-1).cpu()
+        label_ids = probabilities.argmax(dim=-1)
+        confidences = probabilities.max(dim=-1).values
+
+        chunk_entities: list[EntityAnnotation] = []
+        for chunk_index in range(label_ids.shape[0]):
+            chunk_offsets = [tuple(map(int, item)) for item in offsets[chunk_index].tolist()]
+            chunk_entities.extend(
+                bio_predictions_to_spans(
+                    label_ids[chunk_index].tolist(),
+                    chunk_offsets,
+                    self.id_to_label,
+                    raw_text,
+                    confidences[chunk_index].tolist(),
+                )
+            )
+        return merge_chunk_predictions(chunk_entities, raw_text)
 
 
 def spans_overlap(left: EntityAnnotation, right: EntityAnnotation) -> bool:
