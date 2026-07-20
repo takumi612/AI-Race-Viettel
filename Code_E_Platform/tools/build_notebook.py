@@ -476,6 +476,36 @@ print({
         cells.append(markdown_cell(SECTION_TEMPLATE.format(number=number, title=title, goal=goal, technology=technology, input_text=input_text, output_text=output_text, artifact=artifact)))
         cells.append(code_cell(code))
 
+    # Keep project discovery valid when the runtime is packaged under Code_E_Platform.
+    for cell in cells:
+        if cell.get("cell_type") != "code":
+            continue
+        source = "".join(cell.get("source", []))
+        source = source.replace(
+            'project_candidates.extend([COLAB_REPO_DIR, DRIVE_PROJECT_DIR, Path("/content/clinical-nlp-end-to-end-lab"), Path("/content/AI_race"), Path.cwd()])',
+            '''project_candidates.extend([
+    COLAB_REPO_DIR / "Code_E_Platform",
+    COLAB_REPO_DIR,
+    DRIVE_PROJECT_DIR / "Code_E_Platform",
+    DRIVE_PROJECT_DIR,
+    Path("/content/clinical-nlp-end-to-end-lab/Code_E_Platform"),
+    Path("/content/clinical-nlp-end-to-end-lab"),
+    Path("/content/AI_race/Code_E_Platform"),
+    Path("/content/AI_race"),
+    Path.cwd() / "Code_E_Platform",
+    Path.cwd(),
+])''',
+        )
+        source = source.replace(
+            '    PROJECT_ROOT / "data/input",\n    DRIVE_PROJECT_DIR / "input.zip",',
+            '    PROJECT_ROOT / "data/input",\n    PROJECT_ROOT.parent / "input.zip",\n    PROJECT_ROOT.parent / "data/input",\n    DRIVE_PROJECT_DIR / "input.zip",',
+        )
+        source = source.replace(
+            '    PROJECT_ROOT / "data",\n    PROJECT_ROOT,\n])',
+            '    PROJECT_ROOT / "data",\n    PROJECT_ROOT.parent / "data",\n    PROJECT_ROOT.parent,\n    PROJECT_ROOT,\n])',
+        )
+        cell["source"] = source.splitlines(keepends=True)
+
     return {
         "cells": cells,
         "metadata": {

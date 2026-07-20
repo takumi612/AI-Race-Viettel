@@ -409,6 +409,34 @@ Kaggle outputs:
 Chọn **Save Version → Save & Run All**, sau đó tải file từ tab Output."""
         )
     )
+
+    # Keep project discovery valid when the runtime is packaged under Code_E_Platform.
+    for cell in cells:
+        if cell.get("cell_type") != "code":
+            continue
+        source = "".join(cell.get("source", []))
+        source = source.replace(
+            'project_candidates.append(Path.cwd())\nif IS_KAGGLE:\n    project_candidates.extend(marker.parent for marker in KAGGLE_INPUT_ROOT.rglob("clinical_nlp_lab") if marker.is_dir())',
+            '''project_candidates.append(Path.cwd() / "Code_E_Platform")
+project_candidates.append(Path.cwd())
+if IS_KAGGLE:
+    for marker in KAGGLE_INPUT_ROOT.rglob("clinical_nlp_lab"):
+        if marker.is_dir():
+            project_candidates.extend([marker.parent, marker.parent.parent / "Code_E_Platform"])''',
+        )
+        source = source.replace(
+            'clone_dir = KAGGLE_WORKING_ROOT / "AI-Race-Viettel"\nif PROJECT_ROOT is None and IS_KAGGLE:\n    if clone_dir.exists() and not _is_project(clone_dir):',
+            'clone_dir = KAGGLE_WORKING_ROOT / "AI-Race-Viettel"\nif PROJECT_ROOT is None and IS_KAGGLE:\n    clone_candidates = [clone_dir / "Code_E_Platform", clone_dir]\n    if clone_dir.exists() and not any(_is_project(path) for path in clone_candidates):',
+        )
+        source = source.replace(
+            '    PROJECT_ROOT = clone_dir.resolve()',
+            '    PROJECT_ROOT = next((path.resolve() for path in clone_candidates if _is_project(path)), None)',
+        )
+        source = source.replace(
+            'search_roots = [PROJECT_ROOT]\nif IS_KAGGLE:\n    search_roots = [path for path in KAGGLE_INPUT_ROOT.iterdir() if path.is_dir()] + search_roots',
+            'search_roots = [PROJECT_ROOT]\nif IS_KAGGLE:\n    search_roots = [path for path in KAGGLE_INPUT_ROOT.iterdir() if path.is_dir()] + search_roots\nelse:\n    search_roots.extend(ancestor for ancestor in PROJECT_ROOT.parents if (ancestor / "input.zip").is_file())',
+        )
+        cell["source"] = source.splitlines(keepends=True)
     return {
         "cells": cells,
         "metadata": {

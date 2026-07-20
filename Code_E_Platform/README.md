@@ -10,20 +10,22 @@ Repository tối giản với hai notebook:
 
 ```text
 AI-Race-Viettel/
-├── artifacts/                         # config, mapping và KB cache
-├── clinical_nlp_lab/                  # package inference/training
-├── tools/                             # build notebook/KB và CLI inference
-├── test/                              # archive, không dùng khi Run all
-├── medical_information_extraction_lab.ipynb
-├── medical_information_extraction_kaggle.ipynb
-├── requirements-colab.txt
-├── requirements-kaggle.txt
-├── COLAB_RUNBOOK.md
-├── KAGGLE_RUNBOOK.md
-└── README.md
+├── Code_E_Platform/                   # thư mục duy nhất cần upload để chạy
+│   ├── artifacts/                     # config, mapping và KB cache
+│   ├── clinical_nlp_lab/              # package inference/training
+│   ├── tools/                         # build notebook/KB và CLI inference
+│   ├── medical_information_extraction_lab.ipynb
+│   ├── medical_information_extraction_kaggle.ipynb
+│   ├── requirements-colab.txt
+│   ├── requirements-kaggle.txt
+│   ├── COLAB_RUNBOOK.md
+│   ├── KAGGLE_RUNBOOK.md
+│   └── README.md
+└── test/                              # archive, không dùng khi Run all
 ```
 
-Notebook không phụ thuộc vào nội dung trong `test/`.
+Notebook không phụ thuộc vào nội dung trong `test/`; dữ liệu input lớn cũng được giữ ngoài
+`Code_E_Platform` và attach/upload riêng trên Drive hoặc Kaggle Dataset.
 
 ## Chạy nhanh trên Colab
 
