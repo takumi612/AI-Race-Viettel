@@ -50,7 +50,7 @@ KAGGLE_INPUT_ROOT = Path("/kaggle/input")
 KAGGLE_WORKING_ROOT = Path("/kaggle/working")
 
 GITHUB_REPO_URL = "https://github.com/takumi612/AI-Race-Viettel.git"
-GITHUB_BRANCH = "develop"
+GITHUB_BRANCH = "main"
 PROJECT_ROOT_OVERRIDE = ""
 MODEL_NAME_OR_PATH_OVERRIDE = ""
 INPUT_SOURCE_OVERRIDE = ""
@@ -329,7 +329,7 @@ else:
 
 TRAINING_ROOT.mkdir(parents=True, exist_ok=True)
 write_json(TRAINING_ROOT / "training_result.json", NER_TRAINING_RESULT)
-if IS_KAGGLE and not NER_TRAINING_RESULT.get("trained"):
+if IS_KAGGLE and not NER_TRAINING_RESULT.get("trained") and NER_TRAINING_RESULT.get("reason") != "checkpoint_exists":
     raise RuntimeError(f"NER training did not complete: {NER_TRAINING_RESULT}")
 
 print(NER_TRAINING_RESULT)'''
@@ -355,7 +355,7 @@ print({"trained_artifacts_zip": created_archive, "bytes": Path(created_archive).
         code_cell(
             '''from clinical_nlp_lab.pipeline import run_inference
 
-ACTIVE_NER_MODEL = NER_MODEL_DIR if NER_TRAINING_RESULT.get("trained") else None
+ACTIVE_NER_MODEL = NER_MODEL_DIR if (NER_TRAINING_RESULT.get("trained") or NER_TRAINING_RESULT.get("reason") == "checkpoint_exists") else None
 INFERENCE_SUMMARY = run_inference(
     INPUT_SOURCE,
     OUTPUT_DIR,

@@ -278,12 +278,26 @@ def merge_chunk_predictions(
 def refine_boundaries(entities: Iterable[EntityAnnotation], raw_text: str) -> list[EntityAnnotation]:
     refined: list[EntityAnnotation] = []
     for entity in entities:
+        if '\n' in entity.text:
+            start = entity.start
+            for part in entity.text.split('\n'):
+                part_len = len(part)
+                if part_len > 0:
+                    new_end = start + part_len
+                    refined.append(replace(entity, text=part, position=(start, new_end)))
+                start += part_len + 1
+        else:
+            refined.append(entity)
+
+    final_refined: list[EntityAnnotation] = []
+    for entity in refined:
         start, end = entity.position
-        while start < end and raw_text[start].isspace():
+        while start < end and (raw_text[start].isspace() or raw_text[start] in "-*•+"):
             start += 1
-        while end > start and raw_text[end - 1].isspace():
+        while end > start and (raw_text[end - 1].isspace() or raw_text[end - 1] in "-*•+,;"):
             end -= 1
-        updated = replace(entity, text=raw_text[start:end], position=(start, end))
-        updated.validate_offset(raw_text)
-        refined.append(updated)
-    return resolve_overlaps(refined, raw_text)
+        if start < end:
+            updated = replace(entity, text=raw_text[start:end], position=(start, end))
+            updated.validate_offset(raw_text)
+            final_refined.append(updated)
+    return resolve_overlaps(final_refined, raw_text)
