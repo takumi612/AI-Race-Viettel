@@ -234,6 +234,7 @@ def train_transformer_ner(
         "weight_decay": 0.01,
         "warmup_ratio": 0.1,
         "save_strategy": "epoch" if validation_features else "no",
+        "save_total_limit": 2,
         "load_best_model_at_end": bool(validation_features),
         "seed": seed,
         "report_to": [],
