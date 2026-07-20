@@ -50,7 +50,7 @@ KAGGLE_INPUT_ROOT = Path("/kaggle/input")
 KAGGLE_WORKING_ROOT = Path("/kaggle/working")
 
 GITHUB_REPO_URL = "https://github.com/takumi612/AI-Race-Viettel.git"
-GITHUB_BRANCH = "Pipeline_colab"
+GITHUB_BRANCH = "develop"
 PROJECT_ROOT_OVERRIDE = ""
 MODEL_NAME_OR_PATH_OVERRIDE = ""
 INPUT_SOURCE_OVERRIDE = ""
@@ -286,7 +286,7 @@ else:
     MODEL_SOURCE = str(CONFIG["ner_model_name"])
 
 NER_EPOCHS = 1 if FAST_DEV_RUN else int(CONFIG["ner_epochs"])
-TRAIN_BATCH_SIZE = 2 if FAST_DEV_RUN else min(4, int(CONFIG["batch_size"]))
+TRAIN_BATCH_SIZE = 2 if FAST_DEV_RUN else int(CONFIG["batch_size"])
 LEARNING_RATE = float(CONFIG["learning_rate"])
 
 print({
