@@ -44,7 +44,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "validation_fraction": 0.2,
     "drop_unmapped_entity_types": True,
     "submission_keys": ["text", "type", "candidates", "assertions", "position"],
-    "internal_entity_types": ["DISEASE", "DRUG", "SYMPTOM", "LAB_RESULT", "PATIENT_INFO"],
+    "internal_entity_types": ["DISEASE", "DRUG", "SYMPTOM", "LAB_NAME", "LAB_RESULT", "PATIENT_INFO"],
     "thresholds": {
         "dictionary_exact": 0.99,
         "dictionary_phrase": 0.94,

@@ -41,6 +41,18 @@ def _parse_selected_id(response_text: str, candidates: list[dict[str, Any]]) -> 
     return candidate_by_text.get(str(selected_id))
 
 
+def _selection_warning_reason(response_text: str, candidates: list[dict[str, Any]]) -> str | None:
+    payload = parse_json_object(response_text)
+    if payload is None:
+        return "invalid JSON"
+    selected_id = payload.get("selected_id")
+    if selected_id is None:
+        return None
+    if _parse_selected_id(response_text, candidates) is None:
+        return "unknown selected_id"
+    return None
+
+
 class ClinicalLLMReranker:
     def __init__(
         self,
@@ -118,9 +130,11 @@ class ClinicalLLMReranker:
             for query, output in zip(query_batch, outputs):
                 generated_text = output.outputs[0].text
                 selected_id = _parse_selected_id(generated_text, query["candidates"])
-                if selected_id is None and generated_text.strip():
+                warning_reason = _selection_warning_reason(generated_text, query["candidates"])
+                if warning_reason is not None:
                     logging.warning(
-                        "Could not parse a valid selected_id from LLM response: %s",
+                        "Could not parse a valid selected_id (%s) from LLM response: %s",
+                        warning_reason,
                         generated_text[:300],
                     )
                 results.append(selected_id)
@@ -133,9 +147,13 @@ class ClinicalLLMReranker:
         try:
             import vllm.distributed.parallel_state as parallel_state
 
-            if parallel_state.is_initialized():
-                parallel_state.destroy_model_parallel()
-        except ImportError:
+            is_initialized = getattr(parallel_state, "is_initialized", None)
+            if is_initialized is None:
+                is_initialized = getattr(parallel_state, "model_parallel_is_initialized", None)
+            destroy_model_parallel = getattr(parallel_state, "destroy_model_parallel", None)
+            if callable(is_initialized) and is_initialized() and callable(destroy_model_parallel):
+                destroy_model_parallel()
+        except (ImportError, AttributeError):
             pass
         del self.llm
         self.llm = None

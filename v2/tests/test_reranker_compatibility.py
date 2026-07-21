@@ -20,6 +20,8 @@ assert _SPEC.loader is not None
 _SPEC.loader.exec_module(_MODULE)
 _build_sampling_kwargs = _MODULE._build_sampling_kwargs
 _parse_selected_id = _MODULE._parse_selected_id
+_selection_warning_reason = _MODULE._selection_warning_reason
+ClinicalLLMReranker = _MODULE.ClinicalLLMReranker
 
 
 def test_parse_selected_id_accepts_fenced_json_and_candidate_id():
@@ -32,6 +34,16 @@ def test_parse_selected_id_rejects_explanatory_or_unknown_id():
     response = "The best choice is K59.0."
 
     assert _parse_selected_id(response, [{"candidate_id": "I10"}]) is None
+
+
+def test_selection_warning_ignores_valid_null_selection():
+    assert _selection_warning_reason('{"selected_id": null}', [{"candidate_id": "I10"}]) is None
+
+
+def test_selection_warning_reports_unknown_candidate_id():
+    reason = _selection_warning_reason('{"selected_id": "K59.0"}', [{"candidate_id": "I10"}])
+
+    assert reason == "unknown selected_id"
 
 
 def test_build_sampling_kwargs_uses_supported_structured_outputs_keyword():
@@ -52,3 +64,21 @@ def test_build_sampling_kwargs_uses_supported_structured_outputs_keyword():
     assert "structured_outputs" in kwargs
     assert "guided_json" not in kwargs
     assert json.loads(kwargs["structured_outputs"]["json"])["properties"]["selected_id"]["enum"] == ["K59.0", None]
+
+
+def test_destroy_tolerates_vllm_without_is_initialized(monkeypatch):
+    parallel_state = types.ModuleType("vllm.distributed.parallel_state")
+    parallel_state.destroy_model_parallel = lambda: None
+    distributed = types.ModuleType("vllm.distributed")
+    distributed.__path__ = []
+    vllm = types.ModuleType("vllm")
+    vllm.__path__ = []
+    monkeypatch.setitem(sys.modules, "vllm", vllm)
+    monkeypatch.setitem(sys.modules, "vllm.distributed", distributed)
+    monkeypatch.setitem(sys.modules, "vllm.distributed.parallel_state", parallel_state)
+
+    reranker = ClinicalLLMReranker.__new__(ClinicalLLMReranker)
+    reranker.llm = object()
+
+    reranker.destroy()
+    assert reranker.llm is None

@@ -4,6 +4,7 @@
   "internal_to_official": {
     "DISEASE": "CHẨN_ĐOÁN",
     "DRUG": "THUỐC",
+    "LAB_NAME": "TÊN_XÉT_NGHIỆM",
     "LAB_RESULT": "KẾT_QUẢ_XÉT_NGHIỆM",
     "PATIENT_INFO": null,
     "SYMPTOM": "TRIỆU_CHỨNG"

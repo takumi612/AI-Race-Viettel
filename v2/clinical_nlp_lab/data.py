@@ -12,6 +12,26 @@ from typing import Any, Iterable
 from .schema import ClinicalDocument, parse_entity
 
 
+OFFICIAL_TO_INTERNAL_ENTITY_TYPES = {
+    "CHẨN_ĐOÁN": "DISEASE",
+    "THUỐC": "DRUG",
+    "TRIỆU_CHỨNG": "SYMPTOM",
+    "TÊN_XÉT_NGHIỆM": "LAB_NAME",
+    "KẾT_QUẢ_XÉT_NGHIỆM": "LAB_RESULT",
+}
+
+
+def normalize_training_entity_type(entity_type: str) -> str:
+    """Convert official submission labels to stable internal training labels."""
+    return OFFICIAL_TO_INTERNAL_ENTITY_TYPES.get(entity_type, entity_type)
+
+
+def _parse_training_entity(payload: dict[str, Any], raw_text: str):
+    entity = parse_entity(payload, raw_text)
+    entity.type = normalize_training_entity_type(entity.type)
+    return entity
+
+
 def natural_document_key(document_id: str) -> tuple[int, str]:
     match = re.fullmatch(r"(\d+)", document_id)
     return (int(match.group(1)), document_id) if match else (10**12, document_id)
@@ -71,7 +91,7 @@ def load_annotated_documents(train_dir: str | Path) -> list[ClinicalDocument]:
             if not isinstance(payload, list):
                 raise ValueError(f"Annotation must be a list: {annotation_path}")
             document = ClinicalDocument(text_path.stem, raw_text)
-            document.entities = [parse_entity(item, raw_text) for item in payload]
+            document.entities = [_parse_training_entity(item, raw_text) for item in payload]
             documents.append(document)
 
     for text_path in sorted(directory.glob("*.txt")):
@@ -85,7 +105,7 @@ def load_annotated_documents(train_dir: str | Path) -> list[ClinicalDocument]:
         if not isinstance(payload, list):
             raise ValueError(f"Annotation must be a list: {annotation_path}")
         document = ClinicalDocument(text_path.stem, raw_text)
-        document.entities = [parse_entity(item, raw_text) for item in payload]
+        document.entities = [_parse_training_entity(item, raw_text) for item in payload]
         documents.append(document)
 
     for json_path in sorted(directory.glob("*.json")):
@@ -99,7 +119,9 @@ def load_annotated_documents(train_dir: str | Path) -> list[ClinicalDocument]:
             document_id = str(record.get("document_id", f"{json_path.stem}_{record_index}"))
             raw_text = str(record["raw_text"])
             document = ClinicalDocument(document_id, raw_text)
-            document.entities = [parse_entity(item, raw_text) for item in record.get("entities", [])]
+            document.entities = [
+                _parse_training_entity(item, raw_text) for item in record.get("entities", [])
+            ]
             document.relations = list(record.get("relations", []))
             documents.append(document)
 
