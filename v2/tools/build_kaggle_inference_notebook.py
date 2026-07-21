@@ -167,6 +167,8 @@ print(f"Input source: {INPUT_SOURCE} ({discovered_document_count} text documents
     "torch": "torch",
     "transformers": "transformers",
     "accelerate": "accelerate",
+    "sentencepiece": "sentencepiece",
+    "safetensors": "safetensors",
     "bm25s": "bm25s",
     "faiss-cpu": "faiss",
     "sentence-transformers": "sentence_transformers",

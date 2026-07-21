@@ -32,3 +32,9 @@ def test_inference_notebook_loads_results_without_training():
     assert "train_ner_subprocess.py" not in source
     assert "Trainer(" not in source
     assert ".train()" not in source
+
+
+def test_inference_notebook_checks_all_direct_bundled_requirements():
+    source = "\n".join("".join(cell.get("source", [])) for cell in _load_notebook()["cells"])
+    assert '"sentencepiece": "sentencepiece"' in source
+    assert '"safetensors": "safetensors"' in source
