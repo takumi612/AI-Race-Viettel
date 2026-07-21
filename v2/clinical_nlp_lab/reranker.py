@@ -109,11 +109,23 @@ class ClinicalLLMReranker:
                 "max_tokens": 100,
             }
             
+            # vLLM API liên tục thay đổi cách truyền JSON Schema:
+            import inspect
             try:
-                from vllm.sampling_params import GuidedDecodingParams
-                kwargs["guided_decoding"] = GuidedDecodingParams(json=schema_str)
-            except ImportError:
-                kwargs["guided_json"] = schema_str
+                sig = inspect.signature(SamplingParams.__init__)
+                if "structured_outputs" in sig.parameters:
+                    from vllm.sampling_params import StructuredOutputsParams
+                    kwargs["structured_outputs"] = StructuredOutputsParams(json=schema_str)
+                elif "guided_decoding" in sig.parameters:
+                    try:
+                        from vllm.sampling_params import GuidedDecodingParams
+                        kwargs["guided_decoding"] = GuidedDecodingParams(json=schema_str)
+                    except ImportError:
+                        pass
+                elif "guided_json" in sig.parameters:
+                    kwargs["guided_json"] = schema_str
+            except Exception as e:
+                logging.warning(f"Không thể thiết lập guided decoding: {e}")
                 
             sp = SamplingParams(**kwargs)
             sampling_params_list.append(sp)
