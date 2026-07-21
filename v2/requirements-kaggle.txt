@@ -1,10 +1,6 @@
-# Kaggle usually preinstalls these packages. The notebook installs this file
-# only when an import is missing.
-torch>=2.2
-transformers>=4.40
-accelerate>=0.30
-sentencepiece>=0.2
-safetensors>=0.4
+# Kaggle provides the CUDA torch/transformers/accelerate stack. Do not install
+# or upgrade those core packages from this file: unpinned versions can break
+# imports (for example torch.utils._typing_utils vs Transformers 5.x).
 
 # Retrieval dependencies. vLLM is checked separately in the notebook's
 # inference bootstrap so training does not depend on the LLM runtime.

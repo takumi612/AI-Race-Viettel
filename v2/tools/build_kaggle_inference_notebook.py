@@ -54,7 +54,9 @@ GITHUB_BRANCH = "main"
 PROJECT_ROOT_OVERRIDE = ""
 RESULTS_ZIP_OVERRIDE = ""
 INPUT_SOURCE_OVERRIDE = ""
-INSTALL_MISSING_DEPENDENCIES = True
+# Kaggle ships a CUDA-compatible torch/transformers stack. Installing the
+# unpinned requirements file can replace it with incompatible versions.
+INSTALL_MISSING_DEPENDENCIES = False
 ENABLE_QWEN_RERANKER = True
 INSTALL_VLLM = ENABLE_QWEN_RERANKER
 QWEN_MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct-AWQ"
@@ -295,12 +297,22 @@ print(f"Input source: {INPUT_SOURCE} ({discovered_document_count} text documents
     "sentence-transformers": "sentence_transformers",
 }
 missing = [package for package, module in required_imports.items() if importlib.util.find_spec(module) is None]
+try:
+    import torch
+    import transformers
+except Exception as exc:
+    raise RuntimeError(
+        "Kaggle's preinstalled torch/transformers stack is incompatible. "
+        "Restart the Kaggle session and run this notebook from the first cell; "
+        "do not enable INSTALL_MISSING_DEPENDENCIES."
+    ) from exc
 if missing and INSTALL_MISSING_DEPENDENCIES:
     requirements = PROJECT_ROOT / "requirements-kaggle.txt"
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(requirements)], check=True)
     importlib.invalidate_caches()
 if INSTALL_VLLM and importlib.util.find_spec("vllm") is None:
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vllm==0.25.1"], check=True)
+    # Do not let vLLM overwrite Kaggle's torch/transformers packages.
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--no-deps", "vllm==0.25.1"], check=True)
 
 missing_after = [package for package, module in required_imports.items() if importlib.util.find_spec(module) is None]
 if missing_after:

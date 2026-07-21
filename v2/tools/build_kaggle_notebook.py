@@ -55,7 +55,9 @@ PROJECT_ROOT_OVERRIDE = ""
 MODEL_NAME_OR_PATH_OVERRIDE = ""
 INPUT_SOURCE_OVERRIDE = ""
 TRAIN_SOURCE_OVERRIDE = ""
-INSTALL_MISSING_DEPENDENCIES = True
+# Kaggle provides the CUDA torch/transformers stack; avoid replacing it with
+# versions selected by an unpinned requirements file.
+INSTALL_MISSING_DEPENDENCIES = False
 FAST_DEV_RUN = False
 REQUIRE_TRAINING_DATA = True
 REQUIRE_GPU = True
