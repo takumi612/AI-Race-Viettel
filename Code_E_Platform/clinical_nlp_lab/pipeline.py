@@ -125,6 +125,15 @@ class ClinicalNLPPipeline:
         entities = self.dict_detector.detect(raw_text)
         if self.trans_detector:
             trans_entities = self.trans_detector.detect(raw_text)
+            
+            # Map kaggle official types back to internal types if model was trained on official types
+            official_to_internal = {
+                v: k for k, v in self.entity_mapping.get("internal_to_official", {}).items() if v
+            }
+            for e in trans_entities:
+                if e.type in official_to_internal:
+                    e.type = official_to_internal[e.type]
+                    
             entities = resolve_overlaps(entities + trans_entities, raw_text)
         entities = refine_boundaries(entities, raw_text)
         axes_by_entity = self.assertion_predictor.predict(raw_text, entities)

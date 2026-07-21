@@ -23,9 +23,9 @@
     "LAB_NAME",
     "PATIENT_INFO"
   ],
-  "learning_rate": 0.0002,
+  "learning_rate": 0.0005,
   "max_length": 512,
-  "ner_epochs": 100,
+  "ner_epochs": 60,
   "ner_model_name": "xlm-roberta-base",
   "output_dir": "output",
   "relation_max_distance": 256,
