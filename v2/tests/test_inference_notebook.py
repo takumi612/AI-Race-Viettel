@@ -68,6 +68,8 @@ def test_inference_notebook_exposes_qwen_toggle():
     source = _code_source()
     assert "ENABLE_QWEN_RERANKER" in source
     assert "enable_qwen_reranker=ENABLE_QWEN_RERANKER" in source
+    assert "QWEN_GPU_MEMORY_UTILIZATION = 0.20" in source
+    assert "qwen_gpu_memory_utilization=QWEN_GPU_MEMORY_UTILIZATION" in source
 
 
 def test_inference_notebook_clones_code_and_uses_data_only_results_bundle():

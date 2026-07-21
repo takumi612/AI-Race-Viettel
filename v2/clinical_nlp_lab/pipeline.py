@@ -223,6 +223,10 @@ def run_inference(
     zip_path: str | Path | None = None,
     ner_model_dir: str | Path | None = None,
     enable_qwen_reranker: bool = False,
+    qwen_model_name: str = "Qwen/Qwen2.5-3B-Instruct-AWQ",
+    qwen_gpu_memory_utilization: float = 0.2,
+    qwen_max_model_len: int = 1024,
+    qwen_batch_size: int = 16,
     train_source: str | Path | None = None,
     train_documents: Sequence[ClinicalDocument] | None = None,
 ) -> dict[str, Any]:
@@ -268,7 +272,12 @@ def run_inference(
         from .reranker import ClinicalLLMReranker
         from .assertions import ClinicalLLMAssertionPredictor
         
-        reranker = ClinicalLLMReranker()
+        reranker = ClinicalLLMReranker(
+            model_name=qwen_model_name,
+            gpu_memory_utilization=qwen_gpu_memory_utilization,
+            max_model_len=qwen_max_model_len,
+            batch_size=qwen_batch_size,
+        )
         llm_assertion = ClinicalLLMAssertionPredictor(reranker.llm)
         
         # Prepare queries

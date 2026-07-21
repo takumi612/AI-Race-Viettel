@@ -82,3 +82,26 @@ def test_destroy_tolerates_vllm_without_is_initialized(monkeypatch):
 
     reranker.destroy()
     assert reranker.llm is None
+
+
+def test_reranker_forwards_configured_gpu_memory_limit(monkeypatch):
+    captured = {}
+
+    class FakeLLM:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    fake_vllm = types.ModuleType("vllm")
+    fake_vllm.LLM = FakeLLM
+    monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
+
+    ClinicalLLMReranker(
+        model_name="Qwen/test-awq",
+        max_model_len=1024,
+        batch_size=8,
+        gpu_memory_utilization=0.2,
+    )
+
+    assert captured["model"] == "Qwen/test-awq"
+    assert captured["max_model_len"] == 1024
+    assert captured["gpu_memory_utilization"] == 0.2

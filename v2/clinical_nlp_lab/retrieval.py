@@ -122,7 +122,11 @@ class HybridCandidateIndex:
         # 1. TÌM KIẾM BM25s (Lexical)
         query_tokens = bm25s.tokenize([normalized_query])
         # Lấy top_k * 5 để fusion
-        results_bm25, scores_bm25 = self.bm25_retriever.retrieve(query_tokens, k=min(top_k * 5, len(self.corpus_texts)))
+        results_bm25 = [[]]
+        if any(len(tokens) for tokens in query_tokens):
+            results_bm25, _scores_bm25 = self.bm25_retriever.retrieve(
+                query_tokens, k=min(top_k * 5, len(self.corpus_texts))
+            )
         
         bm25_rank = {}
         # results_bm25[0] là array các index của corpus

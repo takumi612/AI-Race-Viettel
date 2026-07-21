@@ -43,3 +43,32 @@ def test_candidate_index_accepts_shared_encoder_and_releases_resources():
     assert index.bm25_retriever is None
     assert index.faiss_index is None
 
+
+def test_hybrid_index_skips_bm25_when_tokenizer_returns_no_terms(monkeypatch):
+    retrieval = _load_retrieval()
+
+    class FakeBM25:
+        def retrieve(self, *_args, **_kwargs):
+            raise AssertionError("BM25 must not receive an empty token query")
+
+    class FakeEncoder:
+        def encode(self, _queries, **_kwargs):
+            return [[1.0, 0.0]]
+
+    class FakeFaiss:
+        def search(self, _embeddings, _limit):
+            return [[0.9]], [[0]]
+
+    monkeypatch.setattr(retrieval.bm25s, "tokenize", lambda _queries: [[]], raising=False)
+    index = retrieval.HybridCandidateIndex.__new__(retrieval.HybridCandidateIndex)
+    index.is_built = True
+    index.bm25_retriever = FakeBM25()
+    index.embedding_model = FakeEncoder()
+    index.faiss_index = FakeFaiss()
+    index.corpus_texts = ["placeholder"]
+    index.corpus_ids = ["I10"]
+    index.records = {"I10": {"canonical_name": "Tăng huyết áp"}}
+
+    ranked = index.retrieve("đ")
+
+    assert ranked[0]["candidate_id"] == "I10"

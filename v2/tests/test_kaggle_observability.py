@@ -21,6 +21,8 @@ def test_training_notebook_exposes_qwen_toggle_and_passes_it_to_pipeline():
     source = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
     assert "ENABLE_QWEN_RERANKER" in source
     assert "enable_qwen_reranker=ENABLE_QWEN_RERANKER" in source
+    assert "QWEN_GPU_MEMORY_UTILIZATION = 0.20" in source
+    assert "qwen_gpu_memory_utilization=QWEN_GPU_MEMORY_UTILIZATION" in source
 
 
 def test_ner_config_uses_twenty_epochs():

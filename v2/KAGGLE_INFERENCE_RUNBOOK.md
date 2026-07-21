@@ -33,6 +33,10 @@ an old archive as the current submission.
    **Internet**. The notebook clones its code from GitHub; Internet also lets
    it install dependencies and, when `ENABLE_QWEN_RERANKER = True`, retrieve
    the Qwen reranker.
+   The default Qwen configuration is the smaller AWQ 3B model with a 20% GPU
+   memory limit. This avoids vLLM startup failures on 16 GB Kaggle GPUs after
+   the NER pass. Change the `QWEN_*` settings in the first cell only when more
+   VRAM is available.
 4. Start a fresh session and choose **Run All**. Do not execute only the final
    cells: earlier cells locate the archives, install requirements, and restore
    the checkpoint.

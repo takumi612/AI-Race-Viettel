@@ -57,6 +57,10 @@ INPUT_SOURCE_OVERRIDE = ""
 INSTALL_MISSING_DEPENDENCIES = True
 ENABLE_QWEN_RERANKER = True
 INSTALL_VLLM = ENABLE_QWEN_RERANKER
+QWEN_MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct-AWQ"
+QWEN_GPU_MEMORY_UTILIZATION = 0.20
+QWEN_MAX_MODEL_LEN = 1024
+QWEN_BATCH_SIZE = 16
 REQUIRE_GPU = True
 
 if not KAGGLE_INPUT_ROOT.is_dir():
@@ -64,6 +68,8 @@ if not KAGGLE_INPUT_ROOT.is_dir():
 KAGGLE_WORKING_ROOT.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("WANDB_DISABLED", "true")
+os.environ.setdefault("TQDM_DISABLE", "1")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 def _is_project(path: Path) -> bool:
     return (path / "clinical_nlp_lab").is_dir() and (path / "requirements-kaggle.txt").is_file()
@@ -307,6 +313,10 @@ INFERENCE_SUMMARY = run_inference(
     zip_path=OUTPUT_ZIP,
     ner_model_dir=NER_MODEL_DIR,
     enable_qwen_reranker=ENABLE_QWEN_RERANKER,
+    qwen_model_name=QWEN_MODEL_NAME,
+    qwen_gpu_memory_utilization=QWEN_GPU_MEMORY_UTILIZATION,
+    qwen_max_model_len=QWEN_MAX_MODEL_LEN,
+    qwen_batch_size=QWEN_BATCH_SIZE,
 )
 print(INFERENCE_SUMMARY)'''
         ),
@@ -335,6 +345,7 @@ with zipfile.ZipFile(OUTPUT_ZIP) as archive:
 RUN_MANIFEST = {
     "training_skipped": True,
     "enable_qwen_reranker": ENABLE_QWEN_RERANKER,
+    "qwen_model_name": QWEN_MODEL_NAME if ENABLE_QWEN_RERANKER else None,
     "checkpoint_source": str(NER_MODEL_DIR),
     "project_root": str(PROJECT_ROOT),
     "results_zip": str(RESULTS_SOURCE),

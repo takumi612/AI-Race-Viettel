@@ -56,9 +56,10 @@ def _selection_warning_reason(response_text: str, candidates: list[dict[str, Any
 class ClinicalLLMReranker:
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen2.5-7B-Instruct-AWQ",
-        max_model_len: int = 4096,
-        batch_size: int = 64,
+        model_name: str = "Qwen/Qwen2.5-3B-Instruct-AWQ",
+        max_model_len: int = 1024,
+        batch_size: int = 16,
+        gpu_memory_utilization: float = 0.2,
     ):
         self.model_name = model_name
         self.batch_size = batch_size
@@ -72,7 +73,7 @@ class ClinicalLLMReranker:
             trust_remote_code=True,
             quantization="awq" if "AWQ" in model_name else None,
             max_model_len=max_model_len,
-            gpu_memory_utilization=0.5,
+            gpu_memory_utilization=gpu_memory_utilization,
             enforce_eager=True,
         )
 
