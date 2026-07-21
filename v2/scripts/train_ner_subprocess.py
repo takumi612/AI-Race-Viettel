@@ -13,6 +13,8 @@ from transformers import (
     TrainingArguments,
 )
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from clinical_nlp_lab.config import load_config, set_reproducible_seed
 from clinical_nlp_lab.data import document_train_validation_split, load_annotated_documents, validate_documents
 from clinical_nlp_lab.schema import write_json
