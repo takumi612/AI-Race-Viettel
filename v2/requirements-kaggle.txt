@@ -6,9 +6,8 @@ accelerate>=0.30
 sentencepiece>=0.2
 safetensors>=0.4
 
-# Retrieval & Reranking dependencies
+# Retrieval dependencies. vLLM is checked separately in the notebook's
+# inference bootstrap so training does not depend on the LLM runtime.
 bm25s
 faiss-cpu
 sentence-transformers
-vllm
-autoawq

@@ -9,6 +9,7 @@ from transformers import (
     AutoModelForTokenClassification,
     AutoTokenizer,
     DataCollatorForTokenClassification,
+    EarlyStoppingCallback,
     Trainer,
     TrainingArguments,
 )
@@ -18,7 +19,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from clinical_nlp_lab.config import load_config, set_reproducible_seed
 from clinical_nlp_lab.data import document_train_validation_split, load_annotated_documents, validate_documents
 from clinical_nlp_lab.schema import write_json
-from clinical_nlp_lab.training import build_bio_label_map, prepare_token_classification_features
+from clinical_nlp_lab.training import (
+    build_bio_label_map,
+    compute_non_o_metrics,
+    prepare_token_classification_features,
+    remove_nested_checkpoints,
+)
 
 class FeatureDataset(Dataset):
     def __init__(self, features): self.features = features
@@ -36,6 +42,11 @@ def main():
     args = parser.parse_args()
 
     fast_dev_run = args.fast_dev_run.lower() in ("true", "1", "yes")
+    print(
+        f"[TRAINING_START] train_source={args.train_source} output_dir={args.output_dir} "
+        f"model_source={args.model_source} fast_dev_run={fast_dev_run}",
+        flush=True,
+    )
 
     config_path = Path(args.config_path)
     config = load_config(config_path)
@@ -100,6 +111,11 @@ def main():
         "gradient_accumulation_steps": grad_accum_steps,
         "gradient_checkpointing": True,
     }
+    if validation_features:
+        training_kwargs.update({
+            "metric_for_best_model": "f1",
+            "greater_is_better": True,
+        })
     
     argument_parameters = inspect.signature(TrainingArguments.__init__).parameters
     evaluation_key = "eval_strategy" if "eval_strategy" in argument_parameters else "evaluation_strategy"
@@ -112,6 +128,8 @@ def main():
         train_dataset=FeatureDataset(train_features),
         eval_dataset=FeatureDataset(validation_features) if validation_features else None,
         data_collator=DataCollatorForTokenClassification(tokenizer, pad_to_multiple_of=8),
+        compute_metrics=compute_non_o_metrics if validation_features else None,
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=2)] if validation_features else None,
     )
     trainer.processing_class = tokenizer
     
@@ -119,6 +137,7 @@ def main():
     train_result = trainer.train()
     trainer.save_model(str(output_path))
     tokenizer.save_pretrained(str(output_path))
+    removed_checkpoints = remove_nested_checkpoints(output_path)
     
     metrics = train_result.metrics
     ner_training_result = {
@@ -126,11 +145,24 @@ def main():
         "train_chunks": len(train_features),
         "validation_chunks": len(validation_features),
         "training_loss": metrics.get("train_loss", 0.0),
+        "best_metric": trainer.state.best_metric,
+        "removed_checkpoints": removed_checkpoints,
         "output_dir": str(output_path),
     }
     
     write_json(output_dir / "training_result.json", ner_training_result)
+    print(
+        f"[TRAINING_END] trained=True epochs={ner_epochs} train_chunks={len(train_features)} "
+        f"validation_chunks={len(validation_features)} best_metric={trainer.state.best_metric}",
+        flush=True,
+    )
     print("[Subprocess] Training finished. Script terminating to free VRAM natively.")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        import traceback
+        print(f"[TRAINING_ERROR] {type(exc).__name__}: {exc}", flush=True)
+        traceback.print_exc()
+        raise

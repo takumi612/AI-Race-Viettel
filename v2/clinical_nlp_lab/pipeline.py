@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 import json
+import logging
 import zipfile
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Sequence
 
 from .assertions import HybridAssertionPredictor
 from .config import load_config
 from .data import load_input_documents, natural_document_key
 from .kb import load_candidate_dictionary
-from .linking import EntityLinker, LexicalCandidateIndex, parse_medication_attributes
-from .retrieval import HybridCandidateIndex, HybridEntityLinker
+from .linking import parse_medication_attributes
+from .retrieval import HybridCandidateIndex, HybridEntityLinker, create_embedding_model
 from .ner import DictionaryRuleEntityDetector, TransformerNERDetector, refine_boundaries, resolve_overlaps
 from .relations import RuleRelationExtractor
-from .schema import ClinicalDocument, EntityAnnotation, validate_submission_payload, write_json
-from .text import containing_section, detect_sections
+from .schema import ClinicalDocument, validate_submission_payload, write_json
+from .text import detect_sections
 
 
 def enrich_records_from_train_documents(
@@ -92,10 +93,21 @@ class ClinicalNLPPipeline:
             self.trans_detector = None
             self.active_ner = "ontology_dictionary_plus_generic_rules"
             
-        # Use HybridCandidateIndex & HybridEntityLinker
-        icd10_index = HybridCandidateIndex(self.icd10_records, "ICD-10")
+        embedding_model_name = str(self.config["embedding_model_name"])
+        shared_embedding_model = create_embedding_model(embedding_model_name)
+        icd10_index = HybridCandidateIndex(
+            self.icd10_records,
+            "ICD-10",
+            embedding_model_name=embedding_model_name,
+            embedding_model=shared_embedding_model,
+        )
         icd10_index.build_indexes()
-        rxnorm_index = HybridCandidateIndex(self.rxnorm_records, "RxNorm")
+        rxnorm_index = HybridCandidateIndex(
+            self.rxnorm_records,
+            "RxNorm",
+            embedding_model_name=embedding_model_name,
+            embedding_model=shared_embedding_model,
+        )
         rxnorm_index.build_indexes()
         self.icd10_index = icd10_index
         self.rxnorm_index = rxnorm_index
@@ -115,6 +127,19 @@ class ClinicalNLPPipeline:
     def _official_assertions(self, internal_labels: list[str]) -> list[str]:
         mapping = self.assertion_mapping.get("internal_to_official", {})
         return [mapping[label] for label in internal_labels if mapping.get(label)]
+
+    def release_for_llm(self) -> None:
+        """Release NER and retrieval resources before vLLM claims GPU/RAM."""
+        if self.trans_detector is not None:
+            self.trans_detector = None
+        self.icd10_index.release()
+        self.rxnorm_index.release()
+        self.linker = None
+        self.dict_detector = None
+        self.icd10_records = []
+        self.rxnorm_records = []
+        self.assertion_predictor = None
+        self.relation_extractor = None
 
     def process_document(self, document: ClinicalDocument) -> dict[str, Any]:
         raw_text = document.raw_text
@@ -145,7 +170,7 @@ class ClinicalNLPPipeline:
                     "position": [entity.start, entity.end],
                     "internal_type": entity.type,
                     "query": entity.mention_head or entity.text,
-                    "top_candidates": ranked[:5],
+                    "top_candidates": ranked[: int(self.config["candidate_top_k"])],
                     "medication_attributes": parse_medication_attributes(entity.text) if entity.type == "DRUG" else None,
                 }
             )
@@ -224,17 +249,18 @@ def run_inference(
     for document in documents:
         intermediate_results[document.document_id] = pipeline.process_document(document)
 
-    # UNLOAD NER
-    if pipeline.trans_detector:
-        del pipeline.trans_detector
-        pipeline.trans_detector = None
-        import gc
-        import torch
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+    pipeline.release_for_llm()
+    import gc
+    import torch
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     # PASS 2: LLM Assertion & Reranking (Batched)
+    llm_reranker_enabled = False
+    llm_assertion_enabled = False
+    llm_fallback_reason = None
+    reranker = None
     try:
         from .reranker import ClinicalLLMReranker
         from .assertions import ClinicalLLMAssertionPredictor
@@ -280,6 +306,7 @@ def run_inference(
         # Run Rerank
         if rerank_queries:
             rerank_results = reranker.rerank_batch(rerank_queries)
+            llm_reranker_enabled = True
             for entity, selected_id in zip(entity_refs, rerank_results):
                 if selected_id:
                     entity.candidates = [selected_id]
@@ -289,13 +316,17 @@ def run_inference(
         # Run Assertion
         if assertion_queries:
             assertion_results = llm_assertion.predict_batch(assertion_queries)
+            llm_assertion_enabled = True
             flat_entities = [ent for doc in documents for ent in intermediate_results[doc.document_id]["raw_entities"]]
             for entity, axes in zip(flat_entities, assertion_results):
                 entity.assertions = axes.labels()
                 
-        reranker.destroy()
-    except ImportError:
-        pass
+    except ImportError as exc:
+        llm_fallback_reason = str(exc)
+        logging.warning("LLM disabled; using retrieval/rule fallback: %s", exc)
+    finally:
+        if reranker is not None:
+            reranker.destroy()
         
     type_counts = Counter()
     candidate_linked = 0
@@ -384,6 +415,9 @@ def run_inference(
         "zip_path": str(final_zip) if final_zip else None,
         "zip_structure_valid": bool(final_zip),
         "training_or_fitting_on_input": False,
+        "llm_reranker_enabled": llm_reranker_enabled,
+        "llm_assertion_enabled": llm_assertion_enabled,
+        "llm_fallback_reason": llm_fallback_reason,
     }
     write_json(diagnostics_path / "run_summary.json", summary)
     return summary

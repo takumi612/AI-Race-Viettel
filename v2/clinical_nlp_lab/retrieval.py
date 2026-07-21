@@ -25,6 +25,12 @@ except ImportError:
 from .text import normalize_alias
 
 
+def create_embedding_model(model_name: str):
+    if SentenceTransformer is None:
+        raise ImportError("Please install `sentence-transformers` to build semantic indexes")
+    return SentenceTransformer(model_name, device="cpu")
+
+
 class HybridCandidateIndex:
     """
     Kết hợp BM25s (từ vựng) và FAISS (ngữ nghĩa) sử dụng RRF (Reciprocal Rank Fusion).
@@ -35,6 +41,7 @@ class HybridCandidateIndex:
         records: Iterable[dict[str, Any]],
         name: str,
         embedding_model_name: str = "BAAI/bge-m3",
+        embedding_model: Any | None = None,
     ) -> None:
         self.name = name
         self.records: dict[str, dict[str, Any]] = {}
@@ -58,7 +65,7 @@ class HybridCandidateIndex:
         self.is_built = False
         self.bm25_retriever = None
         self.faiss_index = None
-        self.embedding_model = None
+        self.embedding_model = embedding_model
         self.embedding_model_name = embedding_model_name
 
     def build_indexes(self) -> None:
@@ -79,7 +86,8 @@ class HybridCandidateIndex:
         if faiss is None or SentenceTransformer is None:
             raise ImportError("Please install `faiss-cpu` and `sentence-transformers` libraries")
 
-        self.embedding_model = SentenceTransformer(self.embedding_model_name)
+        if self.embedding_model is None:
+            self.embedding_model = SentenceTransformer(self.embedding_model_name, device="cpu")
         # Encode with batch processing
         embeddings = self.embedding_model.encode(
             self.corpus_texts, 
@@ -95,6 +103,13 @@ class HybridCandidateIndex:
 
         self.is_built = True
         logging.info(f"[{self.name}] Indexes built successfully.")
+
+    def release(self) -> None:
+        """Release index and encoder references before loading the LLM."""
+        self.bm25_retriever = None
+        self.faiss_index = None
+        self.embedding_model = None
+        self.is_built = False
 
     def retrieve(self, query: str, top_k: int = 10, k_rrf: int = 60, w_bm25: float = 0.6, w_faiss: float = 0.4) -> list[dict[str, Any]]:
         if not self.is_built:

@@ -52,7 +52,7 @@ Sau khi load dữ liệu và train xong mô hình NER (nếu cần), phần Infe
 2. Chọn **File → Import Notebook** và upload `medical_information_extraction_kaggle.ipynb` từ thư mục `v2`.
 3. Trong panel **Input**, chọn **Add Input** và attach Dataset ở bước 2.
 4. Trong **Settings**, chọn **GPU accelerator** và bật **Internet**.
-5. Trong cell đầu tiên (hoặc Bootstrap cell), notebook sẽ cài các gói cần thiết: `pip install bm25s faiss-cpu sentence-transformers vllm outlines`. Bạn không cần chỉnh sửa gì thêm.
+5. Bootstrap cài requirements train/retrieval (`bm25s`, `faiss-cpu`, `sentence-transformers`) và kiểm tra/cài `vllm==0.25.1` riêng cho inference. Không cần cài `autoawq`: vLLM đọc checkpoint AWQ trực tiếp.
 6. Chọn **Run All**.
 
 ## 5. File đầu ra
@@ -69,5 +69,5 @@ Chọn **Save Version → Save & Run All** để Kaggle lưu notebook outputs, s
 ## 6. Các lỗi thường gặp ở v2
 
 - **ImportError: No module named 'vllm' / 'faiss'**: Bạn quên bật Internet trên Kaggle. Hoặc Kaggle đang thiếu ổ đĩa để tải, bạn có thể tạo 1 dataset riêng chứa các `.whl` offline.
-- **CUDA Out Of Memory ở Stage 3**: Đảm bảo Stage 1 đã báo `Đã giải phóng VRAM mô hình NER!`. Nếu vẫn bị lỗi OOM do Qwen2.5-7B-AWQ vượt quá 15GB của T4, bạn có thể đổi `gpu_memory_utilization=0.95` trong `reranker.py` hoặc dùng model quantize sâu hơn (GGUF).
+- **CUDA Out Of Memory ở Stage 3**: Pipeline phải giải phóng NER, encoder và index retrieval trước khi tải Qwen. Nếu vẫn OOM trên T4, giảm `gpu_memory_utilization` từ `0.5` xuống `0.4` hoặc giảm `max_model_len`; không tăng lên `0.95`.
 - **Lỗi không tìm thấy mô hình NER**: Nếu bạn không attach tập train (chỉ có tập input) và cũng không có checkpoint nào, Stage 1 sẽ bỏ qua việc trích xuất và output ra file JSON rỗng.

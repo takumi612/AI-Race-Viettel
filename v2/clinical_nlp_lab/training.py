@@ -2,9 +2,43 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 from typing import Any, Iterable, Sequence
 
 from .schema import ClinicalDocument, EntityAnnotation
+
+
+def compute_non_o_metrics(eval_prediction: Any) -> dict[str, float]:
+    """Compute token metrics while ignoring padding and treating label 0 as O."""
+    import numpy as np
+
+    logits, labels = eval_prediction
+    predictions = np.asarray(logits).argmax(axis=-1)
+    labels = np.asarray(labels)
+    valid = labels != -100
+    y_true = labels[valid]
+    y_pred = predictions[valid]
+    if y_true.size == 0:
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0, "accuracy": 0.0}
+    true_positive = int(((y_pred == y_true) & (y_true != 0)).sum())
+    predicted_positive = int((y_pred != 0).sum())
+    actual_positive = int((y_true != 0).sum())
+    precision = true_positive / predicted_positive if predicted_positive else 0.0
+    recall = true_positive / actual_positive if actual_positive else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    accuracy = float((y_pred == y_true).mean())
+    return {"precision": precision, "recall": recall, "f1": f1, "accuracy": accuracy}
+
+
+def remove_nested_checkpoints(model_dir: str | Path) -> list[str]:
+    """Remove duplicate Trainer checkpoint directories after the final model is saved."""
+    root = Path(model_dir).resolve()
+    removed: list[str] = []
+    for checkpoint in sorted(root.glob("checkpoint-*")):
+        if checkpoint.is_dir() and checkpoint.parent.resolve() == root:
+            shutil.rmtree(checkpoint)
+            removed.append(checkpoint.name)
+    return removed
 
 
 @dataclass(slots=True)

@@ -1,0 +1,54 @@
+import json
+import importlib.util
+import sys
+import types
+from pathlib import Path
+
+ROOT = Path(__file__).parents[1]
+package = types.ModuleType("clinical_nlp_lab")
+package.__path__ = [str(ROOT / "clinical_nlp_lab")]
+sys.modules["clinical_nlp_lab"] = package
+compat_spec = importlib.util.spec_from_file_location("clinical_nlp_lab.vllm_compat", ROOT / "clinical_nlp_lab" / "vllm_compat.py")
+compat_module = importlib.util.module_from_spec(compat_spec)
+sys.modules["clinical_nlp_lab.vllm_compat"] = compat_module
+assert compat_spec.loader is not None
+compat_spec.loader.exec_module(compat_module)
+_SPEC = importlib.util.spec_from_file_location("clinical_nlp_lab.reranker", ROOT / "clinical_nlp_lab" / "reranker.py")
+_MODULE = importlib.util.module_from_spec(_SPEC)
+sys.modules["clinical_nlp_lab.reranker"] = _MODULE
+assert _SPEC.loader is not None
+_SPEC.loader.exec_module(_MODULE)
+_build_sampling_kwargs = _MODULE._build_sampling_kwargs
+_parse_selected_id = _MODULE._parse_selected_id
+
+
+def test_parse_selected_id_accepts_fenced_json_and_candidate_id():
+    response = "```json\n{\"selected_id\": \"K59.0\"}\n```"
+
+    assert _parse_selected_id(response, [{"candidate_id": "K59.0"}]) == "K59.0"
+
+
+def test_parse_selected_id_rejects_explanatory_or_unknown_id():
+    response = "The best choice is K59.0."
+
+    assert _parse_selected_id(response, [{"candidate_id": "I10"}]) is None
+
+
+def test_build_sampling_kwargs_uses_supported_structured_outputs_keyword():
+    class FakeSamplingParams:
+        def __init__(self, *, temperature, max_tokens, structured_outputs=None):
+            self.temperature = temperature
+            self.max_tokens = max_tokens
+            self.structured_outputs = structured_outputs
+
+    kwargs = _build_sampling_kwargs(
+        FakeSamplingParams,
+        ["K59.0"],
+        structured_outputs_factory=lambda **payload: payload,
+    )
+
+    assert kwargs["temperature"] == 0.0
+    assert kwargs["max_tokens"] == 100
+    assert "structured_outputs" in kwargs
+    assert "guided_json" not in kwargs
+    assert json.loads(kwargs["structured_outputs"]["json"])["properties"]["selected_id"]["enum"] == ["K59.0", None]

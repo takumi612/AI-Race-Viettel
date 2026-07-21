@@ -6,6 +6,7 @@ from typing import Iterable
 
 from .schema import EntityAnnotation
 from .text import containing_section, detect_sections
+from .vllm_compat import build_sampling_kwargs, iter_batches, parse_json_object
 
 
 NEGATION_CUES = re.compile(r"(?iu)\b(?:không|chưa|không\s+có|không\s+ghi\s+nhận|âm\s+tính|phủ\s+nhận)\b")
@@ -85,50 +86,48 @@ class ClinicalLLMAssertionPredictor:
         )
         return f"<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
         
-    def _build_json_schema(self) -> str:
-        import json
+    def predict_batch(self, queries: list[dict], batch_size: int = 64) -> list[AssertionAxes]:
+        if not self.llm or not queries:
+            return []
+
+        from vllm import SamplingParams
+
         schema = {
             "type": "object",
             "properties": {
                 "polarity": {"enum": ["AFFIRMED", "NEGATED"]},
                 "temporality": {"enum": ["CURRENT", "HISTORICAL", "PLANNED", "RESOLVED"]},
                 "certainty": {"enum": ["CONFIRMED", "POSSIBLE"]},
-                "experiencer": {"enum": ["PATIENT", "FAMILY"]}
+                "experiencer": {"enum": ["PATIENT", "FAMILY"]},
             },
-            "required": ["polarity", "temporality", "certainty", "experiencer"]
+            "required": ["polarity", "temporality", "certainty", "experiencer"],
         }
-        return json.dumps(schema)
-
-    def predict_batch(self, queries: list[dict]) -> list[AssertionAxes]:
-        if not self.llm or not queries:
-            return []
-            
-        import json
-        from vllm import SamplingParams
-        
-        prompts = []
-        for q in queries:
-            prompts.append(self._build_prompt(q["context"], q["entity_text"]))
-            
-        sp = SamplingParams(
-            temperature=0.0,
-            max_tokens=64,
-            guided_json=self._build_json_schema()
-        )
-        
-        outputs = self.llm.generate(prompts, sampling_params=sp, use_tqdm=True)
-        results = []
-        for output in outputs:
-            generated_text = output.outputs[0].text
-            try:
-                data = json.loads(generated_text)
-                axes = AssertionAxes(
-                    polarity=data.get("polarity", "AFFIRMED"),
-                    temporality=data.get("temporality", "CURRENT"),
-                    certainty=data.get("certainty", "CONFIRMED"),
-                    experiencer=data.get("experiencer", "PATIENT")
+        allowed = {
+            "polarity": {"AFFIRMED", "NEGATED"},
+            "temporality": {"CURRENT", "HISTORICAL", "PLANNED", "RESOLVED"},
+            "certainty": {"CONFIRMED", "POSSIBLE"},
+            "experiencer": {"PATIENT", "FAMILY"},
+        }
+        defaults = AssertionAxes()
+        results: list[AssertionAxes] = []
+        for query_batch in iter_batches(queries, batch_size):
+            prompts = [self._build_prompt(query["context"], query["entity_text"]) for query in query_batch]
+            sampling_params = SamplingParams(
+                **build_sampling_kwargs(
+                    SamplingParams,
+                    schema,
+                    temperature=0.0,
+                    max_tokens=64,
                 )
-                results.append(axes)
-            except Exception:
-                results.append(AssertionAxes())
+            )
+            outputs = self.llm.generate(prompts, sampling_params=sampling_params, use_tqdm=False)
+            if len(outputs) != len(query_batch):
+                raise RuntimeError(f"vLLM returned {len(outputs)} outputs for {len(query_batch)} assertion prompts")
+            for output in outputs:
+                data = parse_json_object(output.outputs[0].text) or {}
+                values = {
+                    field: data.get(field) if data.get(field) in choices else getattr(defaults, field)
+                    for field, choices in allowed.items()
+                }
+                results.append(AssertionAxes(**values))
         return results

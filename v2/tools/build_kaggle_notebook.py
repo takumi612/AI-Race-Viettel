@@ -577,8 +577,18 @@ def validate_notebook(notebook: dict[str, Any]) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build the Kaggle Clinical NLP training notebook")
     parser.add_argument("--output", type=Path, default=Path("medical_information_extraction_kaggle.ipynb"))
+    parser.add_argument(
+        "--source",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent / "medical_information_extraction_kaggle.ipynb",
+        help="Canonical notebook template; prevents generated output from drifting behind the reviewed notebook.",
+    )
     args = parser.parse_args()
-    notebook = build_notebook()
+    source_path = args.source.resolve()
+    if source_path.is_file():
+        notebook = json.loads(source_path.read_text(encoding="utf-8"))
+    else:
+        notebook = build_notebook()
     report = validate_notebook(notebook)
     if not report["valid"]:
         raise ValueError(report)
