@@ -131,6 +131,7 @@ class ClinicalNLPPipeline:
     def release_for_llm(self) -> None:
         """Release NER and retrieval resources before vLLM claims GPU/RAM."""
         if self.trans_detector is not None:
+            self.trans_detector.release()
             self.trans_detector = None
         self.icd10_index.release()
         self.rxnorm_index.release()
@@ -230,6 +231,22 @@ def run_inference(
     train_source: str | Path | None = None,
     train_documents: Sequence[ClinicalDocument] | None = None,
 ) -> dict[str, Any]:
+    def gpu_memory_snapshot() -> dict[str, float | int | None]:
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                return {"free_gib": None, "total_gib": None, "allocated_gib": None, "reserved_gib": None}
+            free, total = torch.cuda.mem_get_info()
+            gib = 1024 ** 3
+            return {
+                "free_gib": round(free / gib, 2),
+                "total_gib": round(total / gib, 2),
+                "allocated_gib": round(torch.cuda.memory_allocated() / gib, 2),
+                "reserved_gib": round(torch.cuda.memory_reserved() / gib, 2),
+            }
+        except Exception:
+            return {"free_gib": None, "total_gib": None, "allocated_gib": None, "reserved_gib": None}
+
     documents = load_input_documents(input_source)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -254,12 +271,17 @@ def run_inference(
     for document in documents:
         intermediate_results[document.document_id] = pipeline.process_document(document)
 
+    gpu_memory_before_release = gpu_memory_snapshot()
     pipeline.release_for_llm()
     import gc
     import torch
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+    gpu_memory_before_qwen = gpu_memory_snapshot()
+    print(f"[GPU] before NER release: {gpu_memory_before_release}")
+    print(f"[GPU] before Qwen: {gpu_memory_before_qwen}")
 
     # PASS 2: LLM Assertion & Reranking (Batched)
     llm_reranker_enabled = False
@@ -430,6 +452,8 @@ def run_inference(
         "llm_reranker_enabled": llm_reranker_enabled,
         "llm_assertion_enabled": llm_assertion_enabled,
         "llm_fallback_reason": llm_fallback_reason,
+        "gpu_memory_before_release": gpu_memory_before_release,
+        "gpu_memory_before_qwen": gpu_memory_before_qwen,
     }
     write_json(diagnostics_path / "run_summary.json", summary)
     return summary

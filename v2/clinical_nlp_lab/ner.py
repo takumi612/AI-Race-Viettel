@@ -210,6 +210,17 @@ class TransformerNERDetector:
             for index, label in self.model.config.id2label.items()
         }
 
+    def release(self) -> None:
+        """Release the GPU-resident checkpoint before an LLM takes the device."""
+        model = getattr(self, "model", None)
+        self.model = None
+        self.tokenizer = None
+        if model is not None:
+            model.to("cpu")
+            del model
+        if self.torch.cuda.is_available():
+            self.torch.cuda.empty_cache()
+
     def detect(self, raw_text: str) -> list[EntityAnnotation]:
         from .training import bio_predictions_to_spans
 
