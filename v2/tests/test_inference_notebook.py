@@ -38,3 +38,18 @@ def test_inference_notebook_checks_all_direct_bundled_requirements():
     source = "\n".join("".join(cell.get("source", [])) for cell in _load_notebook()["cells"])
     assert '"sentencepiece": "sentencepiece"' in source
     assert '"safetensors": "safetensors"' in source
+
+
+def test_inference_runbook_covers_complete_kaggle_workflow():
+    text = (ROOT / "KAGGLE_INFERENCE_RUNBOOK.md").read_text(encoding="utf-8")
+    for phrase in (
+        "results.zip",
+        "input.zip",
+        "medical_information_extraction_inference_kaggle.ipynb",
+        "GPU",
+        "Internet",
+        "Run All",
+        "output.zip",
+        "training_skipped",
+    ):
+        assert phrase in text
