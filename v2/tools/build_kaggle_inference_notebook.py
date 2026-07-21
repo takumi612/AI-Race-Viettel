@@ -64,12 +64,18 @@ os.environ.setdefault("WANDB_DISABLED", "true")'''
     "training_artifacts/ner_model/model.safetensors",
     "training_artifacts/ner_model/config.json",
     "training_artifacts/ner_model/tokenizer.json",
+    "AI-Race-Viettel/v2/requirements-kaggle.txt",
 }
 REQUIRED_RESULTS_PREFIXES = {
     "AI-Race-Viettel/v2/clinical_nlp_lab/",
     "AI-Race-Viettel/v2/artifacts/",
 }
-EXTRACT_PREFIXES = ("AI-Race-Viettel/v2/", "training_artifacts/ner_model/")
+EXTRACT_PREFIXES = (
+    "AI-Race-Viettel/v2/clinical_nlp_lab/",
+    "AI-Race-Viettel/v2/artifacts/",
+    "AI-Race-Viettel/v2/requirements-kaggle.txt",
+    "training_artifacts/ner_model/",
+)
 
 def _safe_archive_member(name: str) -> Path:
     member = Path(name)
