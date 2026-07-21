@@ -43,6 +43,42 @@ def test_inference_notebook_loads_results_without_training():
     assert ".train()" not in source
 
 
+def test_inference_notebook_accepts_kaggle_auto_extracted_results_directory():
+    source = _code_source()
+    assert "RESULTS_DIRS" in source
+    assert "_copy_directory_bundle" in source
+    assert "Expected exactly one results.zip or extracted results directory" in source
+
+
+def test_inference_notebook_normalizes_kaggle_decompressed_jsonl_artifacts():
+    source = _code_source()
+    assert "_normalize_plain_knowledge_bases" in source
+    assert "gzip.open" in source
+    assert "rxnorm_dictionary" in source
+
+
+def test_inference_notebook_validates_normalized_knowledge_base_files():
+    source = _code_source()
+    assert "missing_kb" in source
+    assert "icd10_dictionary.jsonl.gz" in source
+    assert "rxnorm_dictionary.jsonl.gz" in source
+
+
+def test_inference_notebook_exposes_qwen_toggle():
+    source = _code_source()
+    assert "ENABLE_QWEN_RERANKER" in source
+    assert "enable_qwen_reranker=ENABLE_QWEN_RERANKER" in source
+
+
+def test_inference_notebook_clones_code_and_uses_data_only_results_bundle():
+    source = _code_source()
+    assert 'GITHUB_REPO_URL = "https://github.com/takumi612/AI-Race-Viettel.git"' in source
+    assert '"git", "clone", "--depth", "1"' in source
+    assert '"artifacts/config.json"' in source
+    assert '"artifacts/"' in source
+    assert '"AI-Race-Viettel/v2/clinical_nlp_lab/"' not in source
+
+
 def test_results_archive_extracts_only_inference_runtime_members():
     source = _code_source()
     tree = ast.parse(source)
@@ -53,9 +89,7 @@ def test_results_archive_extracts_only_inference_runtime_members():
         and any(isinstance(target, ast.Name) and target.id == "EXTRACT_PREFIXES" for target in node.targets)
     )
     assert extract_prefixes == (
-        "AI-Race-Viettel/v2/clinical_nlp_lab/",
-        "AI-Race-Viettel/v2/artifacts/",
-        "AI-Race-Viettel/v2/requirements-kaggle.txt",
+        "artifacts/",
         "training_artifacts/ner_model/",
     )
     assert all("train_ner_subprocess.py" not in prefix for prefix in extract_prefixes)
@@ -75,7 +109,7 @@ def test_notebook_contains_executable_guards_for_unsafe_or_ambiguous_inputs():
     source = _code_source()
     assert 'if member.is_absolute() or ".." in member.parts:' in source
     assert 'raise ValueError(f"Unsafe archive member: {name!r}")' in source
-    assert "if len(RESULTS_ZIPS) != 1:" in source
+    assert "if len(RESULTS_ZIPS) + len(RESULTS_DIRS) != 1:" in source
     assert "if len(valid_inputs) != 1:" in source
     assert 'raise RuntimeError(f"Expected exactly one inference input source' in source
     assert "if len(zip_names) != len(INPUT_DOCUMENTS) or zip_names != expected_names:" in source
@@ -101,4 +135,5 @@ def test_inference_runbook_covers_complete_kaggle_workflow():
         "training_skipped",
     ):
         assert phrase in text
-    assert "AI-Race-Viettel/v2/requirements-kaggle.txt" in text
+    assert "artifacts/" in text
+    assert "GitHub" in text

@@ -222,6 +222,7 @@ def run_inference(
     diagnostics_dir: str | Path | None = None,
     zip_path: str | Path | None = None,
     ner_model_dir: str | Path | None = None,
+    enable_qwen_reranker: bool = False,
     train_source: str | Path | None = None,
     train_documents: Sequence[ClinicalDocument] | None = None,
 ) -> dict[str, Any]:
@@ -262,6 +263,8 @@ def run_inference(
     llm_fallback_reason = None
     reranker = None
     try:
+        if not enable_qwen_reranker:
+            raise ImportError("Qwen reranker disabled by configuration")
         from .reranker import ClinicalLLMReranker
         from .assertions import ClinicalLLMAssertionPredictor
         

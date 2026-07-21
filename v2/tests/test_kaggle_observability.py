@@ -16,6 +16,13 @@ def test_kaggle_notebook_has_step_logger_and_failure_context():
     assert all(f"STEP {step}" in source for step in range(1, 10))
 
 
+def test_training_notebook_exposes_qwen_toggle_and_passes_it_to_pipeline():
+    notebook = json.loads((ROOT / "medical_information_extraction_kaggle.ipynb").read_text(encoding="utf-8"))
+    source = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
+    assert "ENABLE_QWEN_RERANKER" in source
+    assert "enable_qwen_reranker=ENABLE_QWEN_RERANKER" in source
+
+
 def test_ner_config_uses_twenty_epochs():
     config = json.loads((ROOT / "artifacts" / "config.json").read_text(encoding="utf-8"))
 

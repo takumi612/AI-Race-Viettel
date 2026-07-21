@@ -5,13 +5,15 @@ train or fine-tune a model.
 
 ## 1. Prepare the two private Kaggle Datasets
 
-1. Create a **private** Kaggle Dataset for the trained artifacts. Upload the
-   archive named `results.zip` exactly as it is; do not rename it or unpack it.
+1. Create a **private** Kaggle Dataset containing data only. You may
+   upload `results.zip`; Kaggle can display/extract it as a `results/` folder.
+   The inference notebook accepts both the archive and that auto-extracted
+   folder.
    The archive must contain the checkpoint members under
    `training_artifacts/ner_model/`, including exactly `config.json`,
-   `model.safetensors`, and `tokenizer.json`. It must also contain
-   `AI-Race-Viettel/v2/requirements-kaggle.txt`, which the notebook validates
-   before installing inference dependencies.
+   `model.safetensors`, and `tokenizer.json`, plus the complete `artifacts/`
+   directory containing the ICD-10 and RxNorm dictionaries. Do not put Python
+   source, notebooks, tests, or a Git repository in this Dataset.
 2. Create or select a separate private inference Dataset. It must contain
    either a top-level `input.zip` or an `input/` directory with one or more
    `*.txt` documents. This Dataset should contain only the documents to infer,
@@ -28,8 +30,9 @@ an old archive as the current submission.
    contains `results.zip` and the separate Dataset containing `input.zip` or
    `input/*.txt`.
 3. Open Notebook Settings, select a **GPU** accelerator, and enable
-   **Internet**. Internet lets the notebook install any dependencies not
-   already present in the Kaggle image.
+   **Internet**. The notebook clones its code from GitHub; Internet also lets
+   it install dependencies and, when `ENABLE_QWEN_RERANKER = True`, retrieve
+   the Qwen reranker.
 4. Start a fresh session and choose **Run All**. Do not execute only the final
    cells: earlier cells locate the archives, install requirements, and restore
    the checkpoint.
@@ -46,16 +49,14 @@ After all cells complete:
 3. Optionally download diagnostics and `run_manifest.json` with the ZIP for
    traceability.
 
-`results.zip` can include a historical `output.zip` from a prior run. That
-embedded historical `output.zip` is **not** the new submission. Only the
-fresh `/kaggle/working/output.zip` produced by this session should be
-downloaded and submitted.
+Only the fresh `/kaggle/working/output.zip` produced by this session should
+be downloaded and submitted.
 
 ## Troubleshooting
 
 | Symptom | Concrete fix |
 | --- | --- |
-| More than one `results.zip` is attached, or the notebook selects the wrong one | Detach unrelated artifact Datasets. If necessary, set `RESULTS_ZIP_OVERRIDE` in the first configuration cell to the exact `/kaggle/input/<dataset>/results.zip` path, then Run All again. |
+| More than one artifact archive/folder is attached, or the notebook selects the wrong one | Detach unrelated artifact Datasets. If necessary, set `RESULTS_ZIP_OVERRIDE` in the first configuration cell to the exact `/kaggle/input/<dataset>/results.zip` or extracted `/kaggle/input/<dataset>/results` path, then Run All again. |
 | Checkpoint members are missing | Rebuild the artifact Dataset from the complete original `results.zip`; verify it has `training_artifacts/ner_model/config.json`, `model.safetensors`, and `tokenizer.json` before upload. Do not upload an extracted partial folder or an old `output.zip` instead. |
 | No input is found | Attach the separate inference Dataset and ensure it has a top-level `input.zip` or `input/*.txt` with at least one non-empty document. Remove training folders and old outputs from that Dataset. |
 | A package/dependency import fails | Enable Internet, restart the Kaggle session, and Run All so the requirements cell can install dependencies. If Internet is unavailable, attach a Dataset with compatible offline wheels and install those in the setup cell. |

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import gzip
 import json
 from pathlib import Path
 from typing import Any
@@ -27,9 +28,10 @@ def build_notebook() -> dict[str, Any]:
         markdown_cell(
             """# Clinical NLP inference on Kaggle
 
-This notebook uses the packaged NER checkpoint in `results.zip` to create a
-submission. It intentionally performs no model fitting. Attach the checkpoint
-Dataset and an inference-input Dataset, then enable a Kaggle GPU before Run All.
+This notebook uses the packaged NER checkpoint in `results.zip` (or Kaggle's
+auto-extracted `results/` directory) to create a submission. It intentionally
+performs no model fitting. Attach the checkpoint Dataset and an inference-input
+Dataset, then enable a Kaggle GPU before Run All.
 """
         ),
         markdown_cell("## 1. Runtime configuration"),
@@ -37,6 +39,7 @@ Dataset and an inference-input Dataset, then enable a Kaggle GPU before Run All.
             '''from pathlib import Path
 import importlib
 import importlib.util
+import gzip
 import json
 import os
 import shutil
@@ -46,17 +49,43 @@ import zipfile
 
 KAGGLE_INPUT_ROOT = Path("/kaggle/input")
 KAGGLE_WORKING_ROOT = Path("/kaggle/working")
+GITHUB_REPO_URL = "https://github.com/takumi612/AI-Race-Viettel.git"
+GITHUB_BRANCH = "main"
+PROJECT_ROOT_OVERRIDE = ""
 RESULTS_ZIP_OVERRIDE = ""
 INPUT_SOURCE_OVERRIDE = ""
 INSTALL_MISSING_DEPENDENCIES = True
-INSTALL_VLLM = False
+ENABLE_QWEN_RERANKER = True
+INSTALL_VLLM = ENABLE_QWEN_RERANKER
 REQUIRE_GPU = True
 
 if not KAGGLE_INPUT_ROOT.is_dir():
     raise RuntimeError("This notebook must run in a Kaggle environment.")
 KAGGLE_WORKING_ROOT.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-os.environ.setdefault("WANDB_DISABLED", "true")'''
+os.environ.setdefault("WANDB_DISABLED", "true")
+
+def _is_project(path: Path) -> bool:
+    return (path / "clinical_nlp_lab").is_dir() and (path / "requirements-kaggle.txt").is_file()
+
+project_candidates = []
+if PROJECT_ROOT_OVERRIDE.strip():
+    project_candidates.append(Path(PROJECT_ROOT_OVERRIDE).expanduser())
+clone_dir = KAGGLE_WORKING_ROOT / "AI-Race-Viettel"
+project_candidates.append(clone_dir / "v2")
+PROJECT_ROOT = next((path.resolve() for path in project_candidates if _is_project(path)), None)
+if PROJECT_ROOT is None:
+    if clone_dir.exists() and not _is_project(clone_dir / "v2"):
+        raise RuntimeError(f"Clone destination exists but is not a valid project: {clone_dir}")
+    if not clone_dir.exists():
+        subprocess.run(
+            ["git", "clone", "--depth", "1", "--branch", GITHUB_BRANCH, GITHUB_REPO_URL, str(clone_dir)],
+            check=True,
+        )
+    PROJECT_ROOT = (clone_dir / "v2").resolve()
+if not _is_project(PROJECT_ROOT):
+    raise FileNotFoundError(f"Could not resolve cloned project at {PROJECT_ROOT}")
+sys.path.insert(0, str(PROJECT_ROOT))'''
         ),
         markdown_cell("## 2. Validate and safely unpack the checkpoint bundle"),
         code_cell(
@@ -64,16 +93,13 @@ os.environ.setdefault("WANDB_DISABLED", "true")'''
     "training_artifacts/ner_model/model.safetensors",
     "training_artifacts/ner_model/config.json",
     "training_artifacts/ner_model/tokenizer.json",
-    "AI-Race-Viettel/v2/requirements-kaggle.txt",
+    "artifacts/config.json",
 }
 REQUIRED_RESULTS_PREFIXES = {
-    "AI-Race-Viettel/v2/clinical_nlp_lab/",
-    "AI-Race-Viettel/v2/artifacts/",
+    "artifacts/",
 }
 EXTRACT_PREFIXES = (
-    "AI-Race-Viettel/v2/clinical_nlp_lab/",
-    "AI-Race-Viettel/v2/artifacts/",
-    "AI-Race-Viettel/v2/requirements-kaggle.txt",
+    "artifacts/",
     "training_artifacts/ner_model/",
 )
 
@@ -89,44 +115,108 @@ if RESULTS_ZIP_OVERRIDE.strip():
 else:
     results_candidates.extend(KAGGLE_INPUT_ROOT.rglob("results.zip"))
 RESULTS_ZIPS = [path.resolve() for path in results_candidates if path.is_file()]
-if len(RESULTS_ZIPS) != 1:
-    raise FileNotFoundError(f"Expected exactly one results.zip, found: {RESULTS_ZIPS}")
-RESULTS_ZIP = RESULTS_ZIPS[0]
+def _is_results_directory(path: Path) -> bool:
+    return (
+        path.is_dir()
+        and (path / "training_artifacts" / "ner_model").is_dir()
+        and (path / "artifacts").is_dir()
+    )
 
-with zipfile.ZipFile(RESULTS_ZIP) as archive:
-    member_names = archive.namelist()
-    safe_members = {_safe_archive_member(name).as_posix() for name in member_names}
-    missing_members = REQUIRED_RESULTS_MEMBERS - safe_members
-    missing_prefixes = [
-        prefix for prefix in REQUIRED_RESULTS_PREFIXES
-        if not any(name.startswith(prefix) for name in safe_members)
-    ]
-    if missing_members or missing_prefixes:
+results_dirs = []
+if RESULTS_ZIP_OVERRIDE.strip():
+    override = Path(RESULTS_ZIP_OVERRIDE).expanduser()
+    if override.is_dir():
+        results_dirs.append(override)
+else:
+    results_dirs.extend(path for path in KAGGLE_INPUT_ROOT.rglob("results") if _is_results_directory(path))
+RESULTS_DIRS = [path.resolve() for path in results_dirs if _is_results_directory(path)]
+if len(RESULTS_ZIPS) + len(RESULTS_DIRS) != 1:
+    raise FileNotFoundError(
+        "Expected exactly one results.zip or extracted results directory, "
+        f"found zips={RESULTS_ZIPS}, directories={RESULTS_DIRS}"
+    )
+RESULTS_SOURCE = RESULTS_ZIPS[0] if RESULTS_ZIPS else RESULTS_DIRS[0]
+
+def _copy_directory_bundle(source_root: Path) -> None:
+    required_files = {
+        "training_artifacts/ner_model/model.safetensors",
+        "training_artifacts/ner_model/config.json",
+        "training_artifacts/ner_model/tokenizer.json",
+        "artifacts/config.json",
+    }
+    missing_files = [name for name in required_files if not (source_root / name).is_file()]
+    missing_dirs = [prefix for prefix in REQUIRED_RESULTS_PREFIXES if not (source_root / prefix.rstrip("/")).is_dir()]
+    if missing_files or missing_dirs:
         raise ValueError(
-            f"results.zip is missing checkpoint/project members: "
-            f"files={sorted(missing_members)}, prefixes={missing_prefixes}"
+            "Extracted results directory is missing checkpoint/artifact members: "
+            f"files={sorted(missing_files)}, directories={missing_dirs}"
         )
-    for member_name in member_names:
-        member = _safe_archive_member(member_name)
-        if not any(member_name.startswith(prefix) for prefix in EXTRACT_PREFIXES):
-            continue
-        destination = (KAGGLE_WORKING_ROOT / member).resolve()
-        if KAGGLE_WORKING_ROOT.resolve() not in destination.parents and destination != KAGGLE_WORKING_ROOT.resolve():
-            raise ValueError(f"Archive member escapes working directory: {member_name!r}")
-        if member_name.endswith("/"):
-            destination.mkdir(parents=True, exist_ok=True)
-            continue
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        with archive.open(member_name) as source, destination.open("wb") as target:
-            shutil.copyfileobj(source, target)
+    for relative in ("artifacts", "training_artifacts/ner_model"):
+        shutil.copytree(source_root / relative, KAGGLE_WORKING_ROOT / relative, dirs_exist_ok=True)
 
-PROJECT_ROOT = KAGGLE_WORKING_ROOT / "AI-Race-Viettel" / "v2"
+if RESULTS_SOURCE.is_file():
+    with zipfile.ZipFile(RESULTS_SOURCE) as archive:
+        member_names = archive.namelist()
+        safe_members = {_safe_archive_member(name).as_posix() for name in member_names}
+        missing_members = REQUIRED_RESULTS_MEMBERS - safe_members
+        missing_prefixes = [
+            prefix for prefix in REQUIRED_RESULTS_PREFIXES
+            if not any(name.startswith(prefix) for name in safe_members)
+        ]
+        if missing_members or missing_prefixes:
+            raise ValueError(
+                f"results.zip is missing checkpoint/artifact members: "
+                f"files={sorted(missing_members)}, prefixes={missing_prefixes}"
+            )
+        for member_name in member_names:
+            member = _safe_archive_member(member_name)
+            if not any(member_name.startswith(prefix) for prefix in EXTRACT_PREFIXES):
+                continue
+            destination = (KAGGLE_WORKING_ROOT / member).resolve()
+            if KAGGLE_WORKING_ROOT.resolve() not in destination.parents and destination != KAGGLE_WORKING_ROOT.resolve():
+                raise ValueError(f"Archive member escapes working directory: {member_name!r}")
+            if member_name.endswith("/"):
+                destination.mkdir(parents=True, exist_ok=True)
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member_name) as source, destination.open("wb") as target:
+                shutil.copyfileobj(source, target)
+else:
+    _copy_directory_bundle(RESULTS_SOURCE)
+
+def _normalize_plain_knowledge_bases() -> None:
+    """Kaggle may transparently decompress uploaded .jsonl.gz files."""
+    for relative in (
+        "artifacts/icd10/icd10_dictionary",
+        "artifacts/rxnorm/rxnorm_dictionary",
+        "artifacts/rxnorm/rxnorm_relations",
+    ):
+        plain = KAGGLE_WORKING_ROOT / f"{relative}.jsonl"
+        compressed = KAGGLE_WORKING_ROOT / f"{relative}.jsonl.gz"
+        if plain.is_file() and not compressed.exists():
+            compressed.parent.mkdir(parents=True, exist_ok=True)
+            with plain.open("rt", encoding="utf-8", newline="") as source, gzip.open(
+                compressed, "wt", encoding="utf-8", newline=""
+            ) as target:
+                shutil.copyfileobj(source, target)
+
+_normalize_plain_knowledge_bases()
+
 NER_MODEL_DIR = KAGGLE_WORKING_ROOT / "training_artifacts" / "ner_model"
-if not (PROJECT_ROOT / "clinical_nlp_lab").is_dir() or not (PROJECT_ROOT / "artifacts").is_dir():
-    raise FileNotFoundError(f"Bundled project could not be resolved at {PROJECT_ROOT}")
+ARTIFACT_DIR = KAGGLE_WORKING_ROOT / "artifacts"
+required_kb = (
+    ARTIFACT_DIR / "icd10" / "icd10_dictionary.jsonl.gz",
+    ARTIFACT_DIR / "rxnorm" / "rxnorm_dictionary.jsonl.gz",
+)
+missing_kb = [str(path) for path in required_kb if not path.is_file()]
+if missing_kb:
+    raise FileNotFoundError(
+        "Knowledge-base artifacts are missing after Kaggle decompression normalization: "
+        f"{missing_kb}"
+    )
 if not all((NER_MODEL_DIR / name).is_file() for name in ("model.safetensors", "config.json", "tokenizer.json")):
     raise FileNotFoundError(f"NER checkpoint could not be resolved at {NER_MODEL_DIR}")
-sys.path.insert(0, str(PROJECT_ROOT))'''
+'''
         ),
         markdown_cell("## 3. Discover inference documents"),
         code_cell(
@@ -211,11 +301,12 @@ OUTPUT_ZIP = KAGGLE_WORKING_ROOT / "output.zip"
 INFERENCE_SUMMARY = run_inference(
     INPUT_SOURCE,
     OUTPUT_DIR,
-    PROJECT_ROOT / "artifacts",
+    ARTIFACT_DIR,
     create_zip=True,
     diagnostics_dir=DIAGNOSTICS_DIR,
     zip_path=OUTPUT_ZIP,
     ner_model_dir=NER_MODEL_DIR,
+    enable_qwen_reranker=ENABLE_QWEN_RERANKER,
 )
 print(INFERENCE_SUMMARY)'''
         ),
@@ -243,8 +334,10 @@ with zipfile.ZipFile(OUTPUT_ZIP) as archive:
 
 RUN_MANIFEST = {
     "training_skipped": True,
+    "enable_qwen_reranker": ENABLE_QWEN_RERANKER,
     "checkpoint_source": str(NER_MODEL_DIR),
-    "results_zip": str(RESULTS_ZIP),
+    "project_root": str(PROJECT_ROOT),
+    "results_zip": str(RESULTS_SOURCE),
     "input_documents": len(INPUT_DOCUMENTS),
     "submission_entities": INFERENCE_SUMMARY["submission_entity_count"],
     "output_zip": str(OUTPUT_ZIP),
