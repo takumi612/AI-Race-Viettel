@@ -120,7 +120,7 @@ class ClinicalLLMReranker:
 
         # Chạy suy luận batch (rất nhanh)
         logging.info(f"Đang chạy vLLM Rerank cho {len(prompts)} thực thể...")
-        outputs = self.llm.generate(prompts, sampling_params=sampling_params_list, use_tqdm=True)
+        outputs = self.llm.generate(prompts, sampling_params=sampling_params_list, use_tqdm=False)
         
         results = []
         for output in outputs:
