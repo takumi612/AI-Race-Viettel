@@ -102,13 +102,20 @@ class ClinicalLLMReranker:
             )
             prompts.append(prompt)
             
-            # vLLM hỗ trợ truyền guided_json schema động (sử dụng outlines backend)
+            # vLLM >= 0.6.0 yêu cầu GuidedDecodingParams thay vì truyền trực tiếp guided_json
             schema_str = self._build_json_schema(query["candidates"])
-            sp = SamplingParams(
-                temperature=0.0, # Greedy search để ổn định
-                max_tokens=100,
-                guided_json=schema_str
-            )
+            kwargs = {
+                "temperature": 0.0, # Greedy search để ổn định
+                "max_tokens": 100,
+            }
+            
+            try:
+                from vllm.sampling_params import GuidedDecodingParams
+                kwargs["guided_decoding"] = GuidedDecodingParams(json=schema_str)
+            except ImportError:
+                kwargs["guided_json"] = schema_str
+                
+            sp = SamplingParams(**kwargs)
             sampling_params_list.append(sp)
 
         # Chạy suy luận batch (rất nhanh)
