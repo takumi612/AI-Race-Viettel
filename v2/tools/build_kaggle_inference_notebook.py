@@ -71,6 +71,24 @@ os.environ.setdefault("WANDB_DISABLED", "true")
 os.environ.setdefault("TQDM_DISABLE", "1")
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
+def log_gpu_state(stage: str) -> None:
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            print(f"[GPU] {stage}: CUDA unavailable")
+            return
+        free, total = torch.cuda.mem_get_info()
+        gib = 1024 ** 3
+        print(
+            f"[GPU] {stage}: device={torch.cuda.get_device_name(0)!r}, "
+            f"free={free / gib:.2f}/{total / gib:.2f} GiB, "
+            f"allocated={torch.cuda.memory_allocated() / gib:.2f} GiB, "
+            f"reserved={torch.cuda.memory_reserved() / gib:.2f} GiB, "
+            f"peak={torch.cuda.max_memory_allocated() / gib:.2f} GiB"
+        )
+    except Exception as exc:
+        print(f"[GPU] {stage}: status unavailable ({exc})")
+
 def _is_project(path: Path) -> bool:
     return (path / "clinical_nlp_lab").is_dir() and (path / "requirements-kaggle.txt").is_file()
 
@@ -91,7 +109,8 @@ if PROJECT_ROOT is None:
     PROJECT_ROOT = (clone_dir / "v2").resolve()
 if not _is_project(PROJECT_ROOT):
     raise FileNotFoundError(f"Could not resolve cloned project at {PROJECT_ROOT}")
-sys.path.insert(0, str(PROJECT_ROOT))'''
+sys.path.insert(0, str(PROJECT_ROOT))
+log_gpu_state("notebook_bootstrap")'''
         ),
         markdown_cell("## 2. Validate and safely unpack the checkpoint bundle"),
         code_cell(
@@ -290,7 +309,8 @@ if missing_after:
 import torch
 if REQUIRE_GPU and not torch.cuda.is_available():
     raise RuntimeError("GPU is required. Open Kaggle Settings and select a GPU accelerator.")
-print(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'not available'}")'''
+print(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'not available'}")
+log_gpu_state("dependencies_ready")'''
         ),
         markdown_cell("## 5. Run inference from the packaged checkpoint"),
         code_cell(
@@ -304,6 +324,7 @@ if not INPUT_DOCUMENTS:
 OUTPUT_DIR = KAGGLE_WORKING_ROOT / "output"
 DIAGNOSTICS_DIR = KAGGLE_WORKING_ROOT / "diagnostics"
 OUTPUT_ZIP = KAGGLE_WORKING_ROOT / "output.zip"
+log_gpu_state("before_run_inference")
 INFERENCE_SUMMARY = run_inference(
     INPUT_SOURCE,
     OUTPUT_DIR,
@@ -318,6 +339,7 @@ INFERENCE_SUMMARY = run_inference(
     qwen_max_model_len=QWEN_MAX_MODEL_LEN,
     qwen_batch_size=QWEN_BATCH_SIZE,
 )
+log_gpu_state("after_run_inference")
 print(INFERENCE_SUMMARY)'''
         ),
         markdown_cell("## 6. Validate the submission and write the inference manifest"),

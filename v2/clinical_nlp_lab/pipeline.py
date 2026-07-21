@@ -231,22 +231,47 @@ def run_inference(
     train_source: str | Path | None = None,
     train_documents: Sequence[ClinicalDocument] | None = None,
 ) -> dict[str, Any]:
-    def gpu_memory_snapshot() -> dict[str, float | int | None]:
+    def gpu_memory_snapshot(stage: str) -> dict[str, str | float | int | None]:
         try:
             import torch
             if not torch.cuda.is_available():
-                return {"free_gib": None, "total_gib": None, "allocated_gib": None, "reserved_gib": None}
+                return {
+                    "stage": stage,
+                    "device": None,
+                    "free_gib": None,
+                    "total_gib": None,
+                    "allocated_gib": None,
+                    "reserved_gib": None,
+                    "peak_allocated_gib": None,
+                }
             free, total = torch.cuda.mem_get_info()
             gib = 1024 ** 3
             return {
+                "stage": stage,
+                "device": torch.cuda.get_device_name(0),
                 "free_gib": round(free / gib, 2),
                 "total_gib": round(total / gib, 2),
                 "allocated_gib": round(torch.cuda.memory_allocated() / gib, 2),
                 "reserved_gib": round(torch.cuda.memory_reserved() / gib, 2),
+                "peak_allocated_gib": round(torch.cuda.max_memory_allocated() / gib, 2),
             }
         except Exception:
-            return {"free_gib": None, "total_gib": None, "allocated_gib": None, "reserved_gib": None}
+            return {
+                "stage": stage,
+                "device": None,
+                "free_gib": None,
+                "total_gib": None,
+                "allocated_gib": None,
+                "reserved_gib": None,
+                "peak_allocated_gib": None,
+            }
 
+    def log_gpu_state(stage: str) -> dict[str, str | float | int | None]:
+        snapshot = gpu_memory_snapshot(stage)
+        print(f"[GPU] {json.dumps(snapshot, ensure_ascii=False)}")
+        return snapshot
+
+    gpu_memory_start = log_gpu_state("pipeline_start")
     documents = load_input_documents(input_source)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -265,13 +290,15 @@ def run_inference(
             train_documents = None
 
     pipeline = ClinicalNLPPipeline(artifact_dir, ner_model_dir=ner_model_dir, train_documents=train_documents)
+    gpu_memory_after_ner_load = log_gpu_state("after_ner_load")
     
     # PASS 1: NER, Assertion (Hybrid fallback), Hybrid Retrieval, Relations
     intermediate_results = {}
     for document in documents:
         intermediate_results[document.document_id] = pipeline.process_document(document)
 
-    gpu_memory_before_release = gpu_memory_snapshot()
+    gpu_memory_after_ner_pass = log_gpu_state("after_ner_pass")
+    gpu_memory_before_release = log_gpu_state("before_ner_release")
     pipeline.release_for_llm()
     import gc
     import torch
@@ -279,9 +306,7 @@ def run_inference(
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
-    gpu_memory_before_qwen = gpu_memory_snapshot()
-    print(f"[GPU] before NER release: {gpu_memory_before_release}")
-    print(f"[GPU] before Qwen: {gpu_memory_before_qwen}")
+    gpu_memory_before_qwen = log_gpu_state("before_qwen")
 
     # PASS 2: LLM Assertion & Reranking (Batched)
     llm_reranker_enabled = False
@@ -361,6 +386,7 @@ def run_inference(
     finally:
         if reranker is not None:
             reranker.destroy()
+        gpu_memory_after_qwen = log_gpu_state("after_qwen")
         
     type_counts = Counter()
     candidate_linked = 0
@@ -452,8 +478,12 @@ def run_inference(
         "llm_reranker_enabled": llm_reranker_enabled,
         "llm_assertion_enabled": llm_assertion_enabled,
         "llm_fallback_reason": llm_fallback_reason,
+        "gpu_memory_start": gpu_memory_start,
+        "gpu_memory_after_ner_load": gpu_memory_after_ner_load,
+        "gpu_memory_after_ner_pass": gpu_memory_after_ner_pass,
         "gpu_memory_before_release": gpu_memory_before_release,
         "gpu_memory_before_qwen": gpu_memory_before_qwen,
+        "gpu_memory_after_qwen": gpu_memory_after_qwen,
     }
     write_json(diagnostics_path / "run_summary.json", summary)
     return summary
