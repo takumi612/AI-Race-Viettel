@@ -56,10 +56,10 @@ def _selection_warning_reason(response_text: str, candidates: list[dict[str, Any
 class ClinicalLLMReranker:
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen2.5-3B-Instruct-AWQ",
-        max_model_len: int = 1024,
-        batch_size: int = 16,
-        gpu_memory_utilization: float = 0.2,
+        model_name: str = "Qwen/Qwen2.5-7B-Instruct-AWQ",
+        max_model_len: int = 4096,
+        batch_size: int = 64,
+        gpu_memory_utilization: float = 0.5,
     ):
         self.model_name = model_name
         self.batch_size = batch_size
