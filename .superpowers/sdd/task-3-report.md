@@ -68,3 +68,22 @@ $ python v2/tools/build_kaggle_inference_notebook.py --output v2/_generated_infe
 
 $ python -m py_compile v2/tools/build_kaggle_inference_notebook.py
 ```
+
+## Residual docs remediation (2026-07-21)
+
+The artifact checklist now explicitly requires
+`AI-Race-Viettel/v2/requirements-kaggle.txt`, matching the notebook's archive
+validation before dependency installation. Added a runbook contract assertion
+for this exact required path.
+
+### Verification
+
+```text
+$ python -m pytest v2/tests/test_inference_notebook.py -q -p no:cacheprovider
+.......                                                                  [100%]
+7 passed in 0.02s
+
+$ python -m pytest v2/tests -q -p no:cacheprovider
+.....................                                                    [100%]
+21 passed in 4.31s
+```

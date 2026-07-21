@@ -101,3 +101,4 @@ def test_inference_runbook_covers_complete_kaggle_workflow():
         "training_skipped",
     ):
         assert phrase in text
+    assert "AI-Race-Viettel/v2/requirements-kaggle.txt" in text

@@ -9,7 +9,9 @@ train or fine-tune a model.
    archive named `results.zip` exactly as it is; do not rename it or unpack it.
    The archive must contain the checkpoint members under
    `training_artifacts/ner_model/`, including exactly `config.json`,
-   `model.safetensors`, and `tokenizer.json`.
+   `model.safetensors`, and `tokenizer.json`. It must also contain
+   `AI-Race-Viettel/v2/requirements-kaggle.txt`, which the notebook validates
+   before installing inference dependencies.
 2. Create or select a separate private inference Dataset. It must contain
    either a top-level `input.zip` or an `input/` directory with one or more
    `*.txt` documents. This Dataset should contain only the documents to infer,
