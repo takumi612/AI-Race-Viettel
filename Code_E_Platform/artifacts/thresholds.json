@@ -1,7 +1,0 @@
-{
-  "candidate_min_score": 0.5,
-  "dictionary_exact": 0.99,
-  "dictionary_phrase": 0.94,
-  "overlap_close_confidence": 0.05,
-  "regex_rule": 0.78
-}

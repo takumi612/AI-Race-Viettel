@@ -1,9 +1,0 @@
-numpy>=1.26,<3
-openpyxl>=3.1,<4
-bm25s>=0.2,<0.3
-faiss-cpu>=1.8,<2
-torch>=2.2,<3
-sentence-transformers>=3,<6
-transformers>=4.44,<6
-requests>=2.31,<3
-pytest>=8,<9

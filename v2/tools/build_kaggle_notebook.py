@@ -189,29 +189,13 @@ for root in search_roots:
     train_candidates.extend(path for path in root.rglob("train") if not _is_archive_path(path, root))
     train_candidates.extend(path for path in root.rglob("synthetic_train_v1") if not _is_archive_path(path, root))
 
-# Local-only fixture lets the generated notebook be executed as a smoke test.
-if not IS_KAGGLE:
-    local_fixture_candidates = [
-        ancestor / "test/archive/tests/fixtures/paired_annotations"
-        for ancestor in (PROJECT_ROOT, *PROJECT_ROOT.parents)
-    ]
-    local_fixture = next(
-        (path for path in local_fixture_candidates if _has_training_layout(path)),
-        None,
-    )
-    if local_fixture is not None:
-        train_candidates.insert(0, local_fixture)
-
 TRAIN_SOURCE = next((path.resolve() for path in train_candidates if _has_training_layout(path)), None)
 if TRAIN_SOURCE is None and REQUIRE_TRAINING_DATA:
     raise FileNotFoundError(
         "No annotated training data found. Attach train/*.txt + *.json or synthetic_train_v1/input + gt."
     )
 
-if IS_KAGGLE:
-    RUN_ROOT = KAGGLE_WORKING_ROOT
-else:
-    RUN_ROOT = PROJECT_ROOT / "test/runtime_evidence/kaggle_notebook_simulation"
+RUN_ROOT = KAGGLE_WORKING_ROOT if IS_KAGGLE else PROJECT_ROOT / "runtime"
 RUN_ROOT.mkdir(parents=True, exist_ok=True)
 TRAINING_ROOT = RUN_ROOT / "training_artifacts"
 NER_MODEL_DIR = TRAINING_ROOT / "ner_model"
@@ -524,28 +508,11 @@ Chọn **Save Version → Save & Run All**, sau đó tải file từ tab Output.
         )
     )
 
-    # Keep project discovery valid when the runtime is packaged under Code_E_Platform.
+    # Keep the generated fallback template aligned with the canonical v2 runtime.
     for cell in cells:
         if cell.get("cell_type") != "code":
             continue
         source = "".join(cell.get("source", []))
-        source = source.replace(
-            'project_candidates.append(Path.cwd())\nif IS_KAGGLE:\n    project_candidates.extend(marker.parent for marker in KAGGLE_INPUT_ROOT.rglob("clinical_nlp_lab") if marker.is_dir())',
-            '''project_candidates.append(Path.cwd() / "Code_E_Platform")
-project_candidates.append(Path.cwd())
-if IS_KAGGLE:
-    for marker in KAGGLE_INPUT_ROOT.rglob("clinical_nlp_lab"):
-        if marker.is_dir():
-            project_candidates.extend([marker.parent, marker.parent.parent / "Code_E_Platform"])''',
-        )
-        source = source.replace(
-            'clone_dir = KAGGLE_WORKING_ROOT / "AI-Race-Viettel"\nif PROJECT_ROOT is None and IS_KAGGLE:\n    if clone_dir.exists() and not _is_project(clone_dir):',
-            'clone_dir = KAGGLE_WORKING_ROOT / "AI-Race-Viettel"\nif PROJECT_ROOT is None and IS_KAGGLE:\n    clone_candidates = [clone_dir / "Code_E_Platform", clone_dir]\n    if clone_dir.exists() and not any(_is_project(path) for path in clone_candidates):',
-        )
-        source = source.replace(
-            '    PROJECT_ROOT = clone_dir.resolve()',
-            '    PROJECT_ROOT = next((path.resolve() for path in clone_candidates if _is_project(path)), None)',
-        )
         source = source.replace(
             'search_roots = [PROJECT_ROOT]\nif IS_KAGGLE:\n    search_roots = [path for path in KAGGLE_INPUT_ROOT.iterdir() if path.is_dir()] + search_roots',
             'search_roots = [PROJECT_ROOT]\nif IS_KAGGLE:\n    search_roots = [path for path in KAGGLE_INPUT_ROOT.iterdir() if path.is_dir()] + search_roots\nelse:\n    search_roots.extend(ancestor for ancestor in PROJECT_ROOT.parents if (ancestor / "input.zip").is_file())',

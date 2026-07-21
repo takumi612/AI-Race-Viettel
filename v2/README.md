@@ -1,90 +1,74 @@
-# Clinical NLP Colab Pipeline
+# Clinical NLP Kaggle Pipeline
 
-Repository tối giản với hai notebook:
+`v2/` is the maintained Kaggle runtime for medical information extraction.
 
-- `medical_information_extraction_lab.ipynb`: Colab Run all.
-- `medical_information_extraction_kaggle.ipynb`: train XLM-R bằng GPU Kaggle,
-  dùng checkpoint vừa train để tạo `output.zip`.
-
-## File runtime được giữ lại
+## Runtime layout
 
 ```text
-AI-Race-Viettel/
-├── Code_E_Platform/                   # thư mục duy nhất cần upload để chạy
-│   ├── artifacts/                     # config, mapping và KB cache
-│   ├── clinical_nlp_lab/              # package inference/training
-│   ├── tools/                         # build notebook/KB và CLI inference
-│   ├── medical_information_extraction_lab.ipynb
-│   ├── medical_information_extraction_kaggle.ipynb
-│   ├── requirements-colab.txt
-│   ├── requirements-kaggle.txt
-│   ├── COLAB_RUNBOOK.md
-│   ├── KAGGLE_RUNBOOK.md
-│   └── README.md
-└── test/                              # archive, không dùng khi Run all
+v2/
+├── artifacts/                         # config, mappings and ICD-10/RxNorm caches
+├── clinical_nlp_lab/                  # inference, linking, assertion and NER code
+├── scripts/train_ner_subprocess.py   # isolated NER training process
+├── tools/                             # Kaggle builder, KB builder and CLI tools
+├── medical_information_extraction_kaggle.ipynb
+├── requirements-kaggle.txt
+├── KAGGLE_RUNBOOK.md
+└── README.md
 ```
 
-Notebook không phụ thuộc vào nội dung trong `test/`; dữ liệu input lớn cũng được giữ ngoài
-`Code_E_Platform` và attach/upload riêng trên Drive hoặc Kaggle Dataset.
+## Run on Kaggle
 
-## Chạy nhanh trên Colab
+1. Import `medical_information_extraction_kaggle.ipynb`.
+2. Attach the `ai-race-clinical-data` Dataset with `input.zip` and annotated training data.
+3. Select a GPU accelerator and enable Internet, unless code/model Datasets are attached.
+4. Choose **Run All**.
 
-Chuẩn bị một trong hai nguồn input trên Google Drive:
+The notebook clones the current `main` branch when a code Dataset is not attached. It trains XLM-R NER, runs the hybrid clinical pipeline, and writes diagnostics and outputs under `/kaggle/working`.
+
+See [KAGGLE_RUNBOOK.md](KAGGLE_RUNBOOK.md) for input layouts, offline mode, troubleshooting, and output details.
+
+## Input and annotation layouts
+
+The loader supports:
 
 ```text
-MyDrive/AI-Race-Viettel/data/input/<id>.txt
+input.zip
+train/001.txt
+train/001.json
 ```
 
-hoặc:
+or:
 
 ```text
-MyDrive/AI-Race-Viettel/data/input.zip
+input.zip
+synthetic_train_v1/input/001.txt
+synthetic_train_v1/gt/001.json
 ```
 
-Sau đó:
+Annotation offsets use an exclusive end position and must satisfy:
 
-1. Mở notebook trên Colab.
-2. Chọn GPU tại **Runtime → Change runtime type**.
-3. Chọn **Runtime → Run all**.
-4. Chấp nhận mount Google Drive.
-
-Notebook tự clone nhánh `Pipeline_colab`, cài dependency, tìm dữ liệu thật và
-lưu kết quả tại:
-
-```text
-MyDrive/AI-Race-Viettel/output/output.zip
+```python
+raw_text[start:end] == text
 ```
 
-Hướng dẫn đầy đủ nằm trong `COLAB_RUNBOOK.md`.
+## Outputs
 
-## Training trên Kaggle
+After a successful run, download:
 
-Import `medical_information_extraction_kaggle.ipynb`, attach Dataset có input
-và annotation, bật GPU rồi Run All. Kết quả được lưu tại
-`/kaggle/working/output.zip` và `/kaggle/working/trained_ner_artifacts.zip`.
-Xem `KAGGLE_RUNBOOK.md` để setup Internet-on hoặc offline bằng attached Dataset.
+- `/kaggle/working/output.zip`
+- `/kaggle/working/trained_ner_artifacts.zip`
+- `/kaggle/working/run_manifest.json`
+- `/kaggle/working/diagnostics/run_summary.json`
 
-## Training tùy chọn
+The trained NER checkpoint is stored in `/kaggle/working/training_artifacts/ner_model/` during the run.
 
-Để train trước inference, dùng một trong hai layout:
+## Local checks
 
-```text
-data/train/001.txt
-data/train/001.json
+From the repository root:
+
+```powershell
+python -m pytest v2/tests -q -p no:cacheprovider
+python v2/tools/build_kaggle_notebook.py --output v2/_generated_check.ipynb
 ```
 
-hoặc:
-
-```text
-data/synthetic_train_v1/input/001.txt
-data/synthetic_train_v1/gt/001.json
-```
-
-Nếu không có annotation, notebook bỏ qua supervised training và chạy baseline
-artifact/rule-dictionary; không tạo metric giả.
-
-## Thành phần trong `test/`
-
-`test/archive/` chứa source pipeline cũ, reports, stage README, test suite và
-công cụ audit đã dùng để phát triển/kiểm chứng. Chúng được giữ để tra cứu nhưng
-không tham gia Colab `Run all`.
+The generated notebook is a validation/build artifact and should not be committed.

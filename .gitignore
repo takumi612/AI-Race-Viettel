@@ -12,10 +12,7 @@ __pycache__/
 /output/
 /diagnostics/
 /output.zip
-/test/runtime_evidence/
-/Code_E_Platform/output/
-/Code_E_Platform/diagnostics/
-/Code_E_Platform/output.zip
+/v2/runtime/
 
 # Model checkpoints belong on Google Drive
 /artifacts/ner_model/
