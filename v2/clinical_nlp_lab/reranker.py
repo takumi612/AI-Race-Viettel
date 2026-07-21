@@ -31,7 +31,7 @@ class ClinicalLLMReranker:
             trust_remote_code=True,
             quantization="awq" if "AWQ" in model_name else None,
             max_model_len=max_model_len,
-            gpu_memory_utilization=0.9, # Dùng 90% VRAM GPU
+            gpu_memory_utilization=0.5, # Giảm xuống 50% để nhường VRAM còn thừa của PyTorch
             enforce_eager=True # Giảm VRAM overhead
         )
 
