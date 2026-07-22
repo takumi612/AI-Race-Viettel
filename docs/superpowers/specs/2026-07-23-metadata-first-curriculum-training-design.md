@@ -1,254 +1,254 @@
-# Metadata-First Curriculum Training Design
+# Thiết kế huấn luyện theo curriculum và metadata-first
 
-## 1. Purpose
+## 1. Mục đích
 
-This specification defines the target training and inference design for the Viettel AI Race clinical information extraction pipeline. It extends the existing end-to-end Kaggle design with four metric-oriented improvements:
+Tài liệu này đặc tả thiết kế đích cho quá trình huấn luyện và suy luận của pipeline trích xuất thông tin y khoa trong cuộc thi AI Race Viettel. Thiết kế mở rộng pipeline Kaggle end-to-end hiện tại bằng bốn cải tiến hướng đến tối ưu metric:
 
-1. source-aware three-stage NER training;
-2. metadata-first context handling without changing raw text;
-3. boundary-safe owner-window supervision;
-4. independently trained assertion classification and KB-first entity recovery.
+1. huấn luyện NER ba giai đoạn có nhận biết nguồn dữ liệu;
+2. xử lý ngữ cảnh theo hướng metadata-first mà không thay đổi văn bản gốc;
+3. giám sát owner-window an toàn tại biên chunk;
+4. mô hình phân loại assertion độc lập và cơ chế khôi phục entity theo hướng KB-first.
 
-The design must use the 2,000 synthetic v2 records for coverage without allowing their writing style or template distribution to dominate the 100 trusted organizer-labelled records.
+Thiết kế phải sử dụng 2.000 tài liệu synthetic v2 để tăng độ phủ, nhưng không để văn phong hoặc phân bố template của dữ liệu synthetic lấn át 100 tài liệu có nhãn đáng tin cậy từ ban tổ chức (BTC).
 
-## 2. Competition contract and optimization target
+## 2. Contract của bài thi và mục tiêu tối ưu
 
-The pipeline extracts five entity types:
+Pipeline trích xuất năm loại entity:
 
-- diagnosis;
-- drug;
-- symptom;
-- laboratory test name;
-- laboratory test result.
+- chẩn đoán;
+- thuốc;
+- triệu chứng;
+- tên xét nghiệm;
+- kết quả xét nghiệm.
 
-Only the official assertion fields are emitted:
+Chỉ xuất ba trường assertion chính thức:
 
 - `isNegated`;
 - `isHistorical`;
 - `isFamily`.
 
-ICD-10 candidates are attached only to diagnosis entities. RxNorm candidates are attached only to drug entities. Other entity types have no ontology candidates.
+Candidate ICD-10 chỉ được gắn cho entity chẩn đoán. Candidate RxNorm chỉ được gắn cho entity thuốc. Các loại entity còn lại không có candidate ontology.
 
-The observed organizer labels contain at most one final candidate per diagnosis or drug entity. Therefore, the submission default remains `candidate_output_k = 1`. This does not limit retrieval: the internal candidate pool remains configurable, with a default of 20 candidates before filtering and reranking.
+Trong nhãn BTC đã quan sát, mỗi entity chẩn đoán hoặc thuốc có tối đa một candidate ở output cuối. Vì vậy, cấu hình submission mặc định vẫn là `candidate_output_k = 1`. Giới hạn này không áp dụng cho bước retrieval: tập candidate nội bộ vẫn có thể cấu hình, mặc định lấy tối đa 20 candidate trước khi lọc và rerank.
 
-The local evaluator is a development proxy, not confirmed organizer scoring code. Token-level F1 and the current 30/30/40 local composite are reported for diagnostics, but model selection must prioritize document-level entity quality and separately report assertion and linking quality.
+Evaluator local chỉ là công cụ đại diện để phát triển, chưa được xác nhận là mã chấm chính thức của BTC. Token-level F1 và công thức tổng hợp 30/30/40 hiện tại vẫn được báo cáo để chẩn đoán, nhưng việc chọn mô hình phải ưu tiên chất lượng entity ở cấp tài liệu và báo cáo riêng chất lượng assertion cùng entity linking.
 
-## 3. Data policy
+## 3. Chính sách dữ liệu
 
-The canonical corpus is `data_v2/Training_data/synthetic_train_v2`.
+Corpus chuẩn là `data_v2/Training_data/synthetic_train_v2`.
 
-| IDs | Origin | Role |
+| ID | Nguồn gốc | Vai trò |
 | --- | --- | --- |
-| 1-100 | Organizer inputs with reconstructed/self-generated GT | Quarantine and audit only; excluded from model fitting and threshold calibration |
-| 101-200 | Organizer inputs with organizer-provided leaked GT | Trusted real-labelled corpus |
-| 201-2200 | Synthetic v2 | Coverage, representation warm-up, rare concepts, genre diversity, and regularization |
+| 1–100 | Input của BTC với GT được khôi phục/tự sinh | Chỉ cách ly và audit; không dùng để fit mô hình hoặc hiệu chỉnh threshold |
+| 101–200 | Input của BTC với GT bị leak do BTC cung cấp | Corpus thật có nhãn đáng tin cậy |
+| 201–2200 | Synthetic v2 | Tăng độ phủ, warm-up biểu diễn, khái niệm hiếm, đa dạng thể loại và regularization |
 
-The 2,000 synthetic records are not discarded. They must all be eligible for Stage 1 and Stage 2 training. Stage 3 uses a selected replay subset so that final adaptation follows organizer language rather than synthetic style.
+Không loại bỏ 2.000 tài liệu synthetic. Tất cả phải đủ điều kiện tham gia Stage 1 và Stage 2. Stage 3 chỉ dùng một tập replay đã chọn để bước thích nghi cuối bám theo ngôn ngữ của BTC thay vì văn phong synthetic.
 
-The existing raw input and GT files remain immutable during training. Derived metadata, splits, features, and calibration results are written as sidecar artifacts.
+Các file input và GT gốc không được thay đổi trong quá trình huấn luyện. Metadata dẫn xuất, split, feature và kết quả calibration được lưu thành artifact sidecar.
 
-### 3.1 Development split
+### 3.1. Development split
 
-Hyperparameter and checkpoint selection use a fixed development split:
+Việc chọn hyperparameter và checkpoint sử dụng một development split cố định:
 
-- 80 trusted real documents for training;
-- 20 trusted real documents for `real_holdout`;
-- a grouped synthetic training partition and grouped `synthetic_holdout` for diagnostics.
+- 80 tài liệu thật đáng tin cậy để huấn luyện;
+- 20 tài liệu thật đáng tin cậy làm `real_holdout`;
+- một phần synthetic dùng để huấn luyện và một `synthetic_holdout` được chia theo group để chẩn đoán.
 
-Splitting is group-aware. Document ID, template family, normalized primary surface group, and near-duplicate group must not cross a train/holdout boundary. The real split should preserve entity-type and assertion-label coverage as far as group constraints allow.
+Quá trình chia dữ liệu phải nhận biết group. Document ID, template family, nhóm surface chính đã chuẩn hóa và nhóm near-duplicate không được xuất hiện ở cả train lẫn holdout. Trong giới hạn của các ràng buộc group, real split cần bảo toàn độ phủ theo loại entity và nhãn assertion tốt nhất có thể.
 
-The real holdout is the primary model-selection set. The synthetic holdout diagnoses coverage and memorization but cannot override a degradation on the real holdout.
+Real holdout là tập chính để chọn mô hình. Synthetic holdout chỉ dùng để chẩn đoán độ phủ và hiện tượng ghi nhớ; kết quả trên synthetic holdout không được phép lấn át sự suy giảm trên real holdout.
 
-### 3.2 Final-fit protocol
+### 3.2. Quy trình final-fit
 
-After selecting the curriculum schedule, thresholds, and other hyperparameters, a final fit uses all 100 trusted real documents. No score produced on these 100 documents after final fitting is reported as an unbiased validation score.
+Sau khi chọn được curriculum, threshold và các hyperparameter khác, quá trình final-fit sử dụng toàn bộ 100 tài liệu thật đáng tin cậy. Điểm số được tạo trên chính 100 tài liệu này sau final-fit không được báo cáo như một kết quả validation không thiên lệch.
 
-The final-fit run uses the frozen decisions selected during development:
+Lần chạy final-fit sử dụng các quyết định đã được chọn và đóng băng trong giai đoạn development:
 
-- selected epoch counts, stage endpoints, and learning rates;
-- sampling proportions;
-- assertion thresholds;
-- linking thresholds and margins;
+- số epoch đã chọn, điểm kết thúc từng stage và learning rate;
+- tỷ lệ sampling;
+- threshold assertion;
+- threshold và margin của linking.
 
-Final fit does not early-stop or select a checkpoint against the 100 trusted documents used for fitting. It follows the development-selected schedule and saves the configured final stage endpoint.
+Final-fit không early-stop hoặc chọn checkpoint dựa trên 100 tài liệu đang được dùng để fit. Nó chạy đúng lịch huấn luyện đã chọn ở development và lưu trạng thái cuối của stage theo cấu hình.
 
-The final artifact records both the development split metrics and the fact that the delivered model was subsequently fitted on all trusted real labels.
+Artifact cuối phải lưu cả metric của development split và thông tin rằng mô hình được giao đã được fit tiếp bằng toàn bộ 100 nhãn thật đáng tin cậy.
 
-## 4. Metadata-first context model
+## 4. Mô hình ngữ cảnh metadata-first
 
-Raw clinical text is never rewritten because output offsets must refer to the original document. Context is represented in a sidecar record with the following fields where detectable:
+Không viết lại văn bản y khoa gốc vì offset trong output phải tham chiếu trực tiếp đến tài liệu ban đầu. Ngữ cảnh được biểu diễn trong sidecar record với các trường sau khi có thể phát hiện:
 
 - `document_id`;
-- `source_bucket`: `quarantine`, `organizer`, or `synthetic`;
+- `source_bucket`: `quarantine`, `organizer` hoặc `synthetic`;
 - `document_genre`;
-- `template_group` and `near_duplicate_group`;
-- section spans and normalized section types;
-- speaker or author role;
-- experiencer/subject, such as patient or family member;
-- long-tail and ontology-coverage flags;
-- content hash and builder version.
+- `template_group` và `near_duplicate_group`;
+- span của section và loại section đã chuẩn hóa;
+- vai trò người nói hoặc người viết;
+- chủ thể/experiencer, ví dụ bệnh nhân hoặc người nhà;
+- cờ long-tail và ontology coverage;
+- content hash và phiên bản bộ sinh dữ liệu.
 
-Section-heading rules are permitted because they identify document structure. Content regexes for diseases, drugs, or symptoms are not primary label generators. Laboratory value parsers may remain as structured enrichment, provided their detections are not treated as unquestioned ground truth.
+Cho phép dùng rule nhận diện tiêu đề section vì chúng xác định cấu trúc tài liệu. Regex nội dung cho bệnh, thuốc hoặc triệu chứng không được dùng làm bộ sinh nhãn chính. Bộ phân tích giá trị xét nghiệm có thể được giữ làm lớp làm giàu dữ liệu có cấu trúc, với điều kiện kết quả của nó không bị coi là ground truth mặc định.
 
-Metadata can be used for:
+Metadata có thể được sử dụng cho:
 
-- group-aware splitting;
-- source-aware sampling;
-- assertion context;
-- prediction diagnostics;
-- optional special context tokens only if ablation on `real_holdout` shows a gain.
+- chia dữ liệu theo group;
+- sampling có nhận biết nguồn;
+- xác định ngữ cảnh assertion;
+- chẩn đoán prediction;
+- token ngữ cảnh đặc biệt tùy chọn, chỉ khi ablation trên `real_holdout` chứng minh có cải thiện.
 
-The baseline does not inject metadata tokens into the encoder. This avoids changing text offsets and prevents noisy metadata detection from becoming a required model input.
+Baseline không chèn metadata token vào encoder. Quyết định này giúp giữ nguyên offset và tránh biến metadata được phát hiện chưa chính xác thành đầu vào bắt buộc của mô hình.
 
-## 5. Boundary-safe chunking
+## 5. Chunking an toàn tại biên
 
-The default tokenizer window is:
+Cửa sổ tokenizer mặc định:
 
-- `max_length = 512` tokens including special tokens;
-- overlap/stride target of 128 tokens.
+- `max_length = 512` token, bao gồm special token;
+- overlap/stride mục tiêu là 128 token.
 
-Every feature retains the document ID, raw character offsets, window bounds, and source metadata.
+Mỗi feature phải giữ document ID, raw character offset, biên cửa sổ và metadata nguồn.
 
-### 5.1 Owner-window supervision
+### 5.1. Giám sát owner-window
 
-Each gold entity is assigned to exactly one owner window. Eligible windows must contain the complete entity span. The owner is the eligible window that maximizes the entity's minimum token distance from the left and right usable boundaries. Ties are resolved by the earliest window index.
+Mỗi gold entity được gán cho đúng một owner window. Window hợp lệ phải chứa trọn vẹn span entity. Owner là window hợp lệ làm cực đại khoảng cách token nhỏ hơn giữa entity với hai biên trái/phải có thể sử dụng. Nếu bằng nhau, chọn window có index nhỏ hơn.
 
-Training labels follow these rules:
+Nhãn huấn luyện tuân theo các quy tắc:
 
-1. the owner window receives the complete BIO labels for the entity;
-2. copies of that entity in other overlapping windows are masked with `-100` for loss computation;
-3. a window containing only part of an entity masks the visible entity tokens with `-100`;
-4. non-entity tokens remain valid `O` supervision unless masked by tokenizer special/padding rules;
-5. if no window contains a complete entity, preprocessing fails for that document and records a diagnostic rather than silently converting it to `O`.
+1. owner window nhận đầy đủ nhãn BIO của entity;
+2. các bản sao của entity trong những window overlap khác được mask bằng `-100` khi tính loss;
+3. window chỉ chứa một phần entity sẽ mask các token entity nhìn thấy bằng `-100`;
+4. token không thuộc entity vẫn là nhãn `O` hợp lệ, trừ khi bị mask bởi quy tắc special token hoặc padding của tokenizer;
+5. nếu không có window nào chứa trọn entity, preprocessing phải dừng đối với tài liệu đó và ghi diagnostic, thay vì âm thầm chuyển entity thành `O`.
 
-This makes every entity contribute once, prevents overlap from changing class frequency, and removes false boundary supervision.
+Cơ chế này đảm bảo mỗi entity chỉ đóng góp vào loss một lần, overlap không làm thay đổi tần suất lớp và không tạo supervision sai ở biên.
 
-### 5.2 Inference merge
+### 5.2. Hợp nhất khi inference
 
-Predictions are projected to raw character offsets. Exact duplicates are collapsed first. Same-type overlapping spans are merged using calibrated confidence and boundary completeness. Cross-type conflicts are resolved deterministically by source reliability, confidence, and span completeness, with all discarded alternatives recorded in diagnostics.
+Prediction được chiếu về raw character offset. Các prediction trùng hoàn toàn được gộp trước. Span cùng loại và overlap được hợp nhất bằng confidence đã calibration và độ đầy đủ tại biên. Xung đột khác loại được xử lý tất định theo độ tin cậy của nguồn, confidence và độ đầy đủ của span; mọi phương án bị loại phải được ghi vào diagnostic.
 
-## 6. Three-stage NER curriculum
+## 6. Curriculum NER ba giai đoạn
 
-The NER backbone remains XLM-R unless a controlled real-holdout experiment justifies a replacement. Twenty epochs is a hard safety cap, not a target duration.
+Backbone NER tiếp tục là XLM-R, trừ khi một thí nghiệm có kiểm soát trên real holdout chứng minh mô hình khác tốt hơn. Hai mươi epoch là giới hạn an toàn tuyệt đối, không phải số epoch mục tiêu.
 
-### 6.1 Stage 1: synthetic warm-up
+### 6.1. Stage 1: warm-up bằng synthetic
 
-Purpose: learn the five entity types, broad lexical variation, clinical genres, rare ICD/RxNorm surfaces, and boundary behavior.
+Mục tiêu: học năm loại entity, biến thể từ vựng rộng, thể loại tài liệu y khoa, surface ICD/RxNorm hiếm và hành vi tại biên.
 
-- Data: synthetic training partition during development; all 2,000 synthetic records during final fit.
-- Epoch cap: 3, with an expected range of 1-3.
-- Initial learning-rate search range: `2e-5` to `3e-5`.
-- Selection signal during development: synthetic entity metrics plus a no-regression check on the real holdout.
+- Dữ liệu: phần synthetic train ở development; toàn bộ 2.000 tài liệu synthetic ở final-fit.
+- Giới hạn epoch: 3, khoảng dự kiến 1–3.
+- Khoảng learning rate ban đầu: `2e-5` đến `3e-5`.
+- Tín hiệu lựa chọn ở development: metric entity trên synthetic và điều kiện không suy giảm trên real holdout.
 - Output: `stage1_synthetic_checkpoint`.
 
-### 6.2 Stage 2: source-balanced mixed training
+### 6.2. Stage 2: huấn luyện trộn cân bằng theo nguồn
 
-Purpose: align representations with organizer writing while retaining synthetic coverage.
+Mục tiêu: căn chỉnh biểu diễn theo cách viết của BTC trong khi vẫn giữ độ phủ synthetic.
 
-- Data: 80 trusted real training documents plus the synthetic training partition during development; all 100 trusted real documents plus all 2,000 synthetic records during final fit.
-- Sampling unit: owner-labelled chunks grouped by source and document.
-- Target sampling exposure: 30-40% organizer chunks and 60-70% synthetic chunks per epoch-equivalent.
-- Epoch cap: 2, with an expected range of 1-2.
-- The sampler must not achieve balance by copying files or modifying the corpus.
+- Dữ liệu: 80 tài liệu thật dùng để train cùng phần synthetic train ở development; toàn bộ 100 tài liệu thật cùng 2.000 tài liệu synthetic ở final-fit.
+- Đơn vị sampling: các chunk có nhãn owner-window, được nhóm theo nguồn và tài liệu.
+- Tỷ lệ tiếp xúc mục tiêu trong mỗi epoch-equivalent: 30–40% chunk organizer và 60–70% chunk synthetic.
+- Giới hạn epoch: 2, khoảng dự kiến 1–2.
+- Sampler không được tạo cân bằng bằng cách sao chép file hoặc sửa corpus.
 - Output: `stage2_mixed_checkpoint`.
 
-### 6.3 Stage 3: organizer adaptation with synthetic replay
+### 6.3. Stage 3: thích nghi với dữ liệu BTC và synthetic replay
 
-Purpose: maximize fit to organizer language and annotation style without catastrophic forgetting of rare concepts.
+Mục tiêu: tối đa hóa độ phù hợp với ngôn ngữ và phong cách gán nhãn của BTC, đồng thời tránh quên thảm họa đối với khái niệm hiếm.
 
-- Data during development: 80 trusted real training documents plus replay selected from synthetic training data.
-- Data during final fit: all 100 trusted real documents plus replay selected using the frozen development policy.
-- Replay exposure: 15-20% of Stage 3 examples.
-- Replay prioritizes rare entity surfaces, long-tail ICD/RxNorm concepts, rare genres, rare assertion combinations, and boundary-hard examples.
-- Initial learning-rate search range: `5e-6` to `1e-5`.
-- Development epoch cap: 8; early stopping is expected to terminate earlier.
-- Final fit uses the Stage 3 epoch count selected during development and does not evaluate against the fitted 100 trusted documents.
+- Dữ liệu ở development: 80 tài liệu thật dùng để train cùng replay được chọn từ phần synthetic train.
+- Dữ liệu ở final-fit: toàn bộ 100 tài liệu thật cùng replay được chọn bằng chính sách đã đóng băng từ development.
+- Tỷ lệ replay: 15–20% ví dụ của Stage 3.
+- Replay ưu tiên surface entity hiếm, khái niệm ICD/RxNorm long-tail, genre hiếm, tổ hợp assertion hiếm và ví dụ khó tại biên.
+- Khoảng learning rate ban đầu: `5e-6` đến `1e-5`.
+- Giới hạn ở development: 8 epoch; early stopping dự kiến dừng sớm hơn.
+- Final-fit dùng số epoch Stage 3 đã được chọn trong development và không đánh giá trên 100 tài liệu đang dùng để fit.
 - Output: `final_ner_model`.
 
-### 6.4 Early stopping and checkpoint selection
+### 6.4. Early stopping và chọn checkpoint
 
-Development checkpoint selection uses document-level predictions on `real_holdout`:
+Checkpoint ở development được chọn bằng prediction cấp tài liệu trên `real_holdout`:
 
 `selection_score = 0.70 * exact_entity_f1 + 0.20 * overlap_entity_f1 + 0.10 * macro_type_f1`
 
-Requirements:
+Yêu cầu:
 
-- exact-span F1 is micro-averaged across entities;
-- overlap F1 uses one-to-one matching and a documented overlap threshold;
-- macro type F1 averages the five entity types equally;
-- token-level F1 is diagnostic only;
-- patience is applied to the selection score, not training loss;
-- a checkpoint cannot be selected if output schema or offset validation fails.
+- exact-span F1 được tính micro-average trên các entity;
+- overlap F1 sử dụng ghép cặp một-một và một overlap threshold được ghi rõ;
+- macro type F1 là trung bình đều của năm loại entity;
+- token-level F1 chỉ phục vụ chẩn đoán;
+- patience áp dụng trên selection score, không phải training loss;
+- checkpoint không được chọn nếu validation schema hoặc offset thất bại.
 
-Per-type metrics, per-genre metrics, seen/unseen-surface metrics, and boundary-error counts are persisted for analysis.
+Metric theo từng loại, từng genre, surface đã thấy/chưa thấy và số lỗi boundary phải được lưu để phân tích.
 
-## 7. Assertion model
+## 7. Mô hình assertion
 
-Assertions are handled by a separate multi-label classifier instead of broad content regexes.
+Assertion được xử lý bởi một classifier multi-label riêng, thay vì regex nội dung diện rộng.
 
-For each detected or gold entity, the classifier receives:
+Với mỗi entity được phát hiện hoặc gold entity, classifier nhận:
 
-- an entity-marked local context window;
-- section and experiencer metadata when available;
-- the entity type;
-- the raw sentence/clause context.
+- cửa sổ ngữ cảnh cục bộ có đánh dấu entity;
+- metadata section và experiencer nếu có;
+- loại entity;
+- ngữ cảnh câu/mệnh đề gốc.
 
-It predicts independent probabilities for `isNegated`, `isHistorical`, and `isFamily`. Thresholds are calibrated per label on the trusted real holdout. Synthetic assertion examples provide regularization and coverage, but organizer examples receive higher sampling weight.
+Mô hình dự đoán xác suất độc lập cho `isNegated`, `isHistorical` và `isFamily`. Threshold của từng nhãn được calibration riêng trên real holdout đáng tin cậy. Ví dụ assertion synthetic cung cấp regularization và độ phủ, nhưng ví dụ organizer nhận trọng số sampling cao hơn.
 
-To fit Kaggle resources, the assertion classifier may reuse a frozen copy of the NER encoder or use a lightweight classification head/adapter. The chosen variant must be based on real-holdout assertion F1 and runtime cost.
+Để phù hợp tài nguyên Kaggle, assertion classifier có thể tái sử dụng một bản encoder NER đã freeze hoặc dùng classification head/adapter nhẹ. Phương án được chọn dựa trên assertion F1 ở real holdout và chi phí runtime.
 
-Rules are restricted to high-precision structural fallback and diagnostics. They must not infer assertions from unscoped keywords across a full document. Any rule cue is bounded by clause/sentence and section scope.
+Rule chỉ được dùng làm fallback cấu trúc có precision cao và phục vụ diagnostic. Rule không được suy luận assertion từ keyword không giới hạn phạm vi trên toàn tài liệu. Mọi cue của rule phải bị giới hạn trong mệnh đề/câu và section tương ứng.
 
-## 8. Ontology retrieval, recovery, and linking
+## 8. Ontology retrieval, khôi phục entity và linking
 
-Entity discovery has two independent recall paths:
+Quá trình phát hiện entity có hai đường recall độc lập:
 
-1. NER predictions;
-2. KB-first phrase and alias retrieval over ICD-10 and RxNorm.
+1. prediction của NER;
+2. phrase/alias retrieval theo hướng KB-first trên ICD-10 và RxNorm.
 
-The KB-first path searches normalized exact aliases first, then controlled lexical/fuzzy or semantic alternatives. It can propose a disease or drug mention that NER missed, but it cannot directly force the mention into output. Proposals pass span verification, type checks, confidence thresholds, conflict resolution, and candidate calibration.
+Nhánh KB-first tìm alias chuẩn hóa khớp chính xác trước, sau đó mới xét phương án lexical/fuzzy hoặc semantic có kiểm soát. Nhánh này có thể đề xuất mention bệnh hoặc thuốc mà NER bỏ sót, nhưng không được trực tiếp ép mention vào output. Proposal phải qua xác minh span, kiểm tra type, confidence threshold, giải quyết xung đột và candidate calibration.
 
-For every accepted diagnosis or drug mention:
+Với mỗi mention chẩn đoán hoặc thuốc được chấp nhận:
 
-1. lexical and semantic retrieval produce up to 20 internal candidates;
-2. drug mention heads are separated from strength, route, form, and frequency;
-3. deterministic filters remove type-incompatible or invalid KB entries;
-4. a reranker orders the remaining pool;
-5. minimum score, top-1/top-2 margin, and abstention thresholds are applied;
-6. at most one candidate is emitted.
+1. lexical và semantic retrieval tạo tối đa 20 candidate nội bộ;
+2. phần head của mention thuốc được tách khỏi hàm lượng, đường dùng, dạng bào chế và tần suất;
+3. bộ lọc tất định loại các entry sai type hoặc không hợp lệ trong KB;
+4. reranker sắp xếp tập candidate còn lại;
+5. áp dụng minimum score, top-1/top-2 margin và abstention threshold;
+6. xuất tối đa một candidate.
 
-Retrieval quality is measured separately with recall@1, recall@5, recall@10, top-1 accuracy, coverage, and accuracy conditional on non-abstention. Thresholds are selected on the real holdout and frozen for final fit.
+Chất lượng retrieval được đo riêng bằng recall@1, recall@5, recall@10, top-1 accuracy, coverage và accuracy có điều kiện trên các trường hợp không abstain. Threshold được chọn trên real holdout và đóng băng trước final-fit.
 
-Qwen is optional and limited to ambiguous candidate reranking or assertion fallback. It may only choose from supplied valid candidates. Missing weights, invalid JSON, timeout, or CUDA failure must fall back to deterministic behavior and must not abort the pipeline.
+Qwen là thành phần tùy chọn, chỉ dùng để rerank candidate mơ hồ hoặc fallback cho assertion. Qwen chỉ được chọn từ candidate hợp lệ đã cung cấp. Thiếu weights, JSON sai, timeout hoặc lỗi CUDA phải quay về hành vi tất định và không được làm dừng pipeline.
 
-## 9. Kaggle notebook orchestration
+## 9. Điều phối notebook Kaggle
 
-The canonical notebook remains `v2/medical_information_extraction_kaggle.ipynb` and supports:
+Notebook chuẩn tiếp tục là `v2/medical_information_extraction_kaggle.ipynb` và hỗ trợ:
 
-- `RUN_MODE = "full"`: validate data, train all stages, calibrate development components where applicable, run inference, and package artifacts;
-- `RUN_MODE = "resume"`: resume from the latest complete stage whose manifest and checkpoint pass integrity checks;
-- `RUN_MODE = "inference_only"`: load final artifacts and generate competition output without training.
+- `RUN_MODE = "full"`: validate dữ liệu, train mọi stage, calibration các thành phần development khi phù hợp, chạy inference và đóng gói artifact;
+- `RUN_MODE = "resume"`: tiếp tục từ stage hoàn tất gần nhất có manifest và checkpoint vượt qua kiểm tra toàn vẹn;
+- `RUN_MODE = "inference_only"`: load artifact cuối và tạo output cuộc thi mà không train.
 
-The notebook executes these logical phases:
+Notebook thực hiện tuần tự các pha logic:
 
-1. environment, dataset, and KB discovery;
-2. deterministic validation and manifest construction;
-3. metadata extraction and group-aware development split;
-4. owner-window feature construction;
-5. Stage 1 synthetic warm-up;
-6. Stage 2 source-balanced mixed training;
-7. Stage 3 organizer adaptation;
-8. assertion training/calibration;
-9. linking retrieval and threshold calibration;
-10. final-fit path when enabled;
-11. checkpoint reload smoke test;
-12. inference, output validation, and artifact packaging.
+1. khám phá môi trường, dataset và KB;
+2. validation tất định và tạo manifest;
+3. trích xuất metadata và tạo development split theo group;
+4. tạo feature owner-window;
+5. Stage 1 warm-up bằng synthetic;
+6. Stage 2 huấn luyện trộn cân bằng theo nguồn;
+7. Stage 3 thích nghi với organizer;
+8. train và calibration assertion;
+9. linking retrieval và calibration threshold;
+10. chạy final-fit khi được bật;
+11. smoke test reload checkpoint;
+12. inference, validate output và đóng gói artifact.
 
-Each completed stage writes an atomic stage manifest. Resume is allowed only when the manifest matches dataset hashes, code/config version, tokenizer identity, label mapping, and checkpoint inventory.
+Mỗi stage hoàn tất phải ghi một stage manifest theo cách atomic. Chỉ được resume khi manifest khớp dataset hash, phiên bản code/config, định danh tokenizer, label mapping và checkpoint inventory.
 
-## 10. Artifacts and observability
+## 10. Artifact và khả năng quan sát
 
-The run produces, at minimum:
+Lần chạy tối thiểu phải tạo:
 
 - `stage1_synthetic_checkpoint/`;
 - `stage2_mixed_checkpoint/`;
@@ -264,79 +264,79 @@ The run produces, at minimum:
 - `output.zip`;
 - `trained_ner_artifacts.zip`.
 
-Intermediate optimizer checkpoints may be deleted after the selected checkpoint is safely reloaded and the final archive is verified. Delivered model archives must retain all files required for offline reload, preprocessing, label mapping, assertion inference, and candidate calibration.
+Checkpoint optimizer trung gian có thể bị xóa sau khi checkpoint được chọn đã reload thành công và archive cuối đã được xác minh. Model archive bàn giao phải giữ mọi file cần thiết để reload offline, preprocessing, label mapping, assertion inference và candidate calibration.
 
-Diagnostics must distinguish:
+Diagnostic phải phân biệt:
 
-- NER-origin versus KB-first-origin entities;
-- entities removed by overlap/type conflict;
-- assertion classifier versus fallback decisions;
-- linking abstentions and their reasons;
-- per-source training exposure;
-- stage runtime and peak memory;
-- unseen/rare-surface performance.
+- entity có nguồn từ NER và entity có nguồn từ KB-first;
+- entity bị loại bởi xung đột overlap/type;
+- quyết định từ assertion classifier và từ fallback;
+- linking abstention cùng nguyên nhân;
+- mức tiếp xúc dữ liệu theo từng nguồn trong huấn luyện;
+- runtime và peak memory của từng stage;
+- hiệu năng trên surface chưa thấy hoặc hiếm.
 
-## 11. Failure handling
+## 11. Xử lý lỗi
 
-The pipeline fails early for:
+Pipeline phải dừng sớm trong các trường hợp:
 
-- invalid input/GT pairs;
-- schema or offset errors;
-- candidates absent from the bundled KB;
-- train/holdout group leakage;
-- an entity that cannot be fully represented by any configured window;
-- an unloadable selected checkpoint;
-- mismatched resume manifests;
-- malformed output or invalid ZIP structure.
+- cặp input/GT không hợp lệ;
+- lỗi schema hoặc offset;
+- candidate không tồn tại trong KB đi kèm;
+- rò rỉ group giữa train và holdout;
+- entity không thể nằm trọn trong bất kỳ window nào theo cấu hình;
+- checkpoint được chọn không thể load;
+- resume manifest không khớp;
+- output sai định dạng hoặc cấu trúc ZIP không hợp lệ.
 
-Optional semantic retrieval or Qwen failures degrade to lexical/deterministic behavior and are recorded as warnings. They do not invalidate an otherwise correct run.
+Nếu semantic retrieval hoặc Qwen tùy chọn bị lỗi, pipeline hạ cấp về hành vi lexical/tất định và ghi warning. Các lỗi tùy chọn này không làm vô hiệu một lần chạy vốn đáp ứng đúng contract.
 
-## 12. Verification strategy
+## 12. Chiến lược xác minh
 
-Implementation follows test-driven development. Required test layers are:
+Quá trình triển khai tuân theo test-driven development. Các tầng kiểm thử bắt buộc:
 
-1. **Unit tests**: metadata parsing, owner-window assignment, partial-span masking, source-aware sampling, document-level metrics, assertion thresholds, retrieval truncation, abstention, and deterministic fallbacks.
-2. **Integration tests**: three-stage checkpoint handoff, resume integrity, model reload, end-to-end inference, output schema, offsets, and candidate validity.
-3. **Data tests**: zero pairing/schema/offset/KB errors, zero split leakage, source counts, and replay-distribution checks.
-4. **Fast development smoke test**: a tiny local dataset completes all logical stages without downloading a large model.
-5. **Kaggle acceptance run**: a real GPU `Run All` produces reloadable weights and CRC-valid output archives.
+1. **Unit test**: phân tích metadata, gán owner-window, mask partial span, source-aware sampling, metric cấp tài liệu, assertion threshold, cắt candidate, abstention và fallback tất định.
+2. **Integration test**: bàn giao checkpoint giữa ba stage, tính toàn vẹn khi resume, reload mô hình, inference end-to-end, schema output, offset và candidate hợp lệ.
+3. **Data test**: không có lỗi pairing/schema/offset/KB, không có split leakage, đúng số lượng theo nguồn và đúng phân bố replay.
+4. **Fast development smoke test**: dataset local nhỏ hoàn tất mọi stage logic mà không tải mô hình lớn.
+5. **Kaggle acceptance run**: một lần `Run All` thực tế trên GPU tạo weights có thể reload và các archive output vượt qua kiểm tra CRC.
 
-Independent review agents may audit label semantics and implementation changes when requested. Their review is advisory; deterministic checks and trusted organizer labels remain the source of truth.
+Các agent review độc lập có thể audit ngữ nghĩa nhãn và thay đổi triển khai khi được yêu cầu. Kết quả review mang tính tư vấn; kiểm tra tất định và nhãn organizer đáng tin cậy vẫn là nguồn chuẩn.
 
-## 13. Acceptance criteria
+## 13. Tiêu chí nghiệm thu
 
-The design is implemented successfully only when all of the following hold:
+Thiết kế chỉ được coi là triển khai thành công khi thỏa mãn toàn bộ điều kiện:
 
-- IDs 1-100 are excluded from fitting and calibration.
-- All 2,000 synthetic records are eligible for Stage 1 and Stage 2.
-- The final model uses all 100 trusted organizer-labelled records after development decisions are frozen.
-- No gold entity contributes NER loss in more than one overlapping window.
-- Partial entities are never converted to `O` supervision.
-- Model selection uses document-level entity metrics on the real holdout.
-- Assertion thresholds and candidate abstention thresholds are calibrated on trusted real holdout data.
-- Generic disease/drug/symptom content regexes are absent from the primary detector.
-- Internal retrieval keeps multiple candidates while final output emits at most one.
-- Every emitted candidate exists in the bundled ICD-10/RxNorm KB.
-- Local unit and integration tests pass.
-- Saved models reload and reproduce schema-valid inference.
-- `output.zip` and model archives pass file inventory and CRC validation.
-- Kaggle success is claimed only after a real `Run All` execution has been audited.
+- ID 1–100 bị loại khỏi fitting và calibration.
+- Toàn bộ 2.000 tài liệu synthetic đủ điều kiện tham gia Stage 1 và Stage 2.
+- Mô hình cuối sử dụng toàn bộ 100 tài liệu có nhãn organizer đáng tin cậy sau khi các quyết định development đã được đóng băng.
+- Không gold entity nào đóng góp NER loss trong nhiều hơn một window overlap.
+- Partial entity không bao giờ bị chuyển thành supervision `O`.
+- Việc chọn mô hình sử dụng metric entity cấp tài liệu trên real holdout.
+- Assertion threshold và candidate abstention threshold được calibration trên real holdout đáng tin cậy.
+- Regex nội dung chung cho bệnh, thuốc hoặc triệu chứng không tồn tại trong bộ phát hiện chính.
+- Retrieval nội bộ giữ nhiều candidate trong khi output cuối xuất tối đa một candidate.
+- Mọi candidate được xuất đều tồn tại trong KB ICD-10/RxNorm đi kèm.
+- Mọi unit test và integration test local đều pass.
+- Mô hình đã lưu có thể reload và tái tạo inference đúng schema.
+- `output.zip` và model archive vượt qua kiểm tra file inventory và CRC.
+- Chỉ tuyên bố thành công trên Kaggle sau khi một lần `Run All` thực tế đã được audit.
 
-## 14. Non-goals
+## 14. Ngoài phạm vi
 
-- Treating reconstructed GT from IDs 1-100 as trusted training labels.
-- Replacing NER with regex phrase lists.
-- Training Qwen as the primary entity detector.
-- Assigning ICD-10/RxNorm candidates to symptoms or laboratory entities when the competition contract does not require them.
-- Rewriting raw documents or using normalized text offsets in submissions.
-- Claiming an unbiased final validation score after fitting on all 100 trusted organizer-labelled records.
-- Expanding into relation extraction before entity, assertion, and linking components are stable.
+- Coi GT được khôi phục của ID 1–100 là nhãn huấn luyện đáng tin cậy.
+- Thay NER bằng danh sách phrase regex.
+- Train Qwen làm bộ phát hiện entity chính.
+- Gán candidate ICD-10/RxNorm cho triệu chứng hoặc entity xét nghiệm khi contract cuộc thi không yêu cầu.
+- Viết lại tài liệu gốc hoặc dùng offset của văn bản đã chuẩn hóa trong submission.
+- Tuyên bố điểm validation cuối không thiên lệch sau khi đã fit trên toàn bộ 100 tài liệu organizer đáng tin cậy.
+- Mở rộng sang relation extraction trước khi các thành phần entity, assertion và linking ổn định.
 
-## 15. Relationship to existing specifications
+## 15. Quan hệ với các đặc tả hiện có
 
-This document refines and takes precedence for curriculum training, metadata handling, chunk supervision, assertions, and KB-first recovery. The following existing specifications remain valid where they do not conflict with this document:
+Tài liệu này tinh chỉnh và được ưu tiên áp dụng cho curriculum training, xử lý metadata, chunk supervision, assertion và khôi phục KB-first. Các đặc tả sau vẫn có hiệu lực ở những điểm không mâu thuẫn với tài liệu này:
 
 - `docs/superpowers/specs/2026-07-22-kaggle-end-to-end-clinical-pipeline-design.md`;
 - `docs/superpowers/specs/2026-07-22-synthetic-train-v2-design.md`.
 
-The synthetic v2 corpus itself is not regenerated by this specification. Dataset changes are required only when validation or semantic audit identifies a concrete error.
+Đặc tả này không yêu cầu sinh lại corpus synthetic v2. Chỉ thay đổi dataset khi validation hoặc semantic audit phát hiện một lỗi cụ thể.
