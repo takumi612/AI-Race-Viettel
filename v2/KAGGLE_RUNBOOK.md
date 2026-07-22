@@ -1,94 +1,87 @@
-# Kaggle runbook v2: Hybrid Retrieval & LLM Reranker
+# Kaggle runbook: clinical training → inference → artifacts
 
-Notebook: `medical_information_extraction_kaggle.ipynb`
+Notebook chính: `medical_information_extraction_kaggle.ipynb`.
 
-Đây là phiên bản **tối ưu hóa bộ nhớ (Memory Optimized)** chia Pipeline làm 3 Stage xử lý độc lập để bạn có thể chạy được các Model/Index "khổng lồ" mà không bị tràn RAM/VRAM của Kaggle.
+## Chuẩn bị Dataset
 
-## 1. Yêu cầu Môi trường (Cực kỳ quan trọng)
-
-Do v2 sử dụng Hybrid Retrieval (FAISS) và LLM Reranker (vLLM Qwen2.5-7B), hệ thống Kaggle của bạn phải đáp ứng:
-1. **Bật Internet (Internet = ON):** Để tải các thư viện bổ sung như `bm25s`, `faiss-cpu`, `sentence-transformers`, `vllm`.
-2. **Bật GPU (Accelerator = T4 x2 hoặc P100):** Bắt buộc để chạy LLM Reranker và NER. Khuyến nghị dùng T4 x2.
-
-## 2. Tạo Kaggle Dataset & Cấu hình Đường dẫn Dữ liệu
-
-### 2.1. Cấu trúc Dataset chuẩn
-Tạo một Dataset private, ví dụ `ai-race-clinical-data`, với cấu trúc:
+Attach một Kaggle Dataset có cấu trúc:
 
 ```text
 ai-race-clinical-data/
-├── input.zip                         # hoặc input/<id>.txt (Dữ liệu cần dự đoán)
-└── synthetic_train_v1/               # Dữ liệu huấn luyện
+├── input/                         # hoặc input.zip: dữ liệu cần dự đoán
+└── synthetic_train_v2/
     ├── input/<id>.txt
-    └── gt/<id>.json
+    ├── gt/<id>.json
+    └── reports/dataset_manifest.jsonl
 ```
 
-Cũng có thể dùng layout train trực tiếp:
+`synthetic_train_v2` hiện gồm 2.200 hồ sơ. Manifest đánh dấu 1–100 là
+quarantine (không dùng train), 101–200 là organizer GT giữ nguyên, và 2.000
+mẫu synthetic đủ điều kiện huấn luyện.
+
+## Runtime Kaggle
+
+1. Bật GPU accelerator.
+2. Bật Internet nếu chưa attach sẵn model XLM-R và embedding model.
+3. Import `v2/medical_information_extraction_kaggle.ipynb`.
+4. Nếu notebook không tự tìm đúng Dataset, đặt trong cell đầu:
+
+```python
+INPUT_SOURCE_OVERRIDE = "/kaggle/input/ai-race-clinical-data/input"
+TRAIN_SOURCE_OVERRIDE = "/kaggle/input/ai-race-clinical-data/synthetic_train_v2"
+```
+
+Notebook tự cài các package thiếu từ `requirements-kaggle.txt`. File này yêu
+cầu `transformers`, `accelerate>=1.1.0`, `sentencepiece`, `safetensors`,
+`bm25s`, `faiss-cpu` và `sentence-transformers`.
+
+## Run All và các bước được thực hiện
+
+1. Kiểm tra input/GT và manifest.
+2. Chỉ nạp các document `train_eligible=true`.
+3. Grouped train/validation split theo template và clinical surface.
+4. Fine-tune XLM-R NER, có gradient accumulation, mixed precision trên GPU,
+   early stopping và token-level evaluation.
+5. Lưu `training_artifacts/ner_model/model.safetensors`, tokenizer,
+   `training_result.json` và `split_manifest.json`.
+6. Đóng gói `trained_ner_artifacts.zip`.
+7. Reload checkpoint vừa train để inference.
+8. Entity linking dùng KB ICD-10/RxNorm. Embedding retrieval được ưu tiên;
+   nếu không tải được model semantic, pipeline tự chuyển sang lexical BM25/
+   alias retrieval và vẫn tạo output hợp lệ.
+9. Qwen reranker là tầng tùy chọn. Nếu lỗi VRAM hoặc model, deterministic
+   pipeline vẫn tiếp tục và ghi rõ `llm_fallback_reason`.
+10. Validate offset, schema, số lượng file và CRC của `output.zip`.
+
+## File đầu ra
+
+Trong `/kaggle/working` cần có:
 
 ```text
-train/001.txt
-train/001.json
+output.zip                         # output/<document_id>.json
+trained_ner_artifacts.zip          # checkpoint + tokenizer + training result
+training_artifacts/ner_model/      # checkpoint gốc
+training_artifacts/training_result.json
+training_artifacts/split_manifest.json
+run_manifest.json
+diagnostics/run_summary.json
 ```
 
-### 2.2. Cơ chế Tự động Tìm kiếm Dữ liệu (Auto-Discovery) & Chỉ định Đường dẫn (Override)
-- **Tự động tìm kiếm (Auto-Discovery):** Notebook tự động quét trong `/kaggle/input/` để phát hiện dữ liệu huấn luyện (`TRAIN_SOURCE`) và dữ liệu dự đoán (`INPUT_SOURCE`).
-- **Ghi đè thủ công (Override):** Khi attach nhiều Dataset hoặc muốn đảm bảo **tính toàn vẹn dữ liệu (Data Integrity)** (tránh trường hợp notebook quét nhầm thư mục chứa tập test làm dữ liệu train), bạn nên điền trực tiếp đường dẫn tuyệt đối vào cell 1 của Notebook:
-  ```python
-  INPUT_SOURCE_OVERRIDE = "/kaggle/input/ai-race-clinical-data/input.zip"
-  TRAIN_SOURCE_OVERRIDE = "/kaggle/input/ai-race-clinical-data/synthetic_train_v1"
-  ```
-- **Lưu ý:** Khi `TRAIN_SOURCE_OVERRIDE` hoặc `INPUT_SOURCE_OVERRIDE` được thiết lập, notebook sẽ bỏ qua hoàn toàn logic tự động quét và chỉ nạp đúng đường dẫn được chỉ định.
+Notebook sẽ dừng nếu thiếu checkpoint sau khi train, thiếu output JSON, sai
+offset, sai schema hoặc `output.zip` có member lỗi CRC.
 
-## 3. Quy trình thực thi 3 Stage trong Notebook
+## Smoke test cục bộ
 
-Sau khi load dữ liệu và train xong mô hình NER (nếu cần), phần Inference sẽ chạy tuần tự như sau:
+Có thể kiểm tra trước khi upload Kaggle:
 
-- **Stage 1: NER & Assertion** 
-  - Load `TransformerNERDetector` vào GPU.
-  - Cắt toàn bộ thực thể.
-  - $\rightarrow$ Xóa `TransformerNERDetector` & gọi `torch.cuda.empty_cache()`.
-- **Stage 2: Hybrid Retrieval**
-  - Load `bm25s` và `faiss` index vào RAM. 
-  - Lọc Top-10 ứng viên cho tất cả thực thể.
-  - $\rightarrow$ Xóa Index & gọi `gc.collect()`.
-- **Stage 3: LLM Reranker**
-  - Load `Qwen2.5-7B-Instruct-AWQ` vào GPU qua vLLM engine.
-  - Đọc ngữ cảnh + Top-10 ứng viên $\rightarrow$ Quyết định mã chính xác.
-  - $\rightarrow$ Tắt vLLM & xuất kết quả.
-
-## 4. Quản lý Thư viện Phụ thuộc (Dependencies Bootstrap)
-
-1. **Tự động cài đặt (Internet = ON):** 
-   - Biến `INSTALL_MISSING_DEPENDENCIES` trong Notebook dùng để điều khiển việc tự động cài các gói còn thiếu (`bm25s`, `faiss-cpu`, `sentence-transformers`, `vllm`).
-   - Notebook được thiết kế để chỉ cài thêm các package truy vấn còn thiếu mà **KHÔNG nâng cấp hoặc ghi đè** bộ thư viện PyTorch/Transformers gốc của Kaggle, tránh gây lỗi xung đột phiên bản CUDA.
-2. **Chế độ Offline (Internet = OFF):**
-   - Nếu chạy trong môi trường không có Internet, bạn cần tạo 1 Kaggle Dataset chứa sẵn các file wheel (`.whl`) của `bm25s`, `faiss-cpu`, `sentence-transformers`, `vllm` và đính kèm vào notebook.
-
-## 5. Quy trình tạo và chạy Notebook Kaggle
-
-1. Vào **Kaggle → Code → New Notebook**.
-2. Chọn **File → Import Notebook** và upload `medical_information_extraction_kaggle.ipynb` từ thư mục `v2`.
-3. Trong panel **Input**, chọn **Add Input** và attach Dataset ở bước 2.
-4. Trong **Settings**, chọn **GPU accelerator** và bật **Internet**.
-5. Đặt `INSTALL_MISSING_DEPENDENCIES = True` (nếu môi trường Kaggle thiếu `bm25s`/`sentence-transformers`) hoặc điền `TRAIN_SOURCE_OVERRIDE` / `INPUT_SOURCE_OVERRIDE` nếu muốn chỉ định chính xác nguồn dữ liệu.
-6. Chọn **Run All**.
-
-## 6. File đầu ra
-
-Sau Run All, các file nằm trong `/kaggle/working`:
-
-```text
-/kaggle/working/output.zip
-/kaggle/working/trained_ner_artifacts.zip
-/kaggle/working/run_manifest.json
-/kaggle/working/diagnostics/run_summary.json
+```powershell
+$env:PYTHONPATH = "D:\AI Race Viettel\v2"
+python v2/scripts/train_ner_subprocess.py `
+  --train-source "D:\AI Race Viettel\data_v2\Training_data\synthetic_train_v2" `
+  --output-dir "D:\AI Race Viettel\scratch\local_training_smoke" `
+  --config-path "D:\AI Race Viettel\v2\artifacts\config.json" `
+  --model-source "D:\AI Race Viettel\results\training_artifacts\ner_model" `
+  --fast-dev-run True
 ```
 
-Chọn **Save Version → Save & Run All** để Kaggle lưu notebook outputs, sau đó tải `output.zip` từ tab Output để nộp thi.
-
-## 7. Các lỗi thường gặp ở v2
-
-- **ImportError / Missing dependencies**: Kiểm tra đã bật Internet trên Kaggle hay chưa. Nếu thiếu `bm25s` hoặc `sentence-transformers`, đảm bảo `INSTALL_MISSING_DEPENDENCIES = True` hoặc cài đặt gói offline.
-- **CUDA Out Of Memory ở Stage 3**: Pipeline phải giải phóng NER, encoder và index retrieval trước khi tải Qwen. Nếu vẫn OOM trên T4, giảm `gpu_memory_utilization` từ `0.5` xuống `0.4` hoặc giảm `max_model_len`; không tăng lên `0.95`.
-- **Lỗi không tìm thấy mô hình NER**: Nếu bạn không attach tập train (chỉ có tập input) và cũng không có checkpoint nào, Stage 1 sẽ bỏ qua việc trích xuất và output ra file JSON rỗng.
-
+Sau đó dùng notebook để chạy inference và kiểm tra `output.zip`.
