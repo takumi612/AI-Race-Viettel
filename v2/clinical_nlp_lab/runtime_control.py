@@ -7,6 +7,7 @@ psutil.  It is safe to import in CPU-only validation and notebook preflight code
 from __future__ import annotations
 
 import importlib
+import hashlib
 import json
 import math
 import os
@@ -18,6 +19,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
@@ -27,7 +29,7 @@ _GIB = 1024**3
 _REDACTED = "[REDACTED]"
 _SENSITIVE_KEY_PATTERN = re.compile(
     r"clinical|patient|document.*text|raw|text|token|secret|password|prompt|"
-    r"credential|authorization|api.?key|content",
+    r"credential|authorization|bearer|api.?key|content",
     re.IGNORECASE,
 )
 _SAFE_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
@@ -57,13 +59,19 @@ _SAFE_CONTEXT_KEYS = {
     "remaining",
     "revision",
     "role",
+    "roles",
+    "root_alias",
+    "run_mode",
     "selected",
     "source",
+    "source_id",
     "total_gib",
     "total_parameters",
     "to_attempt",
     "train_batch_size",
     "warning_threshold",
+    "path_hash",
+    "requirement",
 }
 _SAFE_CONTEXT_SUFFIXES = (
     "_bytes",
@@ -77,8 +85,80 @@ _SAFE_CONTEXT_SUFFIXES = (
 )
 _PROBE_EXCEPTIONS = (Exception,)
 
+RUNTIME_CONTROL_API_VERSION = "3.0"
 DEFAULT_QWEN_MODEL_ID = "Qwen/Qwen2.5-3B-Instruct-AWQ"
 QWEN_7B_MODEL_ID = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+
+
+class EventReason(str, Enum):
+    SOURCE_ACCEPTED = "SOURCE_ACCEPTED"
+    SOURCE_MISSING = "SOURCE_MISSING"
+    SOURCE_VALIDATOR_REJECTED = "SOURCE_VALIDATOR_REJECTED"
+    SOURCE_VALIDATOR_ERROR = "SOURCE_VALIDATOR_ERROR"
+    SOURCE_DUPLICATE_PATH = "SOURCE_DUPLICATE_PATH"
+    SOURCE_RESOLUTION_ERROR = "SOURCE_RESOLUTION_ERROR"
+    SOURCE_ROLE_FORBIDDEN = "SOURCE_ROLE_FORBIDDEN"
+    SOURCE_ROLE_COLLISION = "SOURCE_ROLE_COLLISION"
+    QWEN_INIT_FAILED = "QWEN_INIT_FAILED"
+    QWEN_CUDA_OOM = "QWEN_CUDA_OOM"
+    QWEN_INIT_TIMEOUT = "QWEN_INIT_TIMEOUT"
+    QWEN_GENERATION_TIMEOUT = "QWEN_GENERATION_TIMEOUT"
+    QWEN_GENERATION_FAILED = "QWEN_GENERATION_FAILED"
+    QWEN_PARSE_FAILED = "QWEN_PARSE_FAILED"
+    QWEN_CLEANUP_FAILED = "QWEN_CLEANUP_FAILED"
+
+
+@dataclass(frozen=True)
+class SafeIdentifier:
+    value: str
+
+    def __post_init__(self) -> None:
+        if not _SAFE_IDENTIFIER_PATTERN.fullmatch(self.value) or _SENSITIVE_KEY_PATTERN.search(self.value):
+            raise ValueError("SafeIdentifier must be a short operational identifier")
+
+
+@dataclass(frozen=True)
+class SafeHash:
+    value: str
+
+    def __post_init__(self) -> None:
+        normalized = self.value.casefold()
+        if re.fullmatch(r"[0-9a-f]{64}", normalized) is None:
+            raise ValueError("SafeHash must contain exactly 64 hexadecimal characters")
+        object.__setattr__(self, "value", normalized)
+
+
+@dataclass(frozen=True)
+class SafePathRef:
+    root_alias: str
+    source_id: str
+    path_hash: str
+
+    def __post_init__(self) -> None:
+        SafeIdentifier(self.root_alias)
+        SafeIdentifier(self.source_id)
+        normalized_hash = SafeHash(self.path_hash).value
+        object.__setattr__(self, "path_hash", normalized_hash)
+
+
+def runtime_control_migration_report() -> dict[str, Any]:
+    """Return the machine-readable compatibility contract for this module revision."""
+
+    return {
+        "api_version": RUNTIME_CONTROL_API_VERSION,
+        "breaking_changes": [
+            "typed_event_values",
+            "explicit_logger_finalize",
+            "mode_aware_source_roles",
+            "resource_budget_estimator",
+            "exact_integer_model_counts",
+            "qwen_runtime_probe",
+        ],
+        "compatibility": {
+            "resolve_unique_source_default": "path",
+            "qwen_kernel_probe_bool": "removed_use_QwenRuntimeProbe",
+        },
+    }
 
 
 class PipelineContractError(RuntimeError):
@@ -248,33 +328,49 @@ def hardware_snapshot() -> dict[str, dict[str, Any]]:
     return snapshot
 
 
-def _is_safe_context_key(key: str) -> bool:
-    normalized = key.casefold()
-    if _SENSITIVE_KEY_PATTERN.search(normalized):
-        return False
-    return normalized in _SAFE_CONTEXT_KEYS or normalized.endswith(_SAFE_CONTEXT_SUFFIXES)
-
-
-def _safe_context_value(value: Any, *, key: str) -> Any:
-    if not _is_safe_context_key(key):
-        return _REDACTED
-    if value is None or isinstance(value, (bool, int, float, str)):
+def _safe_context_value(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int)):
         return value
-    if isinstance(value, Path):
-        return str(value)
+    if isinstance(value, float):
+        return value if math.isfinite(value) else _REDACTED
+    if isinstance(value, SafeIdentifier):
+        return value.value
+    if isinstance(value, SafeHash):
+        return value.value
+    if isinstance(value, EventReason):
+        return value.value
+    if isinstance(value, SafePathRef):
+        return {
+            "root_alias": value.root_alias,
+            "source_id": value.source_id,
+            "path_hash": value.path_hash,
+        }
+    if isinstance(value, str) or isinstance(value, Path):
+        return _REDACTED
     if isinstance(value, Mapping):
         return {
-            str(item_key): _safe_context_value(item, key=str(item_key))
+            _safe_context_key(str(item_key)): _safe_context_value(item)
             for item_key, item in value.items()
         }
     if isinstance(value, (list, tuple, set, frozenset)):
-        return [_safe_context_value(item, key=key) for item in value]
+        return [_safe_context_value(item) for item in value]
     return f"<{type(value).__name__}>"
+
+
+def _safe_context_key(key: str) -> str:
+    normalized = key.casefold()
+    if (
+        not _SENSITIVE_KEY_PATTERN.search(normalized)
+        and (normalized in _SAFE_CONTEXT_KEYS or normalized.endswith(_SAFE_CONTEXT_SUFFIXES))
+    ):
+        return normalized
+    digest = hashlib.sha256(key.encode("utf-8", errors="replace")).hexdigest()[:12]
+    return f"field_{digest}"
 
 
 def _safe_context(context: Mapping[str, Any] | None) -> dict[str, Any]:
     return {
-        str(key): _safe_context_value(value, key=str(key))
+        _safe_context_key(str(key)): _safe_context_value(value)
         for key, value in dict(context or {}).items()
     }
 
@@ -373,11 +469,20 @@ class RuntimeEventLogger:
     def __init__(self, run_id: str, jsonl_path: str | os.PathLike[str]) -> None:
         self.run_id = _validated_identifier(run_id, "run_id")
         self.jsonl_path = Path(jsonl_path)
+        if self.jsonl_path.exists() and self.jsonl_path.stat().st_size > 0:
+            raise PipelineContractError(
+                "E_EVENT_LOG_EXISTS",
+                "Refusing to reset lifecycle state for a nonempty event log.",
+                context={"reason": "nonempty_event_log"},
+                next_action="Use a new run_id and JSONL path or replay the existing log externally.",
+            )
         self._lock = threading.Lock()
         self._owner_pid = os.getpid()
         self._attempt_states: dict[tuple[str, int], str] = {}
         self._retry_transitions: set[tuple[str, int, int]] = set()
+        self._pending_retry_targets: set[tuple[str, int]] = set()
         self._aggregate_terminals: set[str] = set()
+        self._finalized = False
 
     def _assert_single_writer(self) -> None:
         if os.getpid() != self._owner_pid:
@@ -419,6 +524,13 @@ class RuntimeEventLogger:
                     "Logical phase already has an aggregate terminal.",
                     context={"reason": "duplicate_aggregate_terminal"},
                     next_action="Do not emit more events for the completed logical phase.",
+                )
+            if any(logical_phase == phase for logical_phase, _ in self._pending_retry_targets):
+                raise PipelineContractError(
+                    "E_EVENT_SEQUENCE",
+                    "Aggregate terminal is forbidden while a retry target is pending.",
+                    context={"reason": "pending_retry_target"},
+                    next_action="Start and terminate attempt 2 before aggregate completion.",
                 )
             phase_states = [
                 (attempt_number, state)
@@ -553,7 +665,50 @@ class RuntimeEventLogger:
                 return ("ATTEMPT_END", key)
             retriable = bool(error_data and error_data.get("retriable") is True)
             return ("ATTEMPT_ERROR_RETRIABLE" if retriable else "ATTEMPT_ERROR", key)
+        if state != "STARTED":
+            raise PipelineContractError(
+                "E_EVENT_SEQUENCE",
+                "Ordinary attempt events require an active started attempt.",
+                context={"reason": "orphan_attempt_event"},
+                next_action="Emit PHASE_START before attempt-scoped diagnostics.",
+            )
         return None
+
+    @staticmethod
+    def _validate_event_schema(
+        scope: str,
+        event: str,
+        status: str,
+        error_data: Mapping[str, Any] | None,
+    ) -> None:
+        valid = False
+        if event == "PHASE_START":
+            valid = scope == "attempt" and status == "RUNNING" and error_data is None
+        elif event == "PHASE_END":
+            valid = scope in {"attempt", "aggregate"} and status == "SUCCESS" and error_data is None
+        elif event == "PHASE_ERROR":
+            valid = scope in {"attempt", "aggregate"} and status == "ERROR" and error_data is not None
+        elif event == "OOM_RETRY":
+            valid = scope == "transition" and status == "RUNNING" and error_data is None
+        elif event == "OPTIONAL_FALLBACK":
+            valid = scope == "attempt" and status == "FALLBACK" and error_data is not None
+        elif event == "SOURCE_RESOLVED":
+            valid = scope == "attempt" and (
+                (status == "SUCCESS" and error_data is None)
+                or (status == "ERROR" and error_data is not None)
+            )
+        else:
+            valid = scope == "attempt" and (
+                (status in {"RUNNING", "SUCCESS"} and error_data is None)
+                or (status == "ERROR" and error_data is not None)
+            )
+        if not valid:
+            raise PipelineContractError(
+                "E_EVENT_SCHEMA",
+                "Event scope/status/error combination violates the structured event contract.",
+                context={"reason": "event_matrix_violation"},
+                next_action="Use the documented event/status/error matrix.",
+            )
 
     def _commit_lifecycle(self, transition: tuple[str, Any] | None) -> None:
         if transition is None:
@@ -561,6 +716,7 @@ class RuntimeEventLogger:
         action, key = transition
         if action == "ATTEMPT_STARTED":
             self._attempt_states[key] = "STARTED"
+            self._pending_retry_targets.discard(key)
         elif action == "ATTEMPT_END":
             self._attempt_states[key] = "END"
         elif action == "ATTEMPT_ERROR":
@@ -569,6 +725,7 @@ class RuntimeEventLogger:
             self._attempt_states[key] = "ERROR_RETRIABLE"
         elif action == "RETRY_TRANSITION":
             self._retry_transitions.add(key)
+            self._pending_retry_targets.add((key[0], key[2]))
         elif action == "AGGREGATE_TERMINAL":
             self._aggregate_terminals.add(str(key))
 
@@ -585,12 +742,20 @@ class RuntimeEventLogger:
         duration_ms: float | None,
     ) -> dict[str, Any]:
         self._assert_single_writer()
+        if self._finalized:
+            raise PipelineContractError(
+                "E_EVENT_SEQUENCE",
+                "No event may be emitted after logger finalization.",
+                context={"reason": "post_finalize_event"},
+                next_action="Create a new logger for a new run.",
+            )
         phase_value = _validated_identifier(phase, "phase")
         event_value = _validated_identifier(event, "event")
         status_value = _validated_identifier(status, "status")
         scope_value = _validated_identifier(scope, "scope")
         resources = hardware_snapshot()
         error_data = _error_payload(error)
+        self._validate_event_schema(scope_value, event_value, status_value, error_data)
         payload: dict[str, Any] = {
             "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "run_id": self.run_id,
@@ -624,6 +789,40 @@ class RuntimeEventLogger:
             self._commit_lifecycle(transition)
             print(_EVENT_PREFIX + line, flush=True)
         return payload
+
+    def finalize(self) -> dict[str, int]:
+        """Seal the logger only when every logical phase has one aggregate terminal."""
+
+        self._assert_single_writer()
+        with self._lock:
+            logical_phases = {phase for phase, _ in self._attempt_states}
+            if self._pending_retry_targets:
+                raise PipelineContractError(
+                    "E_EVENT_SEQUENCE",
+                    "Cannot finalize with a pending retry target.",
+                    context={"reason": "pending_retry_target"},
+                    next_action="Complete attempt 2 and its aggregate terminal.",
+                )
+            if any(state == "STARTED" for state in self._attempt_states.values()):
+                raise PipelineContractError(
+                    "E_EVENT_SEQUENCE",
+                    "Cannot finalize while an attempt is still running.",
+                    context={"reason": "attempt_still_started"},
+                    next_action="Emit the attempt terminal first.",
+                )
+            missing = logical_phases.difference(self._aggregate_terminals)
+            if missing:
+                raise PipelineContractError(
+                    "E_EVENT_SEQUENCE",
+                    "Every logical phase requires one aggregate terminal before finalization.",
+                    context={"reason": "missing_aggregate_terminal"},
+                    next_action="Call aggregate_terminal() for each completed logical phase.",
+                )
+            self._finalized = True
+            return {
+                "logical_phases": len(logical_phases),
+                "aggregate_terminals": len(self._aggregate_terminals),
+            }
 
     def emit(
         self,
@@ -740,11 +939,242 @@ class RuntimeEventLogger:
 
 
 @dataclass(frozen=True)
+class QwenRuntimeProbe:
+    runtime_engine: SafeIdentifier | None
+    runtime_version: SafeIdentifier | None
+    awq_package: SafeIdentifier | None
+    awq_version: SafeIdentifier | None
+    cuda_version: SafeIdentifier | None
+    cuda_available: bool
+    capability: tuple[int, int] | None
+    kernel_supported: bool
+    kernel_probe_id: SafeIdentifier
+    evidence_hash: SafeHash
+
+    def __post_init__(self) -> None:
+        identifier_values = (
+            self.runtime_engine,
+            self.runtime_version,
+            self.awq_package,
+            self.awq_version,
+            self.cuda_version,
+        )
+        if any(value is not None and not isinstance(value, SafeIdentifier) for value in identifier_values):
+            raise ValueError("Qwen runtime probe identifiers must be typed SafeIdentifier values")
+        if not isinstance(self.kernel_probe_id, SafeIdentifier):
+            raise ValueError("Qwen kernel probe id must be a typed SafeIdentifier")
+        if not isinstance(self.evidence_hash, SafeHash):
+            raise ValueError("Qwen evidence hash must be a typed SafeHash")
+        if not isinstance(self.cuda_available, bool) or not isinstance(self.kernel_supported, bool):
+            raise ValueError("Qwen runtime probe flags must be boolean")
+        if self.capability is not None and (
+            not isinstance(self.capability, tuple)
+            or len(self.capability) != 2
+            or any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in self.capability)
+        ):
+            raise ValueError("Qwen capability must be a nonnegative (major, minor) tuple")
+        if not self.has_valid_evidence_hash():
+            raise ValueError("Qwen runtime probe evidence hash does not match its canonical fields")
+
+    @classmethod
+    def from_evidence(
+        cls,
+        *,
+        runtime_engine: SafeIdentifier | None,
+        runtime_version: SafeIdentifier | None,
+        awq_package: SafeIdentifier | None,
+        awq_version: SafeIdentifier | None,
+        cuda_version: SafeIdentifier | None,
+        cuda_available: bool,
+        capability: tuple[int, int] | None,
+        kernel_supported: bool,
+        kernel_probe_id: SafeIdentifier,
+    ) -> "QwenRuntimeProbe":
+        """Build an immutable probe whose hash is derived from its canonical evidence fields."""
+
+        evidence_hash = cls._evidence_hash_for(
+            runtime_engine=runtime_engine,
+            runtime_version=runtime_version,
+            awq_package=awq_package,
+            awq_version=awq_version,
+            cuda_version=cuda_version,
+            cuda_available=cuda_available,
+            capability=capability,
+            kernel_supported=kernel_supported,
+            kernel_probe_id=kernel_probe_id,
+        )
+        return cls(
+            runtime_engine=runtime_engine,
+            runtime_version=runtime_version,
+            awq_package=awq_package,
+            awq_version=awq_version,
+            cuda_version=cuda_version,
+            cuda_available=cuda_available,
+            capability=capability,
+            kernel_supported=kernel_supported,
+            kernel_probe_id=kernel_probe_id,
+            evidence_hash=SafeHash(evidence_hash),
+        )
+
+    @staticmethod
+    def _evidence_hash_for(
+        *,
+        runtime_engine: SafeIdentifier | None,
+        runtime_version: SafeIdentifier | None,
+        awq_package: SafeIdentifier | None,
+        awq_version: SafeIdentifier | None,
+        cuda_version: SafeIdentifier | None,
+        cuda_available: bool,
+        capability: tuple[int, int] | None,
+        kernel_supported: bool,
+        kernel_probe_id: SafeIdentifier,
+    ) -> str:
+        evidence = {
+            "awq_package": awq_package.value if isinstance(awq_package, SafeIdentifier) else None,
+            "awq_version": awq_version.value if isinstance(awq_version, SafeIdentifier) else None,
+            "capability": list(capability) if isinstance(capability, tuple) else None,
+            "cuda_available": cuda_available,
+            "cuda_version": cuda_version.value if isinstance(cuda_version, SafeIdentifier) else None,
+            "kernel_probe_id": (
+                kernel_probe_id.value if isinstance(kernel_probe_id, SafeIdentifier) else None
+            ),
+            "kernel_supported": kernel_supported,
+            "runtime_engine": (
+                runtime_engine.value if isinstance(runtime_engine, SafeIdentifier) else None
+            ),
+            "runtime_version": (
+                runtime_version.value if isinstance(runtime_version, SafeIdentifier) else None
+            ),
+        }
+        return hashlib.sha256(
+            json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+
+    def has_valid_evidence_hash(self) -> bool:
+        try:
+            expected = self._evidence_hash_for(
+                runtime_engine=self.runtime_engine,
+                runtime_version=self.runtime_version,
+                awq_package=self.awq_package,
+                awq_version=self.awq_version,
+                cuda_version=self.cuda_version,
+                cuda_available=self.cuda_available,
+                capability=self.capability,
+                kernel_supported=self.kernel_supported,
+                kernel_probe_id=self.kernel_probe_id,
+            )
+        except Exception:
+            return False
+        return isinstance(self.evidence_hash, SafeHash) and self.evidence_hash.value == expected
+
+
+def _version_identifier(value: Any) -> SafeIdentifier:
+    normalized = re.sub(r"[^A-Za-z0-9_.:-]+", "-", str(value or "unknown"))[:120]
+    candidate = f"v{normalized}" if normalized and not normalized.startswith("v") else normalized
+    try:
+        return SafeIdentifier(candidate or "unknown")
+    except ValueError:
+        return SafeIdentifier("unknown")
+
+
+def probe_qwen_runtime(
+    *,
+    importer: Callable[[str], Any] = importlib.import_module,
+    kernel_probe: Callable[[Any, Any, Any, tuple[int, int]], bool] | None = None,
+    kernel_probe_id: SafeIdentifier = SafeIdentifier("awq-kernel-unconfigured"),
+) -> QwenRuntimeProbe:
+    """Lazily collect runtime/AWQ/CUDA evidence without importing or loading a model at module import."""
+
+    runtime_module: Any | None = None
+    awq_module: Any | None = None
+    torch_module: Any | None = None
+    try:
+        runtime_module = importer("vllm")
+    except Exception:
+        pass
+    try:
+        awq_module = importer("awq")
+    except Exception:
+        pass
+    try:
+        torch_module = importer("torch")
+    except Exception:
+        pass
+
+    cuda_available = False
+    cuda_version: SafeIdentifier | None = None
+    capability: tuple[int, int] | None = None
+    if torch_module is not None:
+        try:
+            cuda_available = bool(torch_module.cuda.is_available())
+        except Exception:
+            cuda_available = False
+        try:
+            raw_cuda_version = getattr(getattr(torch_module, "version", None), "cuda", None)
+            cuda_version = _version_identifier(raw_cuda_version) if raw_cuda_version else None
+        except Exception:
+            cuda_version = None
+        if cuda_available:
+            try:
+                capability = _capability_tuple(torch_module.cuda.get_device_capability())
+            except Exception:
+                capability = None
+
+    kernel_supported = False
+    if (
+        runtime_module is not None
+        and awq_module is not None
+        and torch_module is not None
+        and cuda_available
+        and capability is not None
+        and kernel_probe is not None
+    ):
+        try:
+            probe_result = kernel_probe(runtime_module, awq_module, torch_module, capability)
+            kernel_supported = probe_result if isinstance(probe_result, bool) else False
+        except Exception:
+            kernel_supported = False
+
+    return QwenRuntimeProbe.from_evidence(
+        runtime_engine=SafeIdentifier("vllm") if runtime_module is not None else None,
+        runtime_version=(
+            _version_identifier(getattr(runtime_module, "__version__", "unknown"))
+            if runtime_module is not None
+            else None
+        ),
+        awq_package=SafeIdentifier("awq") if awq_module is not None else None,
+        awq_version=(
+            _version_identifier(getattr(awq_module, "__version__", "unknown"))
+            if awq_module is not None
+            else None
+        ),
+        cuda_version=cuda_version,
+        cuda_available=cuda_available,
+        capability=capability,
+        kernel_supported=kernel_supported,
+        kernel_probe_id=kernel_probe_id,
+    )
+
+
+@dataclass(frozen=True)
 class QwenProfile:
     model_id: str = DEFAULT_QWEN_MODEL_ID
     gpu_memory_utilization: float = 0.40
     max_model_len: int = 1024
     batch_ladder: tuple[int, ...] = (8, 4, 1)
+    engine_init_timeout_seconds: float = 120.0
+    generation_timeout_seconds: float = 300.0
+
+    def __post_init__(self) -> None:
+        if self.model_id not in {DEFAULT_QWEN_MODEL_ID, QWEN_7B_MODEL_ID}:
+            raise ValueError("Qwen profile model is not approved")
+        if self.gpu_memory_utilization != 0.40 or self.max_model_len != 1024:
+            raise ValueError("Qwen profile must use the approved T4 memory/context values")
+        if self.batch_ladder != (8, 4, 1):
+            raise ValueError("Qwen profile must use the approved batch ladder")
+        for value in (self.engine_init_timeout_seconds, self.generation_timeout_seconds):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                raise ValueError("Qwen timeouts must be positive finite seconds")
 
 
 @dataclass(frozen=True)
@@ -792,7 +1222,7 @@ def _capability_tuple(capability: Any) -> tuple[int, int] | None:
 def _qwen_disabled_reason(
     gpu: Mapping[str, Any],
     *,
-    kernel_probe: bool | None,
+    runtime_probe: QwenRuntimeProbe | None,
     model_id: str,
     allow_qwen_7b_override: bool,
 ) -> str:
@@ -803,7 +1233,21 @@ def _qwen_disabled_reason(
         return "Qwen is disabled because compute capability is unknown."
     if capability < (7, 5):
         return f"Qwen is disabled on unsupported compute capability {capability[0]}.{capability[1]}."
-    if kernel_probe is not True:
+    if runtime_probe is None:
+        return "Qwen is disabled because concrete runtime/AWQ/CUDA/kernel probe evidence is missing."
+    if not isinstance(runtime_probe, QwenRuntimeProbe):
+        return "Qwen is disabled because runtime probe evidence has an invalid type."
+    if not runtime_probe.has_valid_evidence_hash():
+        return "Qwen is disabled because runtime probe evidence integrity validation failed."
+    if runtime_probe.runtime_engine is None or runtime_probe.runtime_version is None:
+        return "Qwen is disabled because the runtime engine probe did not pass."
+    if runtime_probe.awq_package is None or runtime_probe.awq_version is None:
+        return "Qwen is disabled because the AWQ package probe did not pass."
+    if not runtime_probe.cuda_available or runtime_probe.cuda_version is None:
+        return "Qwen is disabled because CUDA runtime evidence is unavailable."
+    if runtime_probe.capability != capability:
+        return "Qwen is disabled because probed CUDA capability does not match hardware evidence."
+    if not runtime_probe.kernel_supported:
         return "Qwen is disabled because the required AWQ kernel probe did not pass."
 
     if model_id == QWEN_7B_MODEL_ID:
@@ -830,7 +1274,7 @@ def choose_resource_plan(
     require_gpu: bool,
     qwen_requested: bool,
     fast_dev_run: bool = False,
-    kernel_probe: bool | None = None,
+    qwen_runtime_probe: QwenRuntimeProbe | None = None,
     qwen_model_id: str | None = None,
     allow_qwen_7b_override: bool = False,
     min_host_ram_gib: float = 10.0,
@@ -923,7 +1367,7 @@ def choose_resource_plan(
     if qwen_requested:
         reason = _qwen_disabled_reason(
             gpu,
-            kernel_probe=kernel_probe,
+            runtime_probe=qwen_runtime_probe,
             model_id=selected_qwen_model,
             allow_qwen_7b_override=allow_qwen_7b_override,
         )
@@ -941,6 +1385,104 @@ def choose_resource_plan(
         qwen_profile=qwen_profile,
         qwen_disabled_reason=reason,
     )
+
+
+class QwenCudaOomError(RuntimeError):
+    """Typed optional-Qwen CUDA OOM boundary; raw backend text is never logged."""
+
+
+def _emit_qwen_fallback(
+    logger: RuntimeEventLogger,
+    phase: str,
+    attempt: int,
+    reason: EventReason,
+) -> None:
+    error = PipelineContractError(
+        f"E_{reason.value}",
+        "Optional Qwen execution fell back to the deterministic result.",
+        context={"reason": reason},
+        next_action="Inspect typed diagnostics; deterministic output was preserved.",
+    )
+    logger.emit(
+        phase,
+        "OPTIONAL_FALLBACK",
+        "FALLBACK",
+        attempt=attempt,
+        context={"reason": reason},
+        error=error,
+    )
+
+
+def execute_optional_qwen(
+    *,
+    deterministic_result: Any,
+    profile: QwenProfile,
+    logger: RuntimeEventLogger,
+    phase: str,
+    attempt: int,
+    process_timeout_runner: Callable[[Callable[[], Any], float], Any],
+    initialize: Callable[[QwenProfile], Any],
+    generate: Callable[[Any], Any],
+    parse: Callable[[Any], Any],
+    cleanup: Callable[[Any], None],
+) -> Any:
+    """Run optional Qwen behind a caller-supplied process timeout boundary.
+
+    This function intentionally does not create or claim cancellation of a thread.
+    ``process_timeout_runner`` must enforce termination outside the model process.
+    """
+
+    if not isinstance(profile, QwenProfile) or not callable(process_timeout_runner):
+        raise PipelineContractError(
+            "E_QWEN_EXECUTION_CONFIG",
+            "Optional Qwen execution requires a typed profile and timeout runner.",
+            context={"reason": "invalid_qwen_execution_config"},
+            next_action="Provide the admitted QwenProfile and a process-boundary timeout runner.",
+        )
+    engine: Any | None = None
+    result = deterministic_result
+    failure_reason: EventReason | None = None
+    try:
+        try:
+            engine = process_timeout_runner(
+                lambda: initialize(profile), profile.engine_init_timeout_seconds
+            )
+        except TimeoutError:
+            failure_reason = EventReason.QWEN_INIT_TIMEOUT
+        except QwenCudaOomError:
+            failure_reason = EventReason.QWEN_CUDA_OOM
+        except Exception:
+            failure_reason = EventReason.QWEN_INIT_FAILED
+
+        generated: Any | None = None
+        if failure_reason is None:
+            try:
+                generated = process_timeout_runner(
+                    lambda: generate(engine), profile.generation_timeout_seconds
+                )
+            except TimeoutError:
+                failure_reason = EventReason.QWEN_GENERATION_TIMEOUT
+            except QwenCudaOomError:
+                failure_reason = EventReason.QWEN_CUDA_OOM
+            except Exception:
+                failure_reason = EventReason.QWEN_GENERATION_FAILED
+
+        if failure_reason is None:
+            try:
+                result = parse(generated)
+            except Exception:
+                failure_reason = EventReason.QWEN_PARSE_FAILED
+    finally:
+        if engine is not None:
+            try:
+                cleanup(engine)
+            except Exception:
+                failure_reason = EventReason.QWEN_CLEANUP_FAILED
+
+    if failure_reason is not None:
+        _emit_qwen_fallback(logger, phase, attempt, failure_reason)
+        return deterministic_result
+    return result
 
 
 def oom_retry_plan(plan: ResourcePlan) -> ResourcePlan:
@@ -966,6 +1508,270 @@ def oom_retry_plan(plan: ResourcePlan) -> ResourcePlan:
 
 
 @dataclass(frozen=True)
+class StageResourceInput:
+    stage_id: SafeIdentifier
+    train_chunks: int
+    eval_chunks: int
+    inference_chunks: int
+    epochs: int
+    primary_train_batch_size: int
+    primary_eval_batch_size: int
+    primary_inference_batch_size: int
+    primary_gradient_accumulation_steps: int
+    retry_train_batch_size: int
+    retry_eval_batch_size: int
+    retry_inference_batch_size: int
+    retry_gradient_accumulation_steps: int
+    configured_train_seconds_per_step: float
+    configured_eval_seconds_per_step: float
+    configured_inference_seconds_per_step: float
+    measured_train_seconds_per_step: float | None
+    measured_eval_seconds_per_step: float | None
+    measured_inference_seconds_per_step: float | None
+    checkpoint_bytes: int
+    artifact_bytes: int
+    workspace_bytes: int
+
+
+@dataclass(frozen=True)
+class StageResourceEstimate:
+    stage_id: str
+    primary_train_micro_steps: int
+    primary_optimizer_steps: int
+    primary_eval_steps: int
+    primary_inference_steps: int
+    retry_train_micro_steps: int
+    retry_optimizer_steps: int
+    retry_eval_steps: int
+    retry_inference_steps: int
+    primary_seconds: float
+    retry_seconds: float
+    worst_case_seconds: float
+    checkpoint_bytes: int
+    artifact_bytes: int
+    workspace_bytes: int
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ResourceBudgetEstimate:
+    stages: tuple[StageResourceEstimate, ...]
+    worst_case_total_seconds: float
+    safety_margin: float
+    safety_adjusted_total_seconds: float
+    declared_runtime_limit_seconds: float
+    peak_disk_bytes: int
+    usable_disk_quota_bytes: int
+    remaining_disk_bytes: int
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "stages": [stage.as_dict() for stage in self.stages],
+            "worst_case_total_seconds": self.worst_case_total_seconds,
+            "safety_margin": self.safety_margin,
+            "safety_adjusted_total_seconds": self.safety_adjusted_total_seconds,
+            "declared_runtime_limit_seconds": self.declared_runtime_limit_seconds,
+            "peak_disk_bytes": self.peak_disk_bytes,
+            "usable_disk_quota_bytes": self.usable_disk_quota_bytes,
+            "remaining_disk_bytes": self.remaining_disk_bytes,
+        }
+
+
+def _resource_input_error(field_name: str) -> PipelineContractError:
+    return PipelineContractError(
+        "E_RESOURCE_INPUT_INVALID",
+        f"Resource estimator field {field_name!r} is invalid.",
+        context={"reason": "invalid_resource_input"},
+        next_action="Provide finite, exact numeric admission inputs.",
+    )
+
+
+def _validated_nonnegative_int(value: Any, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise _resource_input_error(field_name)
+    return value
+
+
+def _validated_positive_int(value: Any, field_name: str) -> int:
+    result = _validated_nonnegative_int(value, field_name)
+    if result == 0:
+        raise _resource_input_error(field_name)
+    return result
+
+
+def _validated_positive_seconds(value: Any, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise _resource_input_error(field_name)
+    result = float(value)
+    if not math.isfinite(result) or result <= 0:
+        raise _resource_input_error(field_name)
+    return result
+
+
+def _steps(item_count: int, batch_size: int, epochs: int = 1) -> int:
+    return math.ceil(item_count / batch_size) * epochs
+
+
+def estimate_resource_budget(
+    stages: Iterable[StageResourceInput],
+    *,
+    declared_runtime_limit_seconds: float,
+    usable_disk_quota_bytes: int,
+) -> ResourceBudgetEstimate:
+    """Estimate worst-case primary plus one retry before any expensive work starts."""
+
+    runtime_limit = _validated_positive_seconds(
+        declared_runtime_limit_seconds, "declared_runtime_limit_seconds"
+    )
+    disk_quota = _validated_positive_int(usable_disk_quota_bytes, "usable_disk_quota_bytes")
+    stage_inputs = list(stages)
+    if not stage_inputs:
+        raise _resource_input_error("stages")
+    if any(not isinstance(stage.stage_id, SafeIdentifier) for stage in stage_inputs):
+        raise _resource_input_error("stage_id")
+    stage_inputs.sort(key=lambda stage: stage.stage_id.value)
+    if len({stage.stage_id.value for stage in stage_inputs}) != len(stage_inputs):
+        raise _resource_input_error("stage_id")
+
+    estimates: list[StageResourceEstimate] = []
+    for stage in stage_inputs:
+        train_chunks = _validated_nonnegative_int(stage.train_chunks, "train_chunks")
+        eval_chunks = _validated_nonnegative_int(stage.eval_chunks, "eval_chunks")
+        inference_chunks = _validated_nonnegative_int(stage.inference_chunks, "inference_chunks")
+        epochs = _validated_positive_int(stage.epochs, "epochs")
+        primary_train_batch = _validated_positive_int(
+            stage.primary_train_batch_size, "primary_train_batch_size"
+        )
+        primary_eval_batch = _validated_positive_int(
+            stage.primary_eval_batch_size, "primary_eval_batch_size"
+        )
+        primary_inference_batch = _validated_positive_int(
+            stage.primary_inference_batch_size, "primary_inference_batch_size"
+        )
+        primary_ga = _validated_positive_int(
+            stage.primary_gradient_accumulation_steps,
+            "primary_gradient_accumulation_steps",
+        )
+        retry_train_batch = _validated_positive_int(
+            stage.retry_train_batch_size, "retry_train_batch_size"
+        )
+        retry_eval_batch = _validated_positive_int(
+            stage.retry_eval_batch_size, "retry_eval_batch_size"
+        )
+        retry_inference_batch = _validated_positive_int(
+            stage.retry_inference_batch_size, "retry_inference_batch_size"
+        )
+        retry_ga = _validated_positive_int(
+            stage.retry_gradient_accumulation_steps,
+            "retry_gradient_accumulation_steps",
+        )
+        configured_train = _validated_positive_seconds(
+            stage.configured_train_seconds_per_step,
+            "configured_train_seconds_per_step",
+        )
+        configured_eval = _validated_positive_seconds(
+            stage.configured_eval_seconds_per_step,
+            "configured_eval_seconds_per_step",
+        )
+        configured_inference = _validated_positive_seconds(
+            stage.configured_inference_seconds_per_step,
+            "configured_inference_seconds_per_step",
+        )
+
+        def timing(measured: Any, configured: float, field_name: str) -> float:
+            return configured if measured is None else _validated_positive_seconds(measured, field_name)
+
+        train_seconds_per_step = timing(
+            stage.measured_train_seconds_per_step,
+            configured_train,
+            "measured_train_seconds_per_step",
+        )
+        eval_seconds_per_step = timing(
+            stage.measured_eval_seconds_per_step,
+            configured_eval,
+            "measured_eval_seconds_per_step",
+        )
+        inference_seconds_per_step = timing(
+            stage.measured_inference_seconds_per_step,
+            configured_inference,
+            "measured_inference_seconds_per_step",
+        )
+        checkpoint_bytes = _validated_nonnegative_int(stage.checkpoint_bytes, "checkpoint_bytes")
+        artifact_bytes = _validated_nonnegative_int(stage.artifact_bytes, "artifact_bytes")
+        workspace_bytes = _validated_nonnegative_int(stage.workspace_bytes, "workspace_bytes")
+
+        primary_train_micro = _steps(train_chunks, primary_train_batch, epochs)
+        primary_optimizer = math.ceil(primary_train_micro / primary_ga)
+        primary_eval = _steps(eval_chunks, primary_eval_batch, epochs)
+        primary_inference = _steps(inference_chunks, primary_inference_batch)
+        retry_train_micro = _steps(train_chunks, retry_train_batch, epochs)
+        retry_optimizer = math.ceil(retry_train_micro / retry_ga)
+        retry_eval = _steps(eval_chunks, retry_eval_batch, epochs)
+        retry_inference = _steps(inference_chunks, retry_inference_batch)
+        primary_seconds = (
+            primary_train_micro * train_seconds_per_step
+            + primary_eval * eval_seconds_per_step
+            + primary_inference * inference_seconds_per_step
+        )
+        retry_seconds = (
+            retry_train_micro * train_seconds_per_step
+            + retry_eval * eval_seconds_per_step
+            + retry_inference * inference_seconds_per_step
+        )
+        estimates.append(
+            StageResourceEstimate(
+                stage_id=stage.stage_id.value,
+                primary_train_micro_steps=primary_train_micro,
+                primary_optimizer_steps=primary_optimizer,
+                primary_eval_steps=primary_eval,
+                primary_inference_steps=primary_inference,
+                retry_train_micro_steps=retry_train_micro,
+                retry_optimizer_steps=retry_optimizer,
+                retry_eval_steps=retry_eval,
+                retry_inference_steps=retry_inference,
+                primary_seconds=primary_seconds,
+                retry_seconds=retry_seconds,
+                worst_case_seconds=primary_seconds + retry_seconds,
+                checkpoint_bytes=checkpoint_bytes,
+                artifact_bytes=artifact_bytes,
+                workspace_bytes=workspace_bytes,
+            )
+        )
+
+    worst_case_total = sum(stage.worst_case_seconds for stage in estimates)
+    adjusted_total = worst_case_total * 1.30
+    accumulated_artifacts = sum(stage.artifact_bytes for stage in estimates)
+    peak_working = max(stage.checkpoint_bytes + stage.workspace_bytes for stage in estimates)
+    peak_disk = accumulated_artifacts + peak_working
+    if adjusted_total > runtime_limit:
+        raise PipelineContractError(
+            "E_RUNTIME_BUDGET",
+            "Safety-adjusted worst-case runtime exceeds the declared limit.",
+            context={"duration_ms": adjusted_total * 1000},
+            next_action="Increase the declared runtime budget or reduce planned work explicitly.",
+        )
+    if peak_disk > disk_quota:
+        raise PipelineContractError(
+            "E_DISK_BUDGET",
+            "Peak checkpoint/artifact/workspace disk exceeds usable quota.",
+            context={"peak_bytes": peak_disk, "quota_bytes": disk_quota},
+            next_action="Increase usable quota or reduce explicitly declared artifact sizes.",
+        )
+    return ResourceBudgetEstimate(
+        stages=tuple(estimates),
+        worst_case_total_seconds=worst_case_total,
+        safety_margin=0.30,
+        safety_adjusted_total_seconds=adjusted_total,
+        declared_runtime_limit_seconds=runtime_limit,
+        peak_disk_bytes=peak_disk,
+        usable_disk_quota_bytes=disk_quota,
+        remaining_disk_bytes=disk_quota - peak_disk,
+    )
+
+
+@dataclass(frozen=True)
 class ModelInventoryItem:
     model_id: str
     revision: str
@@ -984,7 +1790,31 @@ def validate_model_budget(
 ) -> dict[str, Any]:
     """Deduplicate active weight sets and enforce the hard parameter budget."""
 
-    active_items = [item for item in items if item.active]
+    if (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit <= 0
+        or isinstance(warning, bool)
+        or not isinstance(warning, int)
+        or warning <= 0
+        or warning > limit
+    ):
+        raise PipelineContractError(
+            "E_MODEL_BUDGET_CONFIG",
+            "Model limit and warning must be positive exact integers with warning <= limit.",
+            context={"reason": "invalid_model_budget_config"},
+            next_action="Provide exact integer model parameter thresholds.",
+        )
+    inventory = list(items)
+    for item in inventory:
+        if not isinstance(item.active, bool):
+            raise PipelineContractError(
+                "E_MODEL_INVENTORY_ACTIVE",
+                "Each model inventory active flag must be an exact boolean.",
+                context={"reason": "invalid_active_flag"},
+                next_action="Set every model inventory active field to true or false.",
+            )
+    active_items = [item for item in inventory if item.active]
     normalized_items: list[ModelInventoryItem] = []
     for item in active_items:
         artifact_hash = item.artifact_hash.strip().casefold()
@@ -1001,7 +1831,11 @@ def validate_model_budget(
                 },
                 next_action="Record the immutable model source and 64-character SHA-256 weight-set hash.",
             )
-        if item.parameter_count is None or item.parameter_count <= 0:
+        if (
+            isinstance(item.parameter_count, bool)
+            or not isinstance(item.parameter_count, int)
+            or item.parameter_count <= 0
+        ):
             raise PipelineContractError(
                 "E_MODEL_SIZE_UNKNOWN",
                 f"Active model {item.model_id!r} has no valid parameter count.",
@@ -1060,7 +1894,7 @@ def validate_model_budget(
             )
         unique.append(first)
 
-    total = sum(int(item.parameter_count or 0) for item in unique)
+    total = sum(item.parameter_count for item in unique)
     if total > limit:
         raise PipelineContractError(
             "E_MODEL_OVER_9B",
@@ -1085,14 +1919,139 @@ def _error_code(kind: str, suffix: str) -> str:
     return f"E_{normalized}_{suffix}"
 
 
+class RunMode(str, Enum):
+    FULL = "full"
+    RESUME = "resume"
+    INFERENCE_ONLY = "inference_only"
+
+
+class SourceRole(str, Enum):
+    INFERENCE_INPUT = "INFERENCE_INPUT"
+    TRAIN_CORPUS = "TRAIN_CORPUS"
+    RUNTIME_KB = "RUNTIME_KB"
+    NER_BASE = "NER_BASE"
+    FINAL_MODEL_ARTIFACT = "FINAL_MODEL_ARTIFACT"
+    EMBEDDING_MODEL = "EMBEDDING_MODEL"
+    QWEN_MODEL = "QWEN_MODEL"
+    WHEELHOUSE = "WHEELHOUSE"
+    RESUME_BUNDLE = "RESUME_BUNDLE"
+
+
+class InstallMode(str, Enum):
+    PREINSTALLED = "preinstalled"
+    ONLINE_LOCKED = "online_locked"
+    OFFLINE_WHEELHOUSE = "offline_wheelhouse"
+
+
+class SourceRequirement(str, Enum):
+    REQUIRED = "required"
+    OPTIONAL = "optional"
+    FORBIDDEN = "forbidden"
+
+
+def source_role_requirement(
+    run_mode: RunMode,
+    role: SourceRole,
+    *,
+    install_mode: InstallMode,
+    resume_bundle_has_ner_base: bool,
+    final_artifact_self_contained: bool,
+) -> SourceRequirement:
+    run_mode = RunMode(run_mode)
+    role = SourceRole(role)
+    install_mode = InstallMode(install_mode)
+    if role is SourceRole.WHEELHOUSE:
+        return (
+            SourceRequirement.REQUIRED
+            if install_mode is InstallMode.OFFLINE_WHEELHOUSE
+            else SourceRequirement.FORBIDDEN
+        )
+    matrix: dict[RunMode, dict[SourceRole, SourceRequirement]] = {
+        RunMode.FULL: {
+            SourceRole.INFERENCE_INPUT: SourceRequirement.REQUIRED,
+            SourceRole.TRAIN_CORPUS: SourceRequirement.REQUIRED,
+            SourceRole.RUNTIME_KB: SourceRequirement.REQUIRED,
+            SourceRole.NER_BASE: SourceRequirement.REQUIRED,
+            SourceRole.FINAL_MODEL_ARTIFACT: SourceRequirement.FORBIDDEN,
+            SourceRole.EMBEDDING_MODEL: SourceRequirement.OPTIONAL,
+            SourceRole.QWEN_MODEL: SourceRequirement.OPTIONAL,
+            SourceRole.RESUME_BUNDLE: SourceRequirement.FORBIDDEN,
+        },
+        RunMode.RESUME: {
+            SourceRole.INFERENCE_INPUT: SourceRequirement.REQUIRED,
+            SourceRole.TRAIN_CORPUS: SourceRequirement.REQUIRED,
+            SourceRole.RUNTIME_KB: SourceRequirement.REQUIRED,
+            SourceRole.NER_BASE: (
+                SourceRequirement.OPTIONAL
+                if resume_bundle_has_ner_base
+                else SourceRequirement.REQUIRED
+            ),
+            SourceRole.FINAL_MODEL_ARTIFACT: SourceRequirement.OPTIONAL,
+            SourceRole.EMBEDDING_MODEL: SourceRequirement.OPTIONAL,
+            SourceRole.QWEN_MODEL: SourceRequirement.OPTIONAL,
+            SourceRole.RESUME_BUNDLE: SourceRequirement.REQUIRED,
+        },
+        RunMode.INFERENCE_ONLY: {
+            SourceRole.INFERENCE_INPUT: SourceRequirement.REQUIRED,
+            SourceRole.TRAIN_CORPUS: SourceRequirement.FORBIDDEN,
+            SourceRole.RUNTIME_KB: SourceRequirement.REQUIRED,
+            SourceRole.NER_BASE: (
+                SourceRequirement.FORBIDDEN
+                if final_artifact_self_contained
+                else SourceRequirement.REQUIRED
+            ),
+            SourceRole.FINAL_MODEL_ARTIFACT: SourceRequirement.REQUIRED,
+            SourceRole.EMBEDDING_MODEL: SourceRequirement.OPTIONAL,
+            SourceRole.QWEN_MODEL: SourceRequirement.OPTIONAL,
+            SourceRole.RESUME_BUNDLE: SourceRequirement.FORBIDDEN,
+        },
+    }
+    return matrix[run_mode][role]
+
+
+def _safe_path_ref(
+    path: Path,
+    trusted_roots: Mapping[str, str | os.PathLike[str]] | None,
+) -> SafePathRef:
+    canonical = path.resolve()
+    canonical_text = str(canonical)
+    path_hash = hashlib.sha256(canonical_text.encode("utf-8")).hexdigest()
+    matching_roots: list[tuple[int, str, Path, Path]] = []
+    for alias, root_value in dict(trusted_roots or {}).items():
+        safe_alias = SafeIdentifier(str(alias)).value
+        root = Path(root_value).expanduser().resolve()
+        try:
+            relative = canonical.relative_to(root)
+        except ValueError:
+            continue
+        matching_roots.append((len(root.parts), safe_alias, root, relative))
+    if matching_roots:
+        _, alias, _, relative = max(matching_roots, key=lambda item: item[0])
+        relative_hash = hashlib.sha256(relative.as_posix().encode("utf-8")).hexdigest()[:16]
+        return SafePathRef(alias, f"src-{relative_hash}", path_hash)
+    return SafePathRef("untrusted", f"src-{path_hash[:16]}", path_hash)
+
+
 @dataclass(frozen=True)
 class SourceCandidateDecision:
     path: Path
     accepted: bool
-    reason: str
+    reason: EventReason
+    path_ref: SafePathRef
 
     def as_dict(self) -> dict[str, Any]:
-        return {"path": str(self.path), "accepted": self.accepted, "reason": self.reason}
+        return {
+            "path": {
+                "root_alias": self.path_ref.root_alias,
+                "source_id": self.path_ref.source_id,
+                "path_hash": self.path_ref.path_hash,
+            },
+            "accepted": self.accepted,
+            "reason": self.reason.value,
+        }
+
+    def as_event_context(self) -> dict[str, Any]:
+        return {"path": self.path_ref, "accepted": self.accepted, "reason": self.reason}
 
 
 @dataclass(frozen=True)
@@ -1101,18 +2060,56 @@ class SourceResolution:
     decisions: tuple[SourceCandidateDecision, ...]
 
 
-def _evaluate_candidate(path: Path, validator: Callable[[Path], bool]) -> SourceCandidateDecision:
+@dataclass(frozen=True)
+class RoleSourceResolution:
+    role: SourceRole
+    requirement: SourceRequirement
+    selected: Path | None
+    decisions: tuple[SourceCandidateDecision, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "role": self.role.value,
+            "requirement": self.requirement.value,
+            "selected": next(
+                (decision.as_dict()["path"] for decision in self.decisions if decision.path == self.selected),
+                None,
+            ),
+            "decisions": [decision.as_dict() for decision in self.decisions],
+        }
+
+
+@dataclass(frozen=True)
+class SourceRoleResolution:
+    run_mode: RunMode
+    roles: tuple[RoleSourceResolution, ...]
+
+    def for_role(self, role: SourceRole) -> RoleSourceResolution:
+        normalized = SourceRole(role)
+        return next(item for item in self.roles if item.role is normalized)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"run_mode": self.run_mode.value, "roles": [item.as_dict() for item in self.roles]}
+
+
+def _evaluate_candidate(
+    path: Path,
+    validator: Callable[[Path], bool],
+    trusted_roots: Mapping[str, str | os.PathLike[str]] | None,
+) -> SourceCandidateDecision:
+    path_ref = _safe_path_ref(path, trusted_roots)
     if not path.exists():
-        return SourceCandidateDecision(path, False, "missing")
+        return SourceCandidateDecision(path, False, EventReason.SOURCE_MISSING, path_ref)
     try:
         accepted = bool(validator(path))
-    except Exception as error:
-        return SourceCandidateDecision(path, False, f"validator_error:{type(error).__name__}")
-    return SourceCandidateDecision(path, accepted, "accepted" if accepted else "validator_rejected")
+    except Exception:
+        return SourceCandidateDecision(path, False, EventReason.SOURCE_VALIDATOR_ERROR, path_ref)
+    reason = EventReason.SOURCE_ACCEPTED if accepted else EventReason.SOURCE_VALIDATOR_REJECTED
+    return SourceCandidateDecision(path, accepted, reason, path_ref)
 
 
 def _decision_context(decisions: Sequence[SourceCandidateDecision]) -> list[dict[str, Any]]:
-    return [decision.as_dict() for decision in decisions]
+    return [decision.as_event_context() for decision in decisions]
 
 
 def _emit_source_resolution(
@@ -1121,7 +2118,7 @@ def _emit_source_resolution(
     phase: str,
     attempt: int,
     kind: str,
-    selected: Path | None,
+    selected: SafePathRef | None,
     decisions: Sequence[SourceCandidateDecision],
     error: PipelineContractError | None = None,
 ) -> None:
@@ -1133,8 +2130,8 @@ def _emit_source_resolution(
         "ERROR" if error is not None else "SUCCESS",
         attempt=attempt,
         context={
-            "kind": kind,
-            "selected": str(selected) if selected is not None else None,
+            "kind": SafeIdentifier(_error_code(kind, "").removeprefix("E_").strip("_").casefold()),
+            "selected": selected,
             "decisions": _decision_context(decisions),
         },
         error=error,
@@ -1151,6 +2148,7 @@ def resolve_unique_source(
     phase: str = "source_resolution",
     attempt: int = 1,
     return_decisions: bool = False,
+    trusted_roots: Mapping[str, str | os.PathLike[str]] | None = None,
 ) -> Path | SourceResolution:
     """Resolve exactly one validated source, with strict override semantics."""
 
@@ -1158,13 +2156,14 @@ def resolve_unique_source(
         raw_override = Path(override).expanduser()
         try:
             selected = raw_override.resolve()
-            decision = _evaluate_candidate(selected, validator)
-        except Exception as error:
+            decision = _evaluate_candidate(selected, validator, trusted_roots)
+        except Exception:
             selected = raw_override
             decision = SourceCandidateDecision(
                 raw_override,
                 False,
-                f"resolution_error:{type(error).__name__}",
+                EventReason.SOURCE_RESOLUTION_ERROR,
+                _safe_path_ref(raw_override.absolute(), trusted_roots),
             )
         decisions = (decision,)
         if not decision.accepted:
@@ -1189,7 +2188,7 @@ def resolve_unique_source(
             phase=phase,
             attempt=attempt,
             kind=kind,
-            selected=selected,
+            selected=decision.path_ref,
             decisions=decisions,
         )
         resolution = SourceResolution(selected, decisions)
@@ -1200,14 +2199,15 @@ def resolve_unique_source(
         raw_path = Path(candidate).expanduser()
         try:
             prepared.append((raw_path.resolve(), None))
-        except Exception as error:
+        except Exception:
             prepared.append(
                 (
                     raw_path,
                     SourceCandidateDecision(
                         raw_path,
                         False,
-                        f"resolution_error:{type(error).__name__}",
+                        EventReason.SOURCE_RESOLUTION_ERROR,
+                        _safe_path_ref(raw_path.absolute(), trusted_roots),
                     ),
                 )
             )
@@ -1222,10 +2222,17 @@ def resolve_unique_source(
             continue
         identity = os.path.normcase(str(path))
         if identity in seen_identities:
-            decisions_list.append(SourceCandidateDecision(path, False, "duplicate_path"))
+            decisions_list.append(
+                SourceCandidateDecision(
+                    path,
+                    False,
+                    EventReason.SOURCE_DUPLICATE_PATH,
+                    _safe_path_ref(path, trusted_roots),
+                )
+            )
             continue
         seen_identities.add(identity)
-        decision = _evaluate_candidate(path, validator)
+        decision = _evaluate_candidate(path, validator, trusted_roots)
         decisions_list.append(decision)
         if decision.accepted:
             resolved[identity] = path
@@ -1274,27 +2281,242 @@ def resolve_unique_source(
         phase=phase,
         attempt=attempt,
         kind=kind,
-        selected=selected,
+        selected=_safe_path_ref(selected, trusted_roots),
         decisions=decisions,
     )
     resolution = SourceResolution(selected, decisions)
     return resolution if return_decisions else selected
 
 
+def _resolve_role_input(
+    role: SourceRole,
+    requirement: SourceRequirement,
+    override: str | os.PathLike[str] | None,
+    candidates: Sequence[str | os.PathLike[str]],
+    validator: Callable[[Path], bool] | None,
+    trusted_roots: Mapping[str, str | os.PathLike[str]],
+) -> RoleSourceResolution:
+    if override is not None and str(override).strip():
+        if validator is None:
+            raise PipelineContractError(
+                "E_SOURCE_VALIDATOR_MISSING",
+                "A configured source role requires its validator.",
+                context={"role": role.value},
+                next_action="Provide the role-specific layout validator.",
+            )
+        resolution = resolve_unique_source(
+            role.value,
+            override,
+            (),
+            validator,
+            return_decisions=True,
+            trusted_roots=trusted_roots,
+        )
+        assert isinstance(resolution, SourceResolution)
+        if resolution.decisions[0].path_ref.root_alias == "untrusted":
+            raise PipelineContractError(
+                "E_SOURCE_PATH_UNTRUSTED",
+                "Resolved role source is outside all trusted roots.",
+                context={"role": role.value},
+                next_action="Attach the source below a configured trusted root.",
+            )
+        return RoleSourceResolution(role, requirement, resolution.selected, resolution.decisions)
+
+    if not candidates:
+        if requirement is SourceRequirement.REQUIRED:
+            raise PipelineContractError(
+                _error_code(role.value, "MISSING"),
+                f"Required source role {role.value} is missing.",
+                context={"role": role.value},
+                next_action="Attach or override exactly one valid source for the required role.",
+            )
+        return RoleSourceResolution(role, requirement, None, ())
+    if validator is None:
+        raise PipelineContractError(
+            "E_SOURCE_VALIDATOR_MISSING",
+            "A discovered source role requires its validator.",
+            context={"role": role.value},
+            next_action="Provide the role-specific layout validator.",
+        )
+
+    prepared: list[tuple[Path, SourceCandidateDecision | None]] = []
+    for candidate in candidates:
+        raw_path = Path(candidate).expanduser()
+        try:
+            prepared.append((raw_path.resolve(), None))
+        except Exception:
+            prepared.append(
+                (
+                    raw_path,
+                    SourceCandidateDecision(
+                        raw_path,
+                        False,
+                        EventReason.SOURCE_RESOLUTION_ERROR,
+                        _safe_path_ref(raw_path.absolute(), trusted_roots),
+                    ),
+                )
+            )
+    prepared.sort(key=lambda item: (str(item[0]).casefold(), str(item[0])))
+    seen: set[str] = set()
+    matches: list[Path] = []
+    decisions: list[SourceCandidateDecision] = []
+    for path, resolution_error in prepared:
+        if resolution_error is not None:
+            decisions.append(resolution_error)
+            continue
+        identity = os.path.normcase(str(path))
+        if identity in seen:
+            decisions.append(
+                SourceCandidateDecision(
+                    path,
+                    False,
+                    EventReason.SOURCE_DUPLICATE_PATH,
+                    _safe_path_ref(path, trusted_roots),
+                )
+            )
+            continue
+        seen.add(identity)
+        decision = _evaluate_candidate(path, validator, trusted_roots)
+        decisions.append(decision)
+        if decision.accepted:
+            matches.append(path)
+    if len(matches) > 1:
+        raise PipelineContractError(
+            _error_code(role.value, "AMBIGUOUS"),
+            f"Source role {role.value} has multiple valid candidates.",
+            context={"role": role.value, "decisions": tuple(decisions)},
+            next_action="Set the role-specific override to exactly one source.",
+        )
+    if not matches:
+        if requirement is SourceRequirement.REQUIRED:
+            raise PipelineContractError(
+                _error_code(role.value, "MISSING"),
+                f"Required source role {role.value} has no valid candidate.",
+                context={"role": role.value, "decisions": tuple(decisions)},
+                next_action="Attach exactly one valid source for the required role.",
+            )
+        return RoleSourceResolution(role, requirement, None, tuple(decisions))
+    selected = matches[0]
+    selected_decision = next(decision for decision in decisions if decision.path == selected and decision.accepted)
+    if selected_decision.path_ref.root_alias == "untrusted":
+        raise PipelineContractError(
+            "E_SOURCE_PATH_UNTRUSTED",
+            "Resolved role source is outside all trusted roots.",
+            context={"role": role.value},
+            next_action="Attach the source below a configured trusted root.",
+        )
+    return RoleSourceResolution(role, requirement, selected, tuple(decisions))
+
+
+def resolve_source_roles(
+    run_mode: RunMode,
+    *,
+    overrides: Mapping[SourceRole, str | os.PathLike[str] | None],
+    candidates: Mapping[SourceRole, Iterable[str | os.PathLike[str]]],
+    validators: Mapping[SourceRole, Callable[[Path], bool]],
+    install_mode: InstallMode,
+    resume_bundle_has_ner_base: bool,
+    final_artifact_self_contained: bool,
+    trusted_roots: Mapping[str, str | os.PathLike[str]],
+) -> SourceRoleResolution:
+    """Resolve every source role under the authoritative run-mode matrix."""
+
+    mode = RunMode(run_mode)
+    normalized_overrides = {SourceRole(role): value for role, value in overrides.items()}
+    normalized_candidates = {
+        SourceRole(role): tuple(values) for role, values in candidates.items()
+    }
+    normalized_validators = {SourceRole(role): validator for role, validator in validators.items()}
+    requirements = {
+        role: source_role_requirement(
+            mode,
+            role,
+            install_mode=InstallMode(install_mode),
+            resume_bundle_has_ner_base=resume_bundle_has_ner_base,
+            final_artifact_self_contained=final_artifact_self_contained,
+        )
+        for role in SourceRole
+    }
+
+    for role, requirement in requirements.items():
+        if requirement is not SourceRequirement.FORBIDDEN:
+            continue
+        override = normalized_overrides.get(role)
+        attached = normalized_candidates.get(role, ())
+        if (override is not None and str(override).strip()) or attached:
+            raise PipelineContractError(
+                "E_SOURCE_ROLE_FORBIDDEN",
+                f"Source role {role.value} is forbidden in run mode {mode.value}.",
+                context={"role": role.value, "reason": EventReason.SOURCE_ROLE_FORBIDDEN},
+                next_action="Detach the forbidden source or choose the correct run mode.",
+            )
+
+    role_results: list[RoleSourceResolution] = []
+    selected_by_identity: dict[str, SourceRole] = {}
+    for role in SourceRole:
+        requirement = requirements[role]
+        if requirement is SourceRequirement.FORBIDDEN:
+            role_results.append(RoleSourceResolution(role, requirement, None, ()))
+            continue
+        role_result = _resolve_role_input(
+            role,
+            requirement,
+            normalized_overrides.get(role),
+            normalized_candidates.get(role, ()),
+            normalized_validators.get(role),
+            trusted_roots,
+        )
+        if role_result.selected is not None:
+            identity = os.path.normcase(str(role_result.selected.resolve()))
+            prior_role = selected_by_identity.get(identity)
+            if prior_role is not None:
+                raise PipelineContractError(
+                    "E_SOURCE_ROLE_COLLISION",
+                    "One canonical path cannot satisfy multiple source roles.",
+                    context={"reason": EventReason.SOURCE_ROLE_COLLISION},
+                    next_action="Attach distinct paths for each source role.",
+                )
+            selected_by_identity[identity] = role
+        role_results.append(role_result)
+    return SourceRoleResolution(mode, tuple(role_results))
+
+
 __all__ = [
-    "ModelInventoryItem",
-    "PipelineContractError",
-    "QwenProfile",
-    "ResourcePlan",
-    "RuntimeEventLogger",
-    "SourceCandidateDecision",
-    "SourceResolution",
     "DEFAULT_QWEN_MODEL_ID",
     "QWEN_7B_MODEL_ID",
+    "RUNTIME_CONTROL_API_VERSION",
+    "EventReason",
+    "InstallMode",
+    "ModelInventoryItem",
+    "PipelineContractError",
+    "QwenCudaOomError",
+    "QwenProfile",
+    "QwenRuntimeProbe",
+    "ResourceBudgetEstimate",
+    "ResourcePlan",
+    "RoleSourceResolution",
+    "RunMode",
+    "RuntimeEventLogger",
+    "SafeHash",
+    "SafeIdentifier",
+    "SafePathRef",
+    "SourceCandidateDecision",
+    "SourceResolution",
+    "SourceRequirement",
+    "SourceRole",
+    "SourceRoleResolution",
+    "StageResourceEstimate",
+    "StageResourceInput",
     "atomic_write_json",
     "choose_resource_plan",
+    "estimate_resource_budget",
+    "execute_optional_qwen",
     "hardware_snapshot",
     "oom_retry_plan",
+    "probe_qwen_runtime",
+    "resolve_source_roles",
     "resolve_unique_source",
+    "runtime_control_migration_report",
+    "source_role_requirement",
     "validate_model_budget",
 ]
