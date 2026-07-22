@@ -121,6 +121,20 @@ def character_spans_to_bio(
     special_token_label: int = -100,
 ) -> list[int]:
     entity_list = sorted(entities, key=lambda item: (item.start, item.end))
+    visible_offsets = [(start, end) for start, end in offsets if end > start]
+    if visible_offsets:
+        chunk_start = min(start for start, _ in visible_offsets)
+        chunk_end = max(end for _, end in visible_offsets)
+    else:
+        chunk_start = chunk_end = 0
+    complete_entities = [
+        entity for entity in entity_list
+        if entity.start >= chunk_start and entity.end <= chunk_end
+    ]
+    partial_entities = [
+        entity for entity in entity_list
+        if entity.start < chunk_end and chunk_start < entity.end and entity not in complete_entities
+    ]
     labels: list[int] = []
     previous_entity: EntityAnnotation | None = None
     for token_start, token_end in offsets:
@@ -129,11 +143,15 @@ def character_spans_to_bio(
             continue
         matching = [
             entity
-            for entity in entity_list
+            for entity in complete_entities
             if token_start < entity.end and entity.start < token_end
         ]
         if not matching:
-            labels.append(label_to_id["O"])
+            partial_overlap = any(
+                token_start < entity.end and entity.start < token_end
+                for entity in partial_entities
+            )
+            labels.append(special_token_label if partial_overlap else label_to_id["O"])
             previous_entity = None
             continue
         entity = matching[0]

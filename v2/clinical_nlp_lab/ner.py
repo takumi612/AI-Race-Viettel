@@ -285,7 +285,27 @@ def resolve_overlaps(entities: Iterable[EntityAnnotation], raw_text: str) -> lis
 def merge_chunk_predictions(
     chunk_predictions: Iterable[EntityAnnotation], raw_text: str
 ) -> list[EntityAnnotation]:
-    return resolve_overlaps(chunk_predictions, raw_text)
+    predictions = sorted(
+        chunk_predictions,
+        key=lambda entity: (entity.type, entity.start, entity.end, -entity.confidence),
+    )
+    merged: list[EntityAnnotation] = []
+    for entity in predictions:
+        entity.validate_offset(raw_text)
+        if merged and merged[-1].type == entity.type and spans_overlap(merged[-1], entity):
+            previous = merged[-1]
+            start = min(previous.start, entity.start)
+            end = max(previous.end, entity.end)
+            merged[-1] = replace(
+                previous,
+                text=raw_text[start:end],
+                position=(start, end),
+                confidence=max(previous.confidence, entity.confidence),
+                evidence=sorted(set(previous.evidence + entity.evidence + ["chunk_overlap_merge"])),
+            )
+        else:
+            merged.append(entity)
+    return resolve_overlaps(merged, raw_text)
 
 
 def refine_boundaries(entities: Iterable[EntityAnnotation], raw_text: str) -> list[EntityAnnotation]:
