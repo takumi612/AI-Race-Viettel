@@ -22,10 +22,14 @@ trình TDD hoặc GPU Kaggle trong lúc viết code.
 Deliverables:
 
 - structured JSONL logger với start/end/error và memory snapshot;
+- positive-schema context/error logging, redaction an toàn và state machine khóa
+  terminal theo `(phase, attempt)` cùng aggregate terminal;
 - atomic JSON writer;
-- resource profile 16 GB và đúng một OOM retry 2→1;
-- strict unique source resolver;
-- model inventory và fail-closed budget ≤9B.
+- resource profile 16 GB, host/disk admission và đúng một OOM retry 2→1;
+- Qwen 3B default-off: T4 `1024`, batch ladder `8→4→1`; P100/unsupported
+  capability hoặc kernel probe bị skip trước load;
+- strict unique source resolver kèm decision audit accept/reject;
+- model inventory nhất quán, có source/hash và fail-closed budget ≤9B.
 
 Evidence: module import không cần torch, focused regression pass, full current
 suite không regression.
@@ -46,10 +50,11 @@ Deliverables:
 - current/stale report inventory;
 - machine-readable `preflight_report.json` và nonzero exit khi hard gate fail.
 
-Evidence trên dataset thật hiện tại phải chỉ đúng blocker 258 RxNorm, không che
-thành warning.
+Evidence trên dataset thật hiện tại phải chỉ đúng đồng thời các blocker đã audit:
+legacy manifest thiếu pair-provenance contract, `candidate_top_k=10` và 258
+organizer RxNorm ID còn thiếu; không che thành warning hoặc chỉ dừng ở lỗi đầu.
 
-## Work package 3 — Runtime KB coverage repair
+## Work package 3 — Provenance/config và runtime KB coverage repair
 
 **Ownership:** KB builder/contract, generated small runtime artifacts và tests.
 
@@ -60,6 +65,10 @@ Deliverables:
 - canonical/display ICD mapping cho marker `*`/`†`;
 - runtime artifacts có chain raw hash → build metadata → artifact hash;
 - preflight organizer coverage đạt 100% hoặc dừng với unresolved evidence list.
+- nâng manifest bằng tool deterministic: schema version, per-input/per-GT/pair
+  hash, full manifest hash và dataset pair fingerprint; không sửa input/GT;
+- đổi `candidate_top_k` về 20, giữ `candidate_output_k=1` và regex primary off;
+- mọi report cũ khác fingerprint được đánh dấu stale/archived.
 
 Không tự sửa GT organizer. Artifact chỉ mở rộng từ raw KB có bằng chứng.
 
@@ -76,6 +85,11 @@ Deliverables:
 - owner-window: mỗi gold entity đóng góp loss đúng một lần;
 - document entity metrics thay token-F1 selection;
 - Stage 1/2/3/final adaptation tuần tự, stage manifest atomic;
+- Stage-2 checkpoint là blind baseline, Stage-3 checkpoint là candidate; proxy
+  metric và decoder hash được khóa trước one-shot blind gate;
+- `FAST_DEV_RUN` và `oof_extended` không thể mở 10 blind documents;
+- sau Stage 3 shared encoder/tokenizer được freeze; final-fit chỉ cập nhật NER
+  token-classification head để assertion artifact không lệch encoder hash;
 - stage training chạy subprocess, source-aware sampling và replay 15–20%;
 - `fixed_fold` mặc định, `oof_extended` chạy fold độc lập.
 
@@ -88,7 +102,9 @@ validation và full regression suite.
 
 Deliverables:
 
-- assertion ba sigmoid head dùng lại frozen NER encoder; per-axis thresholds;
+- assertion ba sigmoid head dùng lại feature `CLS + mention pooling` của frozen
+  NER encoder, không resize tokenizer; per-axis thresholds và encoder/tokenizer
+  hash được đóng dấu;
 - chỉ disease/drug/symptom vào assertion;
 - NER overflow chunks infer theo micro-batch và backoff;
 - deterministic NER + KB + candidate policy luôn là primary path;
@@ -107,8 +123,11 @@ Deliverables:
 
 - `RUN_MODE=full|resume|inference_only`;
 - strict overrides/auto-discovery, in đầy đủ candidates accept/reject;
-- preflight trước torch/model download;
-- run directory có `run_id`, staging và atomic public artifacts;
+- resolver chỉ dùng standard library chạy trước dependency install/preflight;
+- dependency preflight chạy trên wheelhouse/model source đã resolve, rồi mới tới
+  hardware/model-budget và torch/model load;
+- run directory có `run_id`; toàn bộ artifact được fsync rồi atomic rename một
+  immutable directory, sau đó atomic cập nhật `LATEST.json` commit pointer;
 - subprocess training/OOM retry/resume mismatch;
 - fresh-process reload trước package;
 - model/output ZIP inventory, SHA-256 và CRC;
