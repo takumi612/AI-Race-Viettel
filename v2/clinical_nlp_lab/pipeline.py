@@ -299,8 +299,8 @@ def run_inference(
 
     if train_documents is None and train_source is not None:
         try:
-            from .data import load_annotated_documents
-            train_documents = load_annotated_documents(train_source)
+            from .data import load_ner_training_documents
+            train_documents = load_ner_training_documents(train_source)
         except Exception:
             train_documents = None
 

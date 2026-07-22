@@ -57,7 +57,7 @@ INPUT_SOURCE_OVERRIDE = ""
 TRAIN_SOURCE_OVERRIDE = ""
 # Kaggle provides the CUDA torch/transformers stack; avoid replacing it with
 # versions selected by an unpinned requirements file.
-INSTALL_MISSING_DEPENDENCIES = False
+INSTALL_MISSING_DEPENDENCIES = True
 FAST_DEV_RUN = False
 REQUIRE_TRAINING_DATA = True
 REQUIRE_GPU = True
@@ -350,6 +350,7 @@ if DEPENDENCIES_READY and TRAIN_DOCUMENTS:
             learning_rate=LEARNING_RATE,
             epochs=NER_EPOCHS,
             batch_size=TRAIN_BATCH_SIZE,
+            gradient_accumulation_steps=int(CONFIG.get("gradient_accumulation_steps", 1)),
             seed=int(CONFIG["seed"]),
         )
 else:

@@ -237,6 +237,7 @@ def train_transformer_ner(
     learning_rate: float = 2e-5,
     epochs: int = 3,
     batch_size: int = 8,
+    gradient_accumulation_steps: int = 1,
     seed: int = 42,
 ) -> dict[str, Any]:
     if not train_documents:
@@ -252,6 +253,7 @@ def train_transformer_ner(
         AutoModelForTokenClassification,
         AutoTokenizer,
         DataCollatorForTokenClassification,
+        EarlyStoppingCallback,
         Trainer,
         TrainingArguments,
     )
@@ -301,7 +303,15 @@ def train_transformer_ner(
         "load_best_model_at_end": bool(validation_features),
         "seed": seed,
         "report_to": [],
+        "fp16": torch.cuda.is_available(),
+        "gradient_accumulation_steps": max(1, int(gradient_accumulation_steps)),
+        "gradient_checkpointing": bool(torch.cuda.is_available()),
+        "metric_for_best_model": "f1" if validation_features else None,
+        "greater_is_better": True if validation_features else None,
     }
+    if not validation_features:
+        training_kwargs.pop("metric_for_best_model", None)
+        training_kwargs.pop("greater_is_better", None)
     # Transformers renamed evaluation_strategy to eval_strategy in newer releases.
     argument_parameters = inspect.signature(TrainingArguments.__init__).parameters
     evaluation_key = "eval_strategy" if "eval_strategy" in argument_parameters else "evaluation_strategy"
@@ -313,14 +323,18 @@ def train_transformer_ner(
         "train_dataset": FeatureDataset(train_features),
         "eval_dataset": FeatureDataset(validation_features) if validation_features else None,
         "data_collator": DataCollatorForTokenClassification(tokenizer),
+        "compute_metrics": compute_non_o_metrics if validation_features else None,
     }
     # `processing_class` replaced the older `tokenizer` Trainer argument.
     trainer_parameters = inspect.signature(Trainer.__init__).parameters
     trainer_kwargs["processing_class" if "processing_class" in trainer_parameters else "tokenizer"] = tokenizer
+    if validation_features:
+        trainer_kwargs["callbacks"] = [EarlyStoppingCallback(early_stopping_patience=2)]
     trainer = Trainer(**trainer_kwargs)
     train_result = trainer.train()
     trainer.save_model(str(output_path))
     tokenizer.save_pretrained(str(output_path))
+    evaluation = trainer.evaluate() if validation_features else {}
     return {
         "trained": True,
         "train_documents": len(train_documents),
@@ -329,6 +343,8 @@ def train_transformer_ner(
         "validation_chunks": len(validation_features),
         "label_to_id": label_to_id,
         "training_loss": float(train_result.training_loss),
+        "evaluation": {key: float(value) for key, value in evaluation.items() if isinstance(value, (int, float))},
+        "best_metric": trainer.state.best_metric,
         "output_dir": str(output_path),
     }
 
