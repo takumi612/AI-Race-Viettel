@@ -239,8 +239,8 @@ train_candidates = []
 if TRAIN_SOURCE_OVERRIDE.strip():
     train_candidates.append(Path(TRAIN_SOURCE_OVERRIDE).expanduser())
 for root in search_roots:
-    train_candidates.extend(path for path in root.rglob("train") if not _is_archive_path(path, root))
     train_candidates.extend(path for path in root.rglob("synthetic_train_v2") if not _is_archive_path(path, root))
+    train_candidates.extend(path for path in root.rglob("train") if not _is_archive_path(path, root))
     train_candidates.extend(path for path in root.rglob("synthetic_train_v1") if not _is_archive_path(path, root))
 
 TRAIN_SOURCE = next((path.resolve() for path in train_candidates if _has_training_layout(path)), None)
