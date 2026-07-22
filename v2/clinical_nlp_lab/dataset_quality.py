@@ -6,6 +6,12 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable, Mapping
 
+from .provenance import (
+    LEGACY_SHA256_SEMANTICS,
+    MANIFEST_ROW_SCHEMA_ID,
+    MANIFEST_ROW_SCHEMA_VERSION,
+    ProvenanceError,
+)
 from .schema import ALLOWED_ASSERTIONS, ClinicalDocument
 from .text import normalize_alias
 
@@ -34,11 +40,58 @@ class DatasetRecord:
     sha256: str
     train_eligible: bool = True
     train_exclusion_reason: str | None = None
+    schema_id: str | None = None
+    schema_version: int | None = None
+    input_sha256: str | None = None
+    input_size_bytes: int | None = None
+    gt_sha256: str | None = None
+    gt_size_bytes: int | None = None
+    pair_sha256: str | None = None
+    legacy_sha256_semantics: str = LEGACY_SHA256_SEMANTICS
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["primary_surfaces"] = list(self.primary_surfaces)
         return payload
+
+    @classmethod
+    def from_v2_manifest_row(cls, row: Mapping[str, Any]) -> "DatasetRecord":
+        """Build a training record only from a previously verified v2 row."""
+        document_id = row.get("document_id")
+        if row.get("schema_id") != MANIFEST_ROW_SCHEMA_ID or row.get(
+            "schema_version"
+        ) != MANIFEST_ROW_SCHEMA_VERSION:
+            raise ProvenanceError(f"Manifest row {document_id!r} is not schema v2")
+        if type(row.get("train_eligible")) is not bool:
+            raise ProvenanceError(
+                f"Manifest row {document_id!r} requires explicit boolean train_eligible"
+            )
+        required_hash_fields = ("input_sha256", "gt_sha256", "pair_sha256")
+        if any(not isinstance(row.get(field), str) for field in required_hash_fields):
+            raise ProvenanceError(f"Manifest row {document_id!r} lacks raw provenance hashes")
+        return cls(
+            document_id=str(document_id),
+            source_bucket=str(row["source_bucket"]),
+            template_group=str(row.get("template_group", document_id)),
+            genre=str(row.get("genre", "unknown")),
+            long_tail=bool(row.get("long_tail", False)),
+            primary_surfaces=tuple(str(item) for item in row.get("primary_surfaces", [])),
+            sha256=str(row["sha256"]),
+            train_eligible=row["train_eligible"],
+            train_exclusion_reason=(
+                str(row["train_exclusion_reason"])
+                if row.get("train_exclusion_reason")
+                else None
+            ),
+            schema_id=MANIFEST_ROW_SCHEMA_ID,
+            schema_version=MANIFEST_ROW_SCHEMA_VERSION,
+            input_sha256=str(row["input_sha256"]),
+            input_size_bytes=int(row["input_size_bytes"]),
+            gt_sha256=str(row["gt_sha256"]),
+            gt_size_bytes=int(row["gt_size_bytes"]),
+            pair_sha256=str(row["pair_sha256"]),
+            legacy_sha256_semantics=str(row["legacy_sha256_semantics"]),
+        )
 
 
 def source_bucket_for_document(document_id: str) -> str:
@@ -59,6 +112,7 @@ def build_dataset_manifest(
     documents: Iterable[ClinicalDocument],
     metadata_by_id: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[DatasetRecord]:
+    """Build legacy semantic records; this is not a raw-byte provenance writer."""
     metadata = metadata_by_id or {}
     records: list[DatasetRecord] = []
     for document in documents:

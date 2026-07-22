@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .dataset_quality import DatasetRecord
+from .provenance import verify_dataset_provenance
 from .schema import ClinicalDocument, parse_entity
 
 
@@ -138,16 +139,23 @@ def load_ner_training_documents(train_dir: str | Path) -> list[ClinicalDocument]
     can be used when their hashes and eligibility flags are valid.
     """
     directory = Path(train_dir)
+    verification = verify_dataset_provenance(directory)
     documents = load_annotated_documents(directory)
-    manifest_path = directory / "reports" / "dataset_manifest.jsonl"
-    if not manifest_path.exists():
-        return documents
-    metadata = {}
-    for line in manifest_path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            item = json.loads(line)
-            metadata[str(item["document_id"])] = item
-    return [doc for doc in documents if bool(metadata.get(doc.document_id, {}).get("train_eligible", True))]
+    records = [DatasetRecord.from_v2_manifest_row(row) for row in verification.rows]
+    records_by_id = {record.document_id: record for record in records}
+    document_ids = {document.document_id for document in documents}
+    manifest_ids = set(records_by_id)
+    if document_ids != manifest_ids:
+        raise ValueError(
+            "Loaded document IDs differ from the verified v2 manifest: "
+            f"missing_documents={sorted(manifest_ids - document_ids, key=natural_document_key)}, "
+            f"unknown_documents={sorted(document_ids - manifest_ids, key=natural_document_key)}"
+        )
+    return [
+        document
+        for document in documents
+        if records_by_id[document.document_id].train_eligible
+    ]
 
 
 def dataset_fingerprint(documents: Iterable[ClinicalDocument]) -> str:
