@@ -226,7 +226,7 @@ for root in search_roots:
     input_candidates.extend(
         path for path in root.rglob("input")
         if _has_text_files(path)
-        and path.parent.name.lower() not in {"synthetic_train_v1", "train"}
+        and path.parent.name.lower() not in {"synthetic_train_v1", "synthetic_train_v2", "train"}
         and not _is_archive_path(path, root)
     )
 INPUT_SOURCE = next((path.resolve() for path in input_candidates if path.is_file() or _has_text_files(path)), None)
