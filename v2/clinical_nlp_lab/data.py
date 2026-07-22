@@ -9,6 +9,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
+from .dataset_quality import DatasetRecord
 from .schema import ClinicalDocument, parse_entity
 
 
@@ -129,6 +130,26 @@ def load_annotated_documents(train_dir: str | Path) -> list[ClinicalDocument]:
     return documents
 
 
+def load_ner_training_documents(train_dir: str | Path) -> list[ClinicalDocument]:
+    """Load only records explicitly eligible for NER training.
+
+    The manifest is authoritative: organizer GT 1-100 is retained for audit
+    but quarantined from training, while 101-200 and repaired synthetic data
+    can be used when their hashes and eligibility flags are valid.
+    """
+    directory = Path(train_dir)
+    documents = load_annotated_documents(directory)
+    manifest_path = directory / "reports" / "dataset_manifest.jsonl"
+    if not manifest_path.exists():
+        return documents
+    metadata = {}
+    for line in manifest_path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            item = json.loads(line)
+            metadata[str(item["document_id"])] = item
+    return [doc for doc in documents if bool(metadata.get(doc.document_id, {}).get("train_eligible", True))]
+
+
 def dataset_fingerprint(documents: Iterable[ClinicalDocument]) -> str:
     digest = hashlib.sha256()
     for document in sorted(documents, key=lambda item: item.document_id):
@@ -207,6 +228,124 @@ def document_train_validation_split(
     if train_ids & validation_ids:
         raise AssertionError("Document leakage detected between train and validation")
     return train, validation
+
+
+def _connected_record_groups(records: Iterable[DatasetRecord]) -> list[list[str]]:
+    record_list = list(records)
+    parent = {record.document_id: record.document_id for record in record_list}
+
+    def find(item: str) -> str:
+        while parent[item] != item:
+            parent[item] = parent[parent[item]]
+            item = parent[item]
+        return item
+
+    def union(left: str, right: str) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    template_owner: dict[str, str] = {}
+    surface_owner: dict[str, str] = {}
+    for record in record_list:
+        owner = template_owner.setdefault(record.template_group, record.document_id)
+        union(record.document_id, owner)
+        for surface in record.primary_surfaces:
+            owner = surface_owner.setdefault(surface, record.document_id)
+            union(record.document_id, owner)
+
+    grouped: dict[str, list[str]] = {}
+    for document_id in parent:
+        grouped.setdefault(find(document_id), []).append(document_id)
+    return [sorted(document_ids, key=natural_document_key) for document_ids in grouped.values()]
+
+
+def grouped_train_validation_split(
+    documents: Iterable[ClinicalDocument],
+    records: Iterable[DatasetRecord],
+    validation_fraction: float = 0.2,
+    seed: int = 42,
+) -> tuple[list[ClinicalDocument], list[ClinicalDocument], dict[str, Any]]:
+    if not 0 <= validation_fraction < 1:
+        raise ValueError("validation_fraction must satisfy 0 <= value < 1")
+    document_list = list(documents)
+    record_list = list(records)
+    document_ids = {document.document_id for document in document_list}
+    record_ids = {record.document_id for record in record_list}
+    if document_ids != record_ids:
+        raise ValueError(
+            "Document and manifest IDs differ: "
+            f"missing_records={sorted(document_ids - record_ids, key=natural_document_key)}, "
+            f"unknown_records={sorted(record_ids - document_ids, key=natural_document_key)}"
+        )
+    if len(document_list) < 2 or validation_fraction == 0:
+        manifest = {
+            "seed": seed,
+            "validation_fraction": validation_fraction,
+            "train_ids": sorted(document_ids, key=natural_document_key),
+            "validation_ids": [],
+        }
+        return sorted(document_list, key=lambda item: natural_document_key(item.document_id)), [], manifest
+
+    groups = _connected_record_groups(record_list)
+    if len(groups) < 2:
+        raise ValueError(
+            "Cannot create a leakage-safe validation split because all documents belong to one connected group"
+        )
+    random.Random(seed).shuffle(groups)
+    groups.sort(key=len)
+    target = max(1, round(len(document_list) * validation_fraction))
+    validation_ids: set[str] = set()
+    for group in groups:
+        if len(validation_ids) >= target:
+            break
+        remaining_after_selection = len(document_list) - len(validation_ids) - len(group)
+        if remaining_after_selection <= 0:
+            continue
+        validation_ids.update(group)
+    if not validation_ids:
+        validation_ids.update(groups[0])
+    train_ids = document_ids - validation_ids
+    by_id = {document.document_id: document for document in document_list}
+    train = [by_id[item] for item in sorted(train_ids, key=natural_document_key)]
+    validation = [by_id[item] for item in sorted(validation_ids, key=natural_document_key)]
+    manifest = {
+        "seed": seed,
+        "validation_fraction": validation_fraction,
+        "train_ids": [document.document_id for document in train],
+        "validation_ids": [document.document_id for document in validation],
+        "connected_group_count": len(groups),
+    }
+    return train, validation, manifest
+
+
+def audit_split_leakage(
+    train_documents: Iterable[ClinicalDocument],
+    validation_documents: Iterable[ClinicalDocument],
+    records: Iterable[DatasetRecord],
+) -> dict[str, list[str]]:
+    train_ids = {document.document_id for document in train_documents}
+    validation_ids = {document.document_id for document in validation_documents}
+    record_by_id = {record.document_id: record for record in records}
+
+    def values(document_ids: set[str], attribute: str) -> set[str]:
+        result: set[str] = set()
+        for document_id in document_ids:
+            record = record_by_id[document_id]
+            value = getattr(record, attribute)
+            result.update(value if isinstance(value, tuple) else [value])
+        return result
+
+    return {
+        "document_ids": sorted(train_ids & validation_ids, key=natural_document_key),
+        "template_groups": sorted(
+            values(train_ids, "template_group") & values(validation_ids, "template_group")
+        ),
+        "surface_groups": sorted(
+            values(train_ids, "primary_surfaces") & values(validation_ids, "primary_surfaces")
+        ),
+    }
 
 
 def describe_documents(documents: Iterable[ClinicalDocument]) -> dict[str, Any]:

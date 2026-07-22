@@ -189,12 +189,13 @@ if TRAIN_SOURCE_OVERRIDE.strip():
     train_candidates.append(Path(TRAIN_SOURCE_OVERRIDE).expanduser())
 for root in search_roots:
     train_candidates.extend(path for path in root.rglob("train") if not _is_archive_path(path, root))
+    train_candidates.extend(path for path in root.rglob("synthetic_train_v2") if not _is_archive_path(path, root))
     train_candidates.extend(path for path in root.rglob("synthetic_train_v1") if not _is_archive_path(path, root))
 
 TRAIN_SOURCE = next((path.resolve() for path in train_candidates if _has_training_layout(path)), None)
 if TRAIN_SOURCE is None and REQUIRE_TRAINING_DATA:
     raise FileNotFoundError(
-        "No annotated training data found. Attach train/*.txt + *.json or synthetic_train_v1/input + gt."
+        "No annotated training data found. Attach train/*.txt + *.json or synthetic_train_v2/input + gt."
     )
 
 RUN_ROOT = KAGGLE_WORKING_ROOT if IS_KAGGLE else PROJECT_ROOT / "runtime"
@@ -223,8 +224,7 @@ print()'''
         code_cell(
             '''from clinical_nlp_lab.config import load_config, set_reproducible_seed
 from clinical_nlp_lab.data import (
-    document_train_validation_split,
-    load_annotated_documents,
+    load_ner_training_documents,
     load_input_documents,
     validate_documents,
 )
@@ -233,18 +233,23 @@ from clinical_nlp_lab.schema import write_json
 CONFIG = load_config(PROJECT_ROOT / "artifacts/config.json")
 SEED_STATUS = set_reproducible_seed(int(CONFIG["seed"]))
 INPUT_DOCUMENTS = load_input_documents(INPUT_SOURCE)
-ANNOTATED_DOCUMENTS = load_annotated_documents(TRAIN_SOURCE) if TRAIN_SOURCE else []
+ANNOTATED_DOCUMENTS = load_ner_training_documents(TRAIN_SOURCE) if TRAIN_SOURCE else []
 ANNOTATION_REPORT = validate_documents(ANNOTATED_DOCUMENTS)
 if not ANNOTATION_REPORT["is_valid"]:
     raise ValueError(f"Training annotation validation failed: {ANNOTATION_REPORT['errors'][:10]}")
 if REQUIRE_TRAINING_DATA and not ANNOTATED_DOCUMENTS:
     raise ValueError("Training is required but no annotated documents were loaded")
 
-TRAIN_DOCUMENTS, VALIDATION_DOCUMENTS = document_train_validation_split(
-    ANNOTATED_DOCUMENTS,
-    float(CONFIG["validation_fraction"]),
-    int(CONFIG["seed"]),
-)
+from clinical_nlp_lab.data import grouped_train_validation_split
+from clinical_nlp_lab.dataset_quality import DatasetRecord
+import json as _json
+_manifest_path = TRAIN_SOURCE / "reports" / "dataset_manifest.jsonl" if TRAIN_SOURCE else None
+_metadata = {}
+if _manifest_path and _manifest_path.exists():
+    _metadata = {str(item["document_id"]): item for item in (_json.loads(line) for line in _manifest_path.read_text(encoding="utf-8").splitlines() if line.strip())}
+_records = [DatasetRecord(document_id=d.document_id, source_bucket=str(_metadata.get(d.document_id, {}).get("source_bucket", "unknown")), template_group=str(_metadata.get(d.document_id, {}).get("template_group", d.document_id)), genre=str(_metadata.get(d.document_id, {}).get("genre", "unknown")), long_tail=bool(_metadata.get(d.document_id, {}).get("long_tail", False)), primary_surfaces=tuple(_metadata.get(d.document_id, {}).get("primary_surfaces", [])), sha256=str(_metadata.get(d.document_id, {}).get("sha256", ""))) for d in ANNOTATED_DOCUMENTS]
+TRAIN_DOCUMENTS, VALIDATION_DOCUMENTS, SPLIT_MANIFEST = grouped_train_validation_split(ANNOTATED_DOCUMENTS, _records, float(CONFIG["validation_fraction"]), int(CONFIG["seed"])) if ANNOTATED_DOCUMENTS else ([], [], {})
+write_json(TRAINING_ROOT / "split_manifest.json", SPLIT_MANIFEST)
 if FAST_DEV_RUN:
     TRAIN_DOCUMENTS = TRAIN_DOCUMENTS[: min(16, len(TRAIN_DOCUMENTS))]
     VALIDATION_DOCUMENTS = VALIDATION_DOCUMENTS[: min(4, len(VALIDATION_DOCUMENTS))]

@@ -43,11 +43,13 @@ class DictionaryRuleEntityDetector:
         phrase_confidence: float = 0.94,
         regex_confidence: float = 0.78,
         max_alias_tokens: int = 10,
+        enable_generic_regex: bool = False,
     ) -> None:
         self.trie: dict[str, Any] = {}
         self.max_alias_tokens = max_alias_tokens
         self.phrase_confidence = phrase_confidence
         self.regex_confidence = regex_confidence
+        self.enable_generic_regex = enable_generic_regex
         self.alias_count = 0
         self._build_trie(icd10_records, "DISEASE")
         self._build_trie(rxnorm_records, "DRUG")
@@ -156,7 +158,7 @@ class DictionaryRuleEntityDetector:
 
     def detect(self, raw_text: str) -> list[EntityAnnotation]:
         dictionary_entities = self._dictionary_entities(raw_text)
-        regex_entities = self._regex_entities(raw_text)
+        regex_entities = self._regex_entities(raw_text) if self.enable_generic_regex else []
         symptom_spans = [entity for entity in regex_entities if entity.type == "SYMPTOM"]
         # Generic symptom rules take precedence over ICD-10 phrase matches so a
         # symptom is not silently routed into the disease ontology.

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from .assertions import HybridAssertionPredictor
+from .candidate_policy import CandidatePolicy, apply_candidate_policy
 from .config import load_config
 from .data import load_input_documents, natural_document_key
 from .kb import load_candidate_dictionary
@@ -81,6 +82,7 @@ class ClinicalNLPPipeline:
             self.rxnorm_records,
             phrase_confidence=float(self.config["thresholds"]["dictionary_phrase"]),
             regex_confidence=float(self.config["thresholds"]["regex_rule"]),
+            enable_generic_regex=bool(self.config.get("enable_regex_fallback", False)),
         )
         if ner_model_dir is not None and Path(ner_model_dir).is_dir():
             self.trans_detector = TransformerNERDetector(
@@ -91,7 +93,7 @@ class ClinicalNLPPipeline:
             self.active_ner = "hybrid_transformer_and_dictionary"
         else:
             self.trans_detector = None
-            self.active_ner = "ontology_dictionary_plus_generic_rules"
+            self.active_ner = "ontology_dictionary_only"
             
         embedding_model_name = str(self.config["embedding_model_name"])
         shared_embedding_model = create_embedding_model(embedding_model_name)
@@ -115,6 +117,11 @@ class ClinicalNLPPipeline:
             icd10_index,
             rxnorm_index,
             top_k=int(self.config["candidate_top_k"])
+        )
+        self.candidate_policy = CandidatePolicy(
+            min_score=float(self.config["thresholds"].get("candidate_min_score", 0.5)),
+            min_margin=float(self.config["thresholds"].get("candidate_min_margin", 0.05)),
+            output_k=int(self.config.get("candidate_output_k", 1)),
         )
         self.assertion_predictor = HybridAssertionPredictor()
         self.relation_extractor = RuleRelationExtractor(int(self.config["relation_max_distance"]))
@@ -162,8 +169,14 @@ class ClinicalNLPPipeline:
 
         retrieval_diagnostics: list[dict[str, Any]] = []
         for entity in entities:
-            candidate_ids, ranked = self.linker.retrieve(entity.type, entity.text)
-            entity.candidates = candidate_ids
+            existing_candidates = list(entity.candidates)
+            _, ranked = self.linker.retrieve(
+                entity.type,
+                entity.text,
+                mention_head=entity.mention_head,
+                existing_candidates=existing_candidates,
+            )
+            entity.candidates = apply_candidate_policy(ranked, self.candidate_policy)
             axes = axes_by_entity[(entity.start, entity.end, entity.type)]
             entity.assertions = axes.labels()
             retrieval_diagnostics.append(
@@ -172,6 +185,8 @@ class ClinicalNLPPipeline:
                     "internal_type": entity.type,
                     "query": entity.mention_head or entity.text,
                     "top_candidates": ranked[: int(self.config["candidate_top_k"])],
+                    "selected_candidates": list(entity.candidates),
+                    "candidate_abstained": not bool(entity.candidates),
                     "medication_attributes": parse_medication_attributes(entity.text) if entity.type == "DRUG" else None,
                 }
             )
@@ -383,7 +398,12 @@ def run_inference(
             if reranker is not None:
                 reranker.destroy()
                 reranker = None
-            raise RuntimeError(f"Qwen reranker failed during execution: {type(exc).__name__}: {exc}") from exc
+            # Deterministic NER, assertion and KB linking are already complete;
+            # Qwen is an optional refinement stage and must not invalidate a
+            # submission when unavailable or when GPU memory is insufficient.
+            llm_fallback_reason = f"{type(exc).__name__}: {exc}"
+            llm_reranker_enabled = False
+            llm_assertion_enabled = False
         finally:
             if reranker is not None:
                 reranker.destroy()

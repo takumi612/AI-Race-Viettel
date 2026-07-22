@@ -17,7 +17,8 @@ from transformers import (
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from clinical_nlp_lab.config import load_config, set_reproducible_seed
-from clinical_nlp_lab.data import document_train_validation_split, load_annotated_documents, validate_documents
+from clinical_nlp_lab.data import grouped_train_validation_split, load_ner_training_documents, validate_documents
+from clinical_nlp_lab.dataset_quality import DatasetRecord
 from clinical_nlp_lab.schema import write_json
 from clinical_nlp_lab.training import (
     build_bio_label_map,
@@ -56,14 +57,26 @@ def main():
     train_source = Path(args.train_source)
     
     print(f"[Subprocess] Loading annotated documents from {train_source}")
-    annotated_documents = load_annotated_documents(train_source)
+    annotated_documents = load_ner_training_documents(train_source)
     report = validate_documents(annotated_documents)
     if not report["is_valid"]:
         raise ValueError(f"Validation failed: {report['errors'][:10]}")
     
-    train_docs, val_docs = document_train_validation_split(
-        annotated_documents, float(config["validation_fraction"]), int(config["seed"])
-    )
+    manifest_path = train_source / "reports" / "dataset_manifest.jsonl"
+    metadata = {}
+    if manifest_path.exists():
+        import json
+        metadata = {str(item["document_id"]): item for item in (json.loads(line) for line in manifest_path.read_text(encoding="utf-8").splitlines() if line.strip())}
+    records = [DatasetRecord(document_id=doc.document_id,
+                              source_bucket=str(metadata.get(doc.document_id, {}).get("source_bucket", "unknown")),
+                              template_group=str(metadata.get(doc.document_id, {}).get("template_group", doc.document_id)),
+                              genre=str(metadata.get(doc.document_id, {}).get("genre", "unknown")),
+                              long_tail=bool(metadata.get(doc.document_id, {}).get("long_tail", False)),
+                              primary_surfaces=tuple(metadata.get(doc.document_id, {}).get("primary_surfaces", [])),
+                              sha256=str(metadata.get(doc.document_id, {}).get("sha256", ""))) for doc in annotated_documents]
+    train_docs, val_docs, split_info = grouped_train_validation_split(annotated_documents, records, float(config["validation_fraction"]), int(config["seed"]))
+    split_info["grouped"] = True
+    write_json(output_dir / "split_manifest.json", split_info)
     
     if fast_dev_run:
         train_docs = train_docs[: min(16, len(train_docs))]

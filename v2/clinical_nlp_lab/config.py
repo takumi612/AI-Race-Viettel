@@ -40,6 +40,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "assertion_epochs": 3,
     "candidate_top_k": 20,
     "candidate_output_k": 1,
+    "enable_regex_fallback": False,
     "relation_max_distance": 256,
     "validation_fraction": 0.2,
     "drop_unmapped_entity_types": True,
@@ -50,6 +51,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "dictionary_phrase": 0.94,
         "regex_rule": 0.78,
         "candidate_min_score": 0.50,
+        "candidate_min_margin": 0.05,
         "overlap_close_confidence": 0.05
     }
 }

@@ -5,6 +5,7 @@
   "batch_size": 2,
   "candidate_output_k": 1,
   "candidate_top_k": 10,
+  "enable_regex_fallback": false,
   "diagnostics_dir": "diagnostics",
   "drop_unmapped_entity_types": true,
   "embedding_model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
@@ -71,6 +72,7 @@
   ],
   "thresholds": {
     "candidate_min_score": 0.5,
+    "candidate_min_margin": 0.05,
     "dictionary_exact": 0.99,
     "dictionary_phrase": 0.94,
     "overlap_close_confidence": 0.05,

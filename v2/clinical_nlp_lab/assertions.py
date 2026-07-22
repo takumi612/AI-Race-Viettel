@@ -131,3 +131,49 @@ class ClinicalLLMAssertionPredictor:
                 }
                 results.append(AssertionAxes(**values))
         return results
+
+
+# Precision-first deterministic fallback.  This definition intentionally
+# supersedes the legacy broad-window predictor above while keeping the LLM
+# predictor API unchanged.
+_SAFE_NEGATION = re.compile(r"(?iu)\b(?:không|chưa|không\s+có|không\s+ghi\s+nhận|âm\s+tính|phủ\s+nhận)\b")
+_SAFE_HISTORICAL = re.compile(r"(?iu)\b(?:tiền\s+sử|trước\s+đây|đã\s+từng)\b")
+_SAFE_PLANNED = re.compile(r"(?iu)\b(?:sẽ|dự\s+kiến|lên\s+lịch|kế\s+hoạch|chỉ\s+định)\b")
+_SAFE_RESOLVED = re.compile(r"(?iu)\b(?:đã\s+hết|không\s+còn|ổn\s+định|cải\s+thiện)\b")
+_SAFE_UNCERTAIN = re.compile(r"(?iu)\b(?:nghi\s+ngờ|có\s+thể|khả\s+năng)\b")
+_SAFE_FAMILY = re.compile(r"(?iu)\b(?:mẹ|cha|bố|anh|chị|em|ông|bà)\s+(?:của\s+)?bệnh\s+nhân\b|\btiền\s+sử\s+gia\s+đình\b")
+
+
+class HybridAssertionPredictor:
+    def __init__(self, context_window: int = 120) -> None:
+        self.context_window = context_window
+
+    @staticmethod
+    def _clause(raw_text: str, start: int, end: int) -> tuple[str, str]:
+        left_stops = [raw_text.rfind(mark, 0, start) for mark in (".", ";", "\n")]
+        left = max(left_stops) + 1
+        right_stops = [p for p in (raw_text.find(".", end), raw_text.find(";", end), raw_text.find("\n", end)) if p >= 0]
+        right = min(right_stops) if right_stops else len(raw_text)
+        clause = raw_text[max(left, start - 120):min(right, end + 120)]
+        prefix = raw_text[max(left, start - 55):start]
+        return clause, prefix
+
+    def predict_axes(self, raw_text: str, entity: EntityAnnotation) -> AssertionAxes:
+        sections = detect_sections(raw_text)
+        section_name = containing_section(entity.position, sections)
+        context, prefix = self._clause(raw_text, entity.start, entity.end)
+        polarity = "NEGATED" if _SAFE_NEGATION.search(prefix) else "AFFIRMED"
+        if _SAFE_PLANNED.search(context):
+            temporality = "PLANNED"
+        elif _SAFE_RESOLVED.search(context):
+            temporality = "RESOLVED"
+        elif section_name in {"HISTORY", "FAMILY_HISTORY"} or _SAFE_HISTORICAL.search(context):
+            temporality = "HISTORICAL"
+        else:
+            temporality = "CURRENT"
+        certainty = "POSSIBLE" if _SAFE_UNCERTAIN.search(context) else "CONFIRMED"
+        experiencer = "FAMILY" if section_name == "FAMILY_HISTORY" or _SAFE_FAMILY.search(prefix) else "PATIENT"
+        return AssertionAxes(polarity, temporality, certainty, experiencer)
+
+    def predict(self, raw_text: str, entities: Iterable[EntityAnnotation]) -> dict[tuple[int, int, str], AssertionAxes]:
+        return {(entity.start, entity.end, entity.type): self.predict_axes(raw_text, entity) for entity in entities}

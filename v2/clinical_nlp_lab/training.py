@@ -30,6 +30,35 @@ def compute_non_o_metrics(eval_prediction: Any) -> dict[str, float]:
     return {"precision": precision, "recall": recall, "f1": f1, "accuracy": accuracy}
 
 
+def compute_entity_metrics(expected_documents, predicted_documents):
+    """Return exact-span and type-matched overlap micro metrics."""
+    def spans(docs):
+        return [(doc_id, e.start, e.end, e.type) for doc_id, entities in docs.items() for e in entities]
+    gold = spans(expected_documents)
+    pred = spans(predicted_documents)
+    exact_tp = len(set(gold) & set(pred))
+    overlap_tp = 0
+    used: set[int] = set()
+    for doc_id, ps, pe, pt in pred:
+        for idx, (gd, gs, ge, gt) in enumerate(gold):
+            if idx in used or doc_id != gd or pt != gt:
+                continue
+            if max(ps, gs) < min(pe, ge):
+                overlap_tp += 1
+                used.add(idx)
+                break
+    def score(tp: int, p: int, g: int):
+        precision = tp / p if p else 0.0
+        recall = tp / g if g else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        return precision, recall, f1
+    ep, er, ef = score(exact_tp, len(pred), len(gold))
+    op, ors, of = score(overlap_tp, len(pred), len(gold))
+    return {"exact_precision": ep, "exact_recall": er, "exact_f1": ef,
+            "overlap_precision": op, "overlap_recall": ors, "overlap_f1": of,
+            "gold_entities": len(gold), "predicted_entities": len(pred)}
+
+
 def remove_nested_checkpoints(model_dir: str | Path) -> list[str]:
     """Remove duplicate Trainer checkpoint directories after the final model is saved."""
     root = Path(model_dir).resolve()

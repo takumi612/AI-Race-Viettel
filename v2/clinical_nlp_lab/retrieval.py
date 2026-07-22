@@ -23,6 +23,7 @@ except ImportError:
     SentenceTransformer = None
 
 from .text import normalize_alias
+from .linking import parse_medication_attributes
 
 
 def create_embedding_model(model_name: str):
@@ -161,11 +162,13 @@ class HybridCandidateIndex:
 
         # Xếp hạng
         ranked = sorted(scored.items(), key=lambda item: item[1], reverse=True)[:top_k]
+        max_score = ranked[0][1] if ranked else 0.0
 
         return [
             {
                 "candidate_id": candidate_id,
-                "score": round(score, 6),
+                "score": round(score / max_score, 6) if max_score else 0.0,
+                "raw_score": round(score, 6),
                 "method": "hybrid_rrf",
                 "name": self.records[candidate_id].get("canonical_name") or self.records[candidate_id].get("name_vi") or "",
             }
@@ -173,7 +176,7 @@ class HybridCandidateIndex:
         ]
 
 
-class HybridEntityLinker:
+class _LegacyHybridEntityLinker:
     """
     Kết nối Entity tới ICD-10 và RxNorm dùng Hybrid Retrieval.
     """
@@ -197,3 +200,51 @@ class HybridEntityLinker:
         candidate_ids = [item["candidate_id"] for item in ranked]
         
         return candidate_ids, ranked
+
+
+# The public linker is intentionally defined again at the end of this legacy module so
+# older serialized imports remain compatible while the runtime uses the stricter API.
+class HybridEntityLinker:
+    """Link disease/drug mentions and retain a retrieval pool for reranking."""
+
+    def __init__(self, icd10_index: HybridCandidateIndex, rxnorm_index: HybridCandidateIndex, top_k: int = 10):
+        self.icd10_index = icd10_index
+        self.rxnorm_index = rxnorm_index
+        self.top_k = top_k
+
+    def retrieve(
+        self,
+        entity_type: str,
+        text: str,
+        mention_head: str | None = None,
+        existing_candidates: Iterable[str] | None = None,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        if entity_type == "DISEASE":
+            index = self.icd10_index
+            query = mention_head or text
+        elif entity_type == "DRUG":
+            index = self.rxnorm_index
+            parsed = parse_medication_attributes(text)
+            query = mention_head or str(parsed["drug_name"])
+        else:
+            return [], []
+
+        ranked = index.retrieve(query, top_k=self.top_k)
+        exact_items: list[dict[str, Any]] = []
+        for candidate_id in existing_candidates or ():
+            candidate_id = str(candidate_id)
+            if candidate_id not in index.records:
+                continue
+            record = index.records[candidate_id]
+            exact_items.append(
+                {
+                    "candidate_id": candidate_id,
+                    "score": 1.0,
+                    "raw_score": 1.0,
+                    "method": "detector_exact_phrase",
+                    "name": record.get("canonical_name") or record.get("name_vi") or record.get("name_en") or "",
+                }
+            )
+        existing_ids = {item["candidate_id"] for item in exact_items}
+        ranked = (exact_items + [item for item in ranked if item["candidate_id"] not in existing_ids])[: self.top_k]
+        return [item["candidate_id"] for item in ranked], ranked
