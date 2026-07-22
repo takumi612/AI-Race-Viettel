@@ -334,6 +334,7 @@ def train_transformer_ner(
     train_result = trainer.train()
     trainer.save_model(str(output_path))
     tokenizer.save_pretrained(str(output_path))
+    removed_checkpoints = remove_nested_checkpoints(output_path)
     evaluation = trainer.evaluate() if validation_features else {}
     return {
         "trained": True,
@@ -345,6 +346,7 @@ def train_transformer_ner(
         "training_loss": float(train_result.training_loss),
         "evaluation": {key: float(value) for key, value in evaluation.items() if isinstance(value, (int, float))},
         "best_metric": trainer.state.best_metric,
+        "removed_checkpoints": removed_checkpoints,
         "output_dir": str(output_path),
     }
 
