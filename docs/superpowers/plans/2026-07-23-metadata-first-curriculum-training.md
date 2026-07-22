@@ -1,5 +1,10 @@
 # Metadata-First Curriculum Training Implementation Plan
 
+> **Trạng thái:** Được thay thế cho quá trình thực thi bởi
+> `2026-07-23-contract-first-resource-safe-kaggle-execution.md`. Các contract
+> dữ liệu/offset/KB còn hiệu lực, nhưng TDD bắt buộc và OOF 5-fold trong một
+> phiên không còn là workflow mặc định.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Triển khai pipeline dữ liệu, huấn luyện ba giai đoạn, assertion, ICD-10/RxNorm linking và notebook Kaggle đúng theo spec metadata-first curriculum v2.0, có OOF/challenge evaluation và artifact có thể kiểm chứng.
