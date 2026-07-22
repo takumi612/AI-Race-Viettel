@@ -96,7 +96,7 @@ def chunk_token_indices(token_count: int, max_length: int = 512, stride: int = 1
 
 def transformer_training_availability() -> TrainingAvailability:
     missing: list[str] = []
-    for package in ("torch", "transformers"):
+    for package in ("torch", "transformers", "accelerate"):
         try:
             __import__(package)
         except ImportError:
