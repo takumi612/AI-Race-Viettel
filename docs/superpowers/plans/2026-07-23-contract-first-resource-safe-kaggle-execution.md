@@ -67,6 +67,9 @@ Deliverables:
 - preflight organizer coverage đạt 100% hoặc dừng với unresolved evidence list.
 - nâng manifest bằng tool deterministic: schema version, per-input/per-GT/pair
   hash, full manifest hash và dataset pair fingerprint; không sửa input/GT;
+- giữ legacy normalized-text `sha256` dưới tên rõ nghĩa; raw pair hash dùng
+  domain-separated length framing, canonical JSONL và detached descriptor để
+  không có self-hash;
 - đổi `candidate_top_k` về 20, giữ `candidate_output_k=1` và regex primary off;
 - mọi report cũ khác fingerprint được đánh dấu stale/archived.
 
