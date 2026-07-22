@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import io
 import json
 from pathlib import Path
 from typing import Any
+import zipfile
 
 
 def markdown_cell(source: str) -> dict[str, Any]:
@@ -20,8 +23,28 @@ def code_cell(source: str) -> dict[str, Any]:
     }
 
 
+def _project_bundle_b64() -> str:
+    """Bundle runtime code and small KB artifacts so the notebook is self-contained."""
+    project_root = Path(__file__).resolve().parents[1]
+    include_roots = [project_root / "clinical_nlp_lab", project_root / "artifacts", project_root / "scripts"]
+    include_files = [project_root / "requirements-kaggle.txt"]
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for root in include_roots:
+            if not root.exists():
+                continue
+            for path in root.rglob("*"):
+                if path.is_file() and "__pycache__" not in path.parts:
+                    archive.write(path, arcname=str(path.relative_to(project_root)).replace("\\", "/"))
+        for path in include_files:
+            if path.is_file():
+                archive.write(path, arcname=path.name)
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
 def build_notebook() -> dict[str, Any]:
     cells: list[dict[str, Any]] = []
+    project_bundle = _project_bundle_b64()
     cells.append(
         markdown_cell(
             """# Clinical NLP Training on Kaggle
@@ -34,9 +57,7 @@ Internet nếu không attach sẵn code/model. Xem `KAGGLE_RUNBOOK.md`."""
         )
     )
     cells.append(markdown_cell("## 1. Runtime and repository bootstrap"))
-    cells.append(
-        code_cell(
-            '''from pathlib import Path
+    bootstrap_source = '''from pathlib import Path
 import importlib
 import importlib.util
 import json
@@ -61,6 +82,21 @@ INSTALL_MISSING_DEPENDENCIES = True
 FAST_DEV_RUN = False
 REQUIRE_TRAINING_DATA = True
 REQUIRE_GPU = True
+ENABLE_QWEN_RERANKER = False
+QWEN_GPU_MEMORY_UTILIZATION = 0.50
+
+def log_step(step: int, status: str, message: str, **context):
+    """Emit machine-readable progress markers for Kaggle logs."""
+    payload = {"step": step, "status": status, "message": message, **context}
+    marker = {"START": "STEP_START", "END": "STEP_END", "ERROR": "STEP_ERROR"}.get(status, "STEP_INFO")
+    print(f"[{marker}] STEP {step} {json.dumps(payload, ensure_ascii=False, default=str)}", flush=True)
+
+EXPECTED_STEP_LABELS = ("STEP 1", "STEP 2", "STEP 3", "STEP 4", "STEP 5", "STEP 6", "STEP 7", "STEP 8", "STEP 9")
+log_step(1, "START", "Runtime bootstrap")
+
+# The generated notebook carries the exact v2 runtime code and KB artifacts.
+# This prevents a stale GitHub `main` checkout from silently changing behavior.
+PROJECT_BUNDLE_B64 = "__PROJECT_BUNDLE_B64__"
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("WANDB_DISABLED", "true")
@@ -76,7 +112,23 @@ if IS_KAGGLE:
     project_candidates.extend(marker.parent for marker in KAGGLE_INPUT_ROOT.rglob("clinical_nlp_lab") if marker.is_dir())
 
 PROJECT_ROOT = next((path.resolve() for path in project_candidates if _is_project(path)), None)
+if IS_KAGGLE and not PROJECT_ROOT_OVERRIDE.strip() and PROJECT_BUNDLE_B64:
+    # Prefer the exact bundled runtime over an arbitrary older code Dataset.
+    PROJECT_ROOT = None
 clone_dir = KAGGLE_WORKING_ROOT / "AI-Race-Viettel"
+if PROJECT_ROOT is None and IS_KAGGLE and PROJECT_BUNDLE_B64:
+    import base64
+    import io
+    import zipfile
+    bundle_dir = KAGGLE_WORKING_ROOT / "AI-Race-Viettel"
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(base64.b64decode(PROJECT_BUNDLE_B64))) as archive:
+        for member in archive.infolist():
+            target = (bundle_dir / member.filename).resolve()
+            if not str(target).startswith(str(bundle_dir.resolve())):
+                raise RuntimeError(f"Unsafe bundled project member: {member.filename!r}")
+        archive.extractall(bundle_dir)
+    PROJECT_ROOT = bundle_dir.resolve()
 if PROJECT_ROOT is None and IS_KAGGLE:
     if clone_dir.exists() and not _is_project(clone_dir):
         raise RuntimeError(f"Clone destination exists but is not a valid project: {clone_dir}")
@@ -138,9 +190,8 @@ print(f"Dependencies Ready   : {DEPENDENCIES_READY}")
 if missing_after:
     print(f"Missing Dependencies : {missing_after}")
 print("="*55)
-print()'''
-        )
-    )
+print()'''.replace("__PROJECT_BUNDLE_B64__", project_bundle)
+    cells.append(code_cell(bootstrap_source))
     cells.append(markdown_cell("## 2. Discover attached input and annotations"))
     cells.append(
         code_cell(
@@ -418,6 +469,8 @@ INFERENCE_SUMMARY = run_inference(
     zip_path=OUTPUT_ZIP,
     ner_model_dir=ACTIVE_NER_MODEL,
     train_source=TRAIN_SOURCE,
+    enable_qwen_reranker=ENABLE_QWEN_RERANKER,
+    qwen_gpu_memory_utilization=QWEN_GPU_MEMORY_UTILIZATION,
 )
 
 print()

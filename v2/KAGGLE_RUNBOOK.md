@@ -2,6 +2,10 @@
 
 Notebook chính: `medical_information_extraction_kaggle.ipynb`.
 
+Notebook đã nhúng đúng runtime v2 và các KB artifact nhỏ cần thiết, nên không
+phụ thuộc vào một checkout GitHub `main` có thể cũ. Có thể attach thêm code
+Dataset để debug, nhưng không bắt buộc.
+
 ## Chuẩn bị Dataset
 
 Attach một Kaggle Dataset có cấu trúc:
