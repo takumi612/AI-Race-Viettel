@@ -1,73 +1,89 @@
-# Kaggle inference-only runbook
+# Kaggle runbook v2 (Inference-Only): Hybrid Retrieval & LLM Reranker
 
-This notebook runs inference from an existing NER checkpoint. It does **not**
-train or fine-tune a model.
+Notebook: `medical_information_extraction_inference_kaggle.ipynb`
 
-## 1. Prepare the two private Kaggle Datasets
+Notebook này chỉ thực hiện **suy luận (Inference)** từ checkpoint NER và tập từ điển Artifacts có sẵn. Notebook **không** thực hiện huấn luyện (train) hay fine-tune lại mô hình.
 
-1. Create a **private** Kaggle Dataset containing data only. You may
-   upload `results.zip`; Kaggle can display/extract it as a `results/` folder.
-   The inference notebook accepts both the archive and that auto-extracted
-   folder.
-   The archive must contain the checkpoint members under
-   `training_artifacts/ner_model/`, including exactly `config.json`,
-   `model.safetensors`, and `tokenizer.json`, plus the complete `artifacts/`
-   directory containing the ICD-10 and RxNorm dictionaries. Do not put Python
-   source, notebooks, tests, or a Git repository in this Dataset.
-2. Create or select a separate private inference Dataset. It must contain
-   either a top-level `input.zip` or an `input/` directory with one or more
-   `*.txt` documents. This Dataset should contain only the documents to infer,
-   not training data or prior outputs.
+## 1. Yêu cầu Môi trường (Cực kỳ quan trọng)
 
-Keeping artifacts and input in separate Datasets avoids accidentally treating
-an old archive as the current submission.
+Do v2 sử dụng Hybrid Retrieval (FAISS) và LLM Reranker (vLLM Qwen2.5-7B), hệ thống Kaggle của bạn phải đáp ứng:
+1. **Bật Internet (Internet = ON):** Để tải các thư viện bổ sung như `bm25s`, `faiss-cpu`, `sentence-transformers`, `vllm` và tự động clone mã nguồn từ GitHub.
+2. **Bật GPU (Accelerator = T4 x2 hoặc P100):** Bắt buộc để chạy NER checkpoint và LLM Reranker. Khuyến nghị dùng T4 x2.
 
-## 2. Configure the Kaggle notebook
+## 2. Tạo 2 Kaggle Datasets riêng biệt
 
-1. In Kaggle Code, choose **New Notebook**, then import
-   `medical_information_extraction_inference_kaggle.ipynb`.
-2. In the notebook's Data panel, attach both Datasets: the Dataset that
-   contains `results.zip` and the separate Dataset containing `input.zip` or
-   `input/*.txt`.
-3. Open Notebook Settings, select a **GPU** accelerator, and enable
-   **Internet**. The notebook clones its code from GitHub; Internet also lets
-   it install dependencies and, when `ENABLE_QWEN_RERANKER = True`, retrieve
-   the Qwen reranker.
-   The default Qwen configuration is `Qwen/Qwen2.5-7B-Instruct-AWQ`, using
-   50% GPU memory, 4096 context tokens, and batch size 64. The notebook frees
-   the NER checkpoint before Qwen starts; inspect its `[GPU]` logs after a
-   fresh session if vLLM reports insufficient free memory.
-4. Start a fresh session and choose **Run All**. Do not execute only the final
-   cells: earlier cells locate the archives, install requirements, and restore
-   the checkpoint.
+Tạo 2 Dataset private riêng biệt để tránh việc vô tình nhầm lẫn giữa dữ liệu artifacts cũ và bài nộp mới:
 
-## 3. Verify and collect the new result
+1. **Dataset 1: Model Checkpoint & Artifacts**
+   Tạo Dataset chứa file `results.zip` (hoặc thư mục `results/` đã tự động giải nén). File zip này chứa checkpoint mô hình NER và từ điển:
+   ```text
+   results/
+   ├── training_artifacts/
+   │   └── ner_model/
+   │       ├── config.json
+   │       ├── model.safetensors
+   │       └── tokenizer.json
+   └── artifacts/
+       ├── icd10/
+       └── rxnorm/
+   ```
+   *Lưu ý:* Không đưa mã nguồn Python, notebook, tập test hay Git repository vào Dataset này.
 
-After all cells complete:
+2. **Dataset 2: Dữ liệu cần suy luận (Inference Input)**
+   Tạo Dataset chứa file `input.zip` hoặc thư mục `input/` gồm các văn bản `.txt`:
+   ```text
+   inference-input-data/
+   └── input.zip                         # Hoặc input/<id>.txt
+   ```
+   *Lưu ý:* Chỉ chứa các văn bản cần dự đoán, không kèm dữ liệu train hoặc kết quả nộp cũ.
 
-1. Open `/kaggle/working/run_manifest.json` and confirm it contains
-   `"training_skipped": true`. If it is absent or false, stop: this run does
-   not meet the inference-only contract.
-2. Download the fresh `/kaggle/working/output.zip` from the Kaggle Output
-   panel (use **Save Version → Save & Run All** first if needed).
-3. Optionally download diagnostics and `run_manifest.json` with the ZIP for
-   traceability.
+## 3. Quy trình thực thi 3 Stage trong Notebook
 
-Only the fresh `/kaggle/working/output.zip` produced by this session should
-be downloaded and submitted.
+Notebook sẽ bỏ qua bước huấn luyện (`training_skipped: true`) và thực thi trực tiếp Pipeline 3 Stage như sau:
 
-## Troubleshooting
+- **Stage 1: NER & Assertion**
+  - Khôi phục `TransformerNERDetector` từ checkpoint được attach.
+  - Trích xuất toàn bộ thực thể từ các file văn bản đầu vào.
+  - $\rightarrow$ Xóa `TransformerNERDetector` & gọi `torch.cuda.empty_cache()`.
+- **Stage 2: Hybrid Retrieval**
+  - Load `bm25s` và `faiss` index vào RAM từ tập từ điển `artifacts/`.
+  - Lọc Top-10 ứng viên cho tất cả thực thể.
+  - $\rightarrow$ Xóa Index & gọi `gc.collect()`.
+- **Stage 3: LLM Reranker**
+  - Load `Qwen2.5-7B-Instruct-AWQ` vào GPU qua vLLM engine.
+  - Đọc ngữ cảnh + Top-10 ứng viên $\rightarrow$ Quyết định mã chính xác.
+  - $\rightarrow$ Tắt vLLM & xuất kết quả.
 
-| Symptom | Concrete fix |
-| --- | --- |
-| More than one artifact archive/folder is attached, or the notebook selects the wrong one | Detach unrelated artifact Datasets. If necessary, set `RESULTS_ZIP_OVERRIDE` in the first configuration cell to the exact `/kaggle/input/<dataset>/results.zip` or extracted `/kaggle/input/<dataset>/results` path, then Run All again. |
-| Checkpoint members are missing | Rebuild the artifact Dataset from the complete original `results.zip`; verify it has `training_artifacts/ner_model/config.json`, `model.safetensors`, and `tokenizer.json` before upload. Do not upload an extracted partial folder or an old `output.zip` instead. |
-| No input is found | Attach the separate inference Dataset and ensure it has a top-level `input.zip` or `input/*.txt` with at least one non-empty document. Remove training folders and old outputs from that Dataset. |
-| A package/dependency import fails | Enable Internet, restart the Kaggle session, and Run All so the requirements cell can install dependencies. If Internet is unavailable, attach a Dataset with compatible offline wheels and install those in the setup cell. |
-| GPU or vLLM error | Select a GPU in Notebook Settings, restart the session, and Run All. GPU/vLLM runtime errors stop the run; for out-of-memory or unsupported vLLM/CUDA combinations, choose a larger compatible GPU when available or close other GPU notebooks, then retry. |
-| `output.zip` validation, ZIP, or schema error | Download `/kaggle/working/diagnostics` and inspect the reported document IDs. Re-run with valid UTF-8 input text, then verify the fresh `output.zip` opens cleanly and contains the required `output/<document_id>.json` members with valid submission JSON before submitting. |
+## 4. Cấu hình & Tạo notebook Kaggle
 
-If any error persists, preserve the Kaggle logs, `run_manifest.json`, and
-diagnostics with the exact Dataset paths used; these identify whether the
-failure is artifact discovery, checkpoint restoration, input discovery, or
-output validation.
+1. Vào **Kaggle → Code → New Notebook**.
+2. Chọn **File → Import Notebook** và upload `medical_information_extraction_inference_kaggle.ipynb` từ thư mục `v2`.
+3. Trong panel **Input**, chọn **Add Input** và attach cả 2 Datasets ở bước 2 (Dataset chứa `results.zip` và Dataset chứa `input.zip` / `input/*.txt`).
+4. Trong **Settings**, chọn **GPU accelerator** và bật **Internet**.
+5. Cấu hình mặc định Qwen Reranker sử dụng `Qwen/Qwen2.5-7B-Instruct-AWQ` (`gpu_memory_utilization = 0.5`, `max_model_len = 4096`, `batch_size = 64`).
+6. Chọn **Run All**. Không chạy riêng lẻ từng cell ở cuối: các cell đầu tiên cần thực thi để tìm archive, cài đặt thư viện và khôi phục checkpoint.
+
+## 5. File đầu ra & Xác minh
+
+Sau khi **Run All** hoàn tất, các file kết quả sẽ nằm tại `/kaggle/working`:
+
+```text
+/kaggle/working/output.zip
+/kaggle/working/run_manifest.json
+/kaggle/working/diagnostics/
+```
+
+**Các bước xác minh:**
+1. Mở `/kaggle/working/run_manifest.json` và xác nhận thuộc tính `"training_skipped": true`. Nếu không có hoặc có giá trị `false`, dừng lại vì phiên chạy chưa đạt chuẩn inference-only.
+2. Chọn **Save Version → Save & Run All** để Kaggle lưu lại outputs của notebook.
+3. Tải file `/kaggle/working/output.zip` mới nhất từ tab Output để nộp thi.
+
+## 6. Các lỗi thường gặp ở phiên bản Inference
+
+- **Không tìm thấy Dataset hoặc chọn sai file ZIP**: Nếu attach nhiều Dataset chứa artifacts, hãy xóa các Dataset không liên quan. Hoặc thiết lập `RESULTS_ZIP_OVERRIDE` trong cell cấu hình đầu tiên chỉ định chính xác đường dẫn `/kaggle/input/<dataset>/results.zip`.
+- **Thiếu file trong Model Checkpoint**: Đảm bảo file `results.zip` chứa đầy đủ `training_artifacts/ner_model/config.json`, `model.safetensors`, `tokenizer.json` và thư mục `artifacts/` chứa từ điển ICD-10/RxNorm.
+- **Không tìm thấy dữ liệu đầu vào (No input found)**: Đảm bảo đã attach Dataset chứa file `input.zip` hoặc thư mục `input/*.txt` chứa ít nhất một văn bản không rỗng.
+- **ImportError: No module named 'vllm' / 'faiss'**: Kiểm tra lại xem đã bật **Internet** trên Kaggle chưa. Bật Internet, restart session và chọn Run All để notebook tự động cài đặt dependencies.
+- **CUDA Out Of Memory ở Stage 3**: Pipeline tự giải phóng mô hình NER trước khi load Qwen. Nếu bị OOM trên GPU T4, hãy giảm `gpu_memory_utilization` từ `0.5` xuống `0.4` hoặc giảm `max_model_len`.
+- **Lỗi Validation / Schema của output.zip**: Tải thư mục `/kaggle/working/diagnostics` để kiểm tra danh sách tài liệu bị lỗi, đảm bảo văn bản đầu vào đúng mã hóa UTF-8 trước khi thực hiện chạy lại.
+
