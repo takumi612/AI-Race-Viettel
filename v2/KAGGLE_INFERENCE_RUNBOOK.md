@@ -37,6 +37,14 @@ Tạo 2 Dataset private riêng biệt để tránh việc vô tình nhầm lẫn
    ```
    *Lưu ý:* Chỉ chứa các văn bản cần dự đoán, không kèm dữ liệu train hoặc kết quả nộp cũ.
 
+### 2.3. Cơ chế Ghi đè Đường dẫn Thủ công (Override Variables)
+Để tránh rủi ro notebook tự động quét nhầm thư mục dữ liệu khác khi bạn đính kèm nhiều Datasets trên Kaggle, bạn có thể thiết lập trực tiếp các biến Override ở Cell 1 của Notebook:
+```python
+RESULTS_ZIP_OVERRIDE = "/kaggle/input/my-checkpoint-dataset/results.zip"
+INPUT_SOURCE_OVERRIDE = "/kaggle/input/my-inference-dataset/input.zip"
+```
+Khi các biến này được gán đường dẫn tuyệt đối, notebook sẽ bỏ qua việc quét tự động và chỉ sử dụng đúng nguồn được chỉ định.
+
 ## 3. Quy trình thực thi 3 Stage trong Notebook
 
 Notebook sẽ bỏ qua bước huấn luyện (`training_skipped: true`) và thực thi trực tiếp Pipeline 3 Stage như sau:
