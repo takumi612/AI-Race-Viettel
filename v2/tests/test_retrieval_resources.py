@@ -72,3 +72,16 @@ def test_hybrid_index_skips_bm25_when_tokenizer_returns_no_terms(monkeypatch):
     ranked = index.retrieve("đ")
 
     assert ranked[0]["candidate_id"] == "I10"
+
+
+def test_hybrid_index_has_lexical_fallback_without_embedding_model():
+    retrieval = _load_retrieval()
+    index = retrieval.HybridCandidateIndex(
+        [{"candidate_id": "I10", "canonical_name": "tang huyet ap", "aliases": ["tang huyet ap"]}],
+        "ICD-10",
+        embedding_model=None,
+    )
+    index.build_indexes()
+    ranked = index.retrieve("tang huyet ap")
+    assert ranked and ranked[0]["candidate_id"] == "I10"
+    assert ranked[0]["method"] in {"lexical_fallback", "hybrid_rrf"}

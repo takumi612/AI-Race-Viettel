@@ -28,8 +28,13 @@ from .linking import parse_medication_attributes
 
 def create_embedding_model(model_name: str):
     if SentenceTransformer is None:
-        raise ImportError("Please install `sentence-transformers` to build semantic indexes")
-    return SentenceTransformer(model_name, device="cpu")
+        logging.warning("sentence-transformers is unavailable; using lexical-only retrieval")
+        return None
+    try:
+        return SentenceTransformer(model_name, device="cpu")
+    except Exception as exc:
+        logging.warning("Could not load embedding model %s (%s); using lexical-only retrieval", model_name, exc)
+        return None
 
 
 class HybridCandidateIndex:
@@ -68,6 +73,7 @@ class HybridCandidateIndex:
         self.faiss_index = None
         self.embedding_model = embedding_model
         self.embedding_model_name = embedding_model_name
+        self.lexical_only = False
 
     def build_indexes(self) -> None:
         """Xây dựng index cho BM25s và FAISS"""
@@ -76,16 +82,17 @@ class HybridCandidateIndex:
             return
 
         logging.info(f"[{self.name}] Building BM25s index with {len(self.corpus_texts)} records...")
-        if bm25s is None:
-            raise ImportError("Please install `bm25s` library to use HybridCandidateIndex")
-            
-        corpus_tokens = bm25s.tokenize(self.corpus_texts)
-        self.bm25_retriever = bm25s.BM25()
-        self.bm25_retriever.index(corpus_tokens)
+        if bm25s is not None and hasattr(bm25s, "tokenize"):
+            corpus_tokens = bm25s.tokenize(self.corpus_texts)
+            self.bm25_retriever = bm25s.BM25()
+            self.bm25_retriever.index(corpus_tokens)
 
         logging.info(f"[{self.name}] Building FAISS index using model {self.embedding_model_name}...")
-        if faiss is None or SentenceTransformer is None:
-            raise ImportError("Please install `faiss-cpu` and `sentence-transformers` libraries")
+        if faiss is None or self.embedding_model is None:
+            self.lexical_only = True
+            self.is_built = True
+            logging.info("[%s] Semantic model unavailable; lexical-only index is active", self.name)
+            return
 
         if self.embedding_model is None:
             self.embedding_model = SentenceTransformer(self.embedding_model_name, device="cpu")
@@ -248,3 +255,57 @@ class HybridEntityLinker:
         existing_ids = {item["candidate_id"] for item in exact_items}
         ranked = (exact_items + [item for item in ranked if item["candidate_id"] not in existing_ids])[: self.top_k]
         return [item["candidate_id"] for item in ranked], ranked
+
+
+# Runtime-safe index wrapper.  Semantic embeddings improve recall when
+# available, but they are not allowed to prevent a valid lexical submission
+# when Hugging Face/network access is unavailable.
+_LegacyHybridCandidateIndex = HybridCandidateIndex
+
+
+class HybridCandidateIndex(_LegacyHybridCandidateIndex):
+    def build_indexes(self) -> None:
+        if self.embedding_model is not None:
+            try:
+                return super().build_indexes()
+            except Exception as exc:
+                logging.warning("Falling back to lexical retrieval for %s: %s", self.name, exc)
+                self.faiss_index = None
+        if bm25s is not None and hasattr(bm25s, "tokenize"):
+            corpus_tokens = bm25s.tokenize(self.corpus_texts)
+            self.bm25_retriever = bm25s.BM25()
+            self.bm25_retriever.index(corpus_tokens)
+        self.lexical_only = True
+        self.is_built = True
+
+    def retrieve(self, query: str, top_k: int = 10, k_rrf: int = 60, w_bm25: float = 0.6, w_faiss: float = 0.4):
+        if not getattr(self, "lexical_only", False):
+            return super().retrieve(query, top_k, k_rrf, w_bm25, w_faiss)
+        normalized_query = normalize_alias(query)
+        if not normalized_query:
+            return []
+        if self.bm25_retriever is not None and bm25s is not None and hasattr(bm25s, "tokenize"):
+            query_tokens = bm25s.tokenize([normalized_query])
+            results, _ = self.bm25_retriever.retrieve(query_tokens, k=min(top_k * 5, len(self.corpus_texts)))
+            indices = list(results[0])
+        else:
+            terms = set(normalized_query.split())
+            scored = [(len(terms & set(text.split())), idx) for idx, text in enumerate(self.corpus_texts)]
+            indices = [idx for score, idx in sorted(scored, reverse=True) if score][:top_k * 5]
+        seen = set()
+        output = []
+        for rank, idx in enumerate(indices):
+            candidate_id = self.corpus_ids[idx]
+            if candidate_id in seen:
+                continue
+            seen.add(candidate_id)
+            output.append({
+                "candidate_id": candidate_id,
+                "score": round(1.0 / (rank + 1), 6),
+                "raw_score": round(1.0 / (rank + 1), 6),
+                "method": "lexical_fallback",
+                "name": self.records[candidate_id].get("canonical_name") or self.records[candidate_id].get("name_vi") or "",
+            })
+            if len(output) >= top_k:
+                break
+        return output
