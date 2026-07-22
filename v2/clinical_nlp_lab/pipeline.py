@@ -313,80 +313,84 @@ def run_inference(
     llm_assertion_enabled = False
     llm_fallback_reason = None
     reranker = None
-    try:
-        if not enable_qwen_reranker:
-            raise ImportError("Qwen reranker disabled by configuration")
-        from .reranker import ClinicalLLMReranker
-        from .assertions import ClinicalLLMAssertionPredictor
-        
-        reranker = ClinicalLLMReranker(
-            model_name=qwen_model_name,
-            gpu_memory_utilization=qwen_gpu_memory_utilization,
-            max_model_len=qwen_max_model_len,
-            batch_size=qwen_batch_size,
-        )
-        llm_assertion = ClinicalLLMAssertionPredictor(reranker.llm)
-        
-        # Prepare queries
-        rerank_queries = []
-        assertion_queries = []
-        entity_refs = []
-        
-        for document in documents:
-            result = intermediate_results[document.document_id]
-            raw_text = document.raw_text
-            entities = result["raw_entities"]
+    if enable_qwen_reranker:
+        try:
+            from .reranker import ClinicalLLMReranker
+            from .assertions import ClinicalLLMAssertionPredictor
             
-            retrieval_diags = result["diagnostics"]["retrieval"]
+            reranker = ClinicalLLMReranker(
+                model_name=qwen_model_name,
+                gpu_memory_utilization=qwen_gpu_memory_utilization,
+                max_model_len=qwen_max_model_len,
+                batch_size=qwen_batch_size,
+            )
+            llm_assertion = ClinicalLLMAssertionPredictor(reranker.llm)
             
-            for entity, rdiag in zip(entities, retrieval_diags):
-                cands = rdiag["top_candidates"]
-                if cands:
-                    start_idx = max(0, entity.start - 50)
-                    end_idx = min(len(raw_text), entity.end + 50)
-                    context = raw_text[start_idx:end_idx]
-                    rerank_queries.append({
-                        "context_text": context,
-                        "entity_text": entity.text,
-                        "entity_type": entity.type,
-                        "candidates": cands
+            # Prepare queries
+            rerank_queries = []
+            assertion_queries = []
+            entity_refs = []
+            
+            for document in documents:
+                result = intermediate_results[document.document_id]
+                raw_text = document.raw_text
+                entities = result["raw_entities"]
+                
+                retrieval_diags = result["diagnostics"]["retrieval"]
+                
+                for entity, rdiag in zip(entities, retrieval_diags):
+                    cands = rdiag["top_candidates"]
+                    if cands:
+                        start_idx = max(0, entity.start - 50)
+                        end_idx = min(len(raw_text), entity.end + 50)
+                        context = raw_text[start_idx:end_idx]
+                        rerank_queries.append({
+                            "context_text": context,
+                            "entity_text": entity.text,
+                            "entity_type": entity.type,
+                            "candidates": cands
+                        })
+                        entity_refs.append(entity)
+                        
+                    # Assertion queries
+                    start_idx_a = max(0, entity.start - 120)
+                    end_idx_a = min(len(raw_text), entity.end + 120)
+                    context_a = raw_text[start_idx_a:end_idx_a]
+                    assertion_queries.append({
+                        "context": context_a,
+                        "entity_text": entity.text
                     })
-                    entity_refs.append(entity)
                     
-                # Assertion queries
-                start_idx_a = max(0, entity.start - 120)
-                end_idx_a = min(len(raw_text), entity.end + 120)
-                context_a = raw_text[start_idx_a:end_idx_a]
-                assertion_queries.append({
-                    "context": context_a,
-                    "entity_text": entity.text
-                })
-                
-        # Run Rerank
-        if rerank_queries:
-            rerank_results = reranker.rerank_batch(rerank_queries)
-            llm_reranker_enabled = True
-            for entity, selected_id in zip(entity_refs, rerank_results):
-                if selected_id:
-                    entity.candidates = [selected_id]
-                else:
-                    entity.candidates = entity.candidates[:1]
+            # Run Rerank
+            if rerank_queries:
+                rerank_results = reranker.rerank_batch(rerank_queries)
+                llm_reranker_enabled = True
+                for entity, selected_id in zip(entity_refs, rerank_results):
+                    if selected_id:
+                        entity.candidates = [selected_id]
+                    else:
+                        entity.candidates = entity.candidates[:1]
+                        
+            # Run Assertion
+            if assertion_queries:
+                assertion_results = llm_assertion.predict_batch(assertion_queries)
+                llm_assertion_enabled = True
+                flat_entities = [ent for doc in documents for ent in intermediate_results[doc.document_id]["raw_entities"]]
+                for entity, axes in zip(flat_entities, assertion_results):
+                    entity.assertions = axes.labels()
                     
-        # Run Assertion
-        if assertion_queries:
-            assertion_results = llm_assertion.predict_batch(assertion_queries)
-            llm_assertion_enabled = True
-            flat_entities = [ent for doc in documents for ent in intermediate_results[doc.document_id]["raw_entities"]]
-            for entity, axes in zip(flat_entities, assertion_results):
-                entity.assertions = axes.labels()
-                
-    except ImportError as exc:
-        llm_fallback_reason = str(exc)
-        logging.warning("LLM disabled; using retrieval/rule fallback: %s", exc)
-    finally:
-        if reranker is not None:
-            reranker.destroy()
-        gpu_memory_after_qwen = log_gpu_state("after_qwen")
+        except Exception as exc:
+            if reranker is not None:
+                reranker.destroy()
+                reranker = None
+            raise RuntimeError(f"Qwen reranker failed during execution: {type(exc).__name__}: {exc}") from exc
+        finally:
+            if reranker is not None:
+                reranker.destroy()
+            gpu_memory_after_qwen = log_gpu_state("after_qwen")
+    else:
+        llm_fallback_reason = "Qwen reranker disabled by configuration"
+        gpu_memory_after_qwen = log_gpu_state("after_qwen_disabled")
         
     type_counts = Counter()
     candidate_linked = 0
