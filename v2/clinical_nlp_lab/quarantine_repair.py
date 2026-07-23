@@ -22,6 +22,7 @@ from .provenance import (
     validate_artifact_path,
     validate_legacy_manifest,
     validate_v2_manifest,
+    verify_dataset_provenance,
 )
 from .schema import OFFICIAL_SCHEMA_KEYS
 
@@ -201,10 +202,12 @@ def build_quarantine_repair_plan(
     snapshot = scan_dataset_layout(dataset_root)
     root = snapshot.dataset_root
     descriptor_path = root / "reports" / "dataset_provenance.json"
-    if descriptor_path.exists():
-        raise QuarantineRepairError(
-            "Quarantine repair must run before final dataset provenance publication"
-        )
+    provenance_is_published = descriptor_path.exists()
+    if provenance_is_published:
+        # A completed dataset may still be audited idempotently, but an invalid
+        # descriptor must never be bypassed by this repair utility.
+        verification = verify_dataset_provenance(root)
+        snapshot = verification.snapshot
     manifest_rows, manifest_bytes = _validated_manifest_rows(root, snapshot)
     manifest_by_id = {str(row["document_id"]): row for row in manifest_rows}
     pair_by_id = {pair.document_id: pair for pair in snapshot.pairs}
@@ -309,6 +312,10 @@ def build_quarantine_repair_plan(
         )
 
     fingerprint_after = _planned_fingerprint(snapshot, replacement_bytes)
+    if provenance_is_published and planned_files:
+        raise QuarantineRepairError(
+            "Quarantine repair cannot change GT after final provenance publication"
+        )
     evidence = {
         "schema_id": REPAIR_SCHEMA_ID,
         "schema_version": REPAIR_SCHEMA_VERSION,
