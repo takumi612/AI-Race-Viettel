@@ -74,6 +74,7 @@ Kaggle Run All là bước nghiệm thu do người dùng thực hiện.
     setup_source = '''from __future__ import annotations
 
 import json
+import hashlib
 import os
 import importlib.util
 import subprocess
