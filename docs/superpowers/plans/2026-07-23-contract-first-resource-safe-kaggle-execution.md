@@ -103,11 +103,12 @@ e91f1e5 feat: add fail-closed data and KB preflight
 - [x] Work Package 5A: Final encoder binding và assertion head (assertion_model, pool_mention_features, assertion_head, fit_assertion_thresholds, test_assertion_features, test_assertion_scope).
 - [x] Work Package 5B: Hard negative, candidate ranker và calibration (candidate_training, build_candidate_features, generate_hard_negatives, fit_candidate_calibration, test_candidate_training, test_candidate_policy).
 - [x] Work Package 5C: Inference merge và KB-first recovery (inference, merge_raw_span_proposals, infer_document, test_inference_data_flow).
+- [x] Work Package 6: Kaggle orchestrator và notebook 13 phase (orchestration, build_kaggle_notebook, test_inference_notebook, test_kaggle_observability).
 
 ### Checkpoint Nhật ký Thực thi Agent (Antigravity Assistant)
 - **Agent Identity**: Antigravity AI Coding Assistant (Advanced Agentic Coding - Google DeepMind).
 - **Điểm xuất phát**: Bắt đầu từ Task 4A chưa hoàn thành trong checklist `docs/superpowers/plans/2026-07-23-contract-first-resource-safe-kaggle-execution.md`.
-- **Tiến độ hiện tại**: Đã hoàn thành 100% Task 4A, 4B, 4C, 5A, 5B và 5C. Tất cả unit test contract đều `PASS` (không load model weights nặng local).
+- **Tiến độ hiện tại**: Đã hoàn thành 100% Task 4A, 4B, 4C, 5A, 5B, 5C và Task 6. Tất cả unit test contract đều `PASS` (không load model weights nặng local). Notebook `medical_information_extraction_kaggle.ipynb` đã sẵn sàng.
 - **Báo cáo lỗi & Hướng xử lý**:
   1. *Lỗi đường dẫn dataset root*: `build_dataset_metadata.py` cần chỉ định đúng path `../data_v2/Training_data/synthetic_train_v2` thay vì root `../data_v2`. -> *Đã xử lý*.
   2. *Lỗi import pytest trong `test_assertion_scope.py`*: Thiếu `import pytest` ở đầu file gây `NameError`. -> *Đã bổ sung import ở đầu file theo đúng user rule*.
@@ -115,7 +116,7 @@ e91f1e5 feat: add fail-closed data and KB preflight
 
 ### Đang thực hiện, chưa được coi là hoàn thành
 
-- [ ] Work Package 6: Kaggle orchestrator và notebook 13 phase.
+- [ ] Work Package 7: Runbook và tài liệu vận hành.
 
 ### Chưa thực hiện
 
@@ -926,14 +927,22 @@ def resume_run(config: RunConfig, latest: LatestPointer) -> RunSummary: ...
 def run_inference_only(config: RunConfig, bundle: FinalModelBundle) -> RunSummary: ...
 ```
 
-- [ ] Notebook có đúng 13 phase, mỗi cell chỉ gọi module API.
-- [ ] Mọi code cell AST compile.
-- [ ] Generator chạy hai lần tạo canonical JSON giống nhau.
-- [ ] `full`, `resume`, `inference_only` có source-role matrix riêng.
-- [ ] Mỗi phase/attempt có start và đúng một terminal event.
-- [ ] Artifact staging fsync/atomic rename trước khi cập nhật `LATEST.json`.
-- [ ] `trained_artifacts.zip` và `output.zip` qua inventory/SHA-256/CRC.
-- [ ] Không chạy notebook local end-to-end; chỉ fake orchestrator và contract checks.
+- [x] Notebook có đúng 13 phase, mỗi cell chỉ gọi module API.
+- [x] Mọi code cell AST compile.
+- [x] Generator chạy hai lần tạo canonical JSON giống nhau.
+- [x] `full`, `resume`, `inference_only` có source-role matrix riêng.
+- [x] Mỗi phase/attempt có start và đúng một terminal event.
+- [x] Artifact staging fsync/atomic rename trước khi cập nhật `LATEST.json`.
+- [x] `trained_artifacts.zip` và `output.zip` qua inventory/SHA-256/CRC.
+- [x] Không chạy notebook local end-to-end; chỉ fake orchestrator và contract checks.
+- [x] Chạy:
+
+```powershell
+python tools/build_kaggle_notebook.py
+python -m pytest tests/test_inference_notebook.py tests/test_kaggle_observability.py -q -p no:cacheprovider
+```
+
+Expected: exit `0`. (Đã qua: 16 passed, valid notebook generated).
 
 ### Task 7 — Tài liệu vận hành và session handoff
 
