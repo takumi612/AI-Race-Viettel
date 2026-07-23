@@ -63,8 +63,11 @@ def build_notebook() -> dict[str, Any]:
 Notebook này chỉ điều phối API runtime. Business logic nằm trong
 `clinical_nlp_lab`; không train local và không copy logic lớn vào notebook.
 
-Trên Kaggle, attach đúng Dataset/code/model theo `KAGGLE_RUNBOOK.md`, bật GPU,
-rồi chạy `Save Version → Run All`. Kaggle Run All là bước nghiệm thu do người dùng thực hiện.
+Trên Kaggle, notebook mặc định clone branch `codex/kaggle-end-to-end-pipeline`
+từ GitHub (Internet phải bật), chỉ cần attach Dataset dữ liệu theo
+`KAGGLE_RUNBOOK.md`, bật GPU, rồi chạy `Save Version → Run All`. Có thể đặt
+`GIT_CLONE_URL`, `GIT_CLONE_REF` hoặc `PROJECT_ROOT_OVERRIDE` trong setup cell.
+Kaggle Run All là bước nghiệm thu do người dùng thực hiện.
 """
         )
     ]
@@ -80,6 +83,10 @@ from pathlib import Path
 
 IS_KAGGLE = Path("/kaggle/input").is_dir()
 PROJECT_ROOT_OVERRIDE = os.environ.get("PROJECT_ROOT_OVERRIDE", "")
+GIT_CLONE_URL = os.environ.get("GIT_CLONE_URL", "https://github.com/takumi612/AI-Race-Viettel.git")
+GIT_CLONE_REF = os.environ.get("GIT_CLONE_REF", "codex/kaggle-end-to-end-pipeline")
+GIT_CLONE_DIR = Path(os.environ.get("GIT_CLONE_DIR", "/kaggle/working/AI-Race-Viettel"))
+USE_GIT_CLONE = os.environ.get("USE_GIT_CLONE", "1" if IS_KAGGLE else "0") == "1"
 RUN_MODE = os.environ.get("RUN_MODE", "full")
 RUN_ID = os.environ.get("RUN_ID", "") or None
 ENABLE_QWEN_RERANKER = False
@@ -101,12 +108,28 @@ KAGGLE_OPTIONS = {
 #               qwen_gpu_memory_utilization=QWEN_GPU_MEMORY_UTILIZATION)
 
 PROJECT_ROOT = Path(PROJECT_ROOT_OVERRIDE).expanduser() if PROJECT_ROOT_OVERRIDE.strip() else Path.cwd()
+if IS_KAGGLE and not PROJECT_ROOT_OVERRIDE.strip() and USE_GIT_CLONE:
+    clone_project_root = GIT_CLONE_DIR / "v2"
+    if not (clone_project_root / "clinical_nlp_lab").is_dir():
+        if GIT_CLONE_DIR.exists() and any(GIT_CLONE_DIR.iterdir()):
+            raise FileExistsError(
+                f"GIT_CLONE_DIR exists but is not the expected repository: {GIT_CLONE_DIR}"
+            )
+        print(f"[GIT_CLONE] cloning {GIT_CLONE_URL}@{GIT_CLONE_REF} -> {GIT_CLONE_DIR}", flush=True)
+        subprocess.run(
+            ["git", "clone", "--depth", "1", "--branch", GIT_CLONE_REF, GIT_CLONE_URL, str(GIT_CLONE_DIR)],
+            check=True,
+        )
+    PROJECT_ROOT = clone_project_root
 if not (PROJECT_ROOT / "clinical_nlp_lab").is_dir():
     candidates = [path.parent for path in Path("/kaggle/input").rglob("clinical_nlp_lab") if path.is_dir()] if IS_KAGGLE else []
     if candidates:
         PROJECT_ROOT = candidates[0]
 if not (PROJECT_ROOT / "clinical_nlp_lab").is_dir():
-    raise FileNotFoundError("clinical_nlp_lab is not mounted; set PROJECT_ROOT_OVERRIDE to the code Dataset")
+    raise FileNotFoundError(
+        "clinical_nlp_lab is unavailable; enable Internet for the default git clone "
+        "or set PROJECT_ROOT_OVERRIDE/USE_GIT_CLONE=0"
+    )
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

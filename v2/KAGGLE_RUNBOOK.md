@@ -6,6 +6,21 @@ Notebook chỉ là client gọi API của `clinical_nlp_lab.orchestration`; khô
 bản sao business logic train hoặc inference. Local chỉ chạy contract test trên
 CPU. Phiên `Save Version → Run All` thật được thực hiện trên Kaggle.
 
+## Code runtime bằng Git clone
+
+Notebook mặc định clone repository GitHub thay vì đóng gói toàn bộ source vào
+Kaggle Dataset:
+
+```text
+GIT_CLONE_URL=https://github.com/takumi612/AI-Race-Viettel.git
+GIT_CLONE_REF=codex/kaggle-end-to-end-pipeline
+GIT_CLONE_DIR=/kaggle/working/AI-Race-Viettel
+USE_GIT_CLONE=1
+```
+
+Vì vậy chỉ cần bật Internet. Nếu muốn dùng code Dataset đã attach, đặt
+`USE_GIT_CLONE=0` và `PROJECT_ROOT_OVERRIDE=/kaggle/input/<code-dataset>`.
+
 ## Dataset và input runtime
 
 Attach Dataset có cấu trúc sau, hoặc đặt `PROJECT_ROOT_OVERRIDE` tới code Dataset
@@ -20,15 +35,19 @@ ai-race-clinical-data/
     └── reports/dataset_manifest.jsonl
 ```
 
-Trước khi chạy, bật GPU Accelerator. Chỉ bật Internet nếu wheel/model cần thiết
-chưa được attach sẵn. Các biến môi trường được hỗ trợ:
+Trước khi chạy, bật GPU Accelerator và Internet để notebook clone source/model
+và cài dependency nếu cần. Các biến môi trường được hỗ trợ:
 
 ```text
 RUN_MODE=full|resume|inference_only
 RUN_ID=<stable run id dùng cho resume>
 DATASET_ROOT=/kaggle/input/.../synthetic_train_v2
 OUTPUT_DIR=/kaggle/working/run_output
-PROJECT_ROOT_OVERRIDE=/kaggle/input/<code-dataset>
+PROJECT_ROOT_OVERRIDE=<chỉ cần khi không dùng Git clone>
+GIT_CLONE_URL=https://github.com/takumi612/AI-Race-Viettel.git
+GIT_CLONE_REF=codex/kaggle-end-to-end-pipeline
+GIT_CLONE_DIR=/kaggle/working/AI-Race-Viettel
+USE_GIT_CLONE=1
 FAST_DEV_RUN=0
 INPUT_SOURCE=/kaggle/input/.../input
 ARTIFACT_DIR=/kaggle/working/artifacts

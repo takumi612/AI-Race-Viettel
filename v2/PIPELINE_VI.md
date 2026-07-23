@@ -59,6 +59,10 @@ Notebook tự bind `build_kaggle_phase_runners(config)` vào dispatcher. Nếu m
 runner lỗi hoặc bị thiếu, dispatcher dừng fail-closed và ghi
 `artifacts/<phase>.error.json`; hệ thống không được tự ghi `PASS` giả.
 
+Notebook mặc định clone source từ branch `codex/kaggle-end-to-end-pipeline`
+trong setup cell; chỉ cần attach dataset dữ liệu và bật Internet. Có thể tắt
+clone bằng `USE_GIT_CLONE=0` nếu dùng code Dataset đã mount.
+
 Notebook có một code cell quan sát cho từng phase. Phase 07–10 gọi distributed
 training subprocess trên T4×2; phase 11 fit assertion/candidate heads; phase 12
 reload final bundle để inference; phase 13 đóng gói checkpoint và output.

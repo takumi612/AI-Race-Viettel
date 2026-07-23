@@ -1207,4 +1207,5 @@ without training or downloading weights locally:
 - [x] Fresh CPU verification: `347 passed, 2 skipped`; notebook build and contract checks pass.
 - [x] Built-in Kaggle phase dispatcher now binds all 13 phases; phases 07–10 use distributed training subprocesses and phases 11–13 fit/reload/package artifacts.
 - [x] Notebook now exposes one observable code cell per phase (setup + 13 phase cells + finalization).
+- [x] Notebook setup defaults to cloning the pushed Git branch; attached code Dataset remains an explicit fallback.
 - [ ] Real Kaggle `Run All` artifact acceptance remains externally pending; local training is still prohibited.
