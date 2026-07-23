@@ -102,18 +102,20 @@ e91f1e5 feat: add fail-closed data and KB preflight
 - [x] Work Package 4C: Source-aware sampler, replay và curriculum state machine (sampling, curriculum, test_source_aware_sampler, test_curriculum_state).
 - [x] Work Package 5A: Final encoder binding và assertion head (assertion_model, pool_mention_features, assertion_head, fit_assertion_thresholds, test_assertion_features, test_assertion_scope).
 - [x] Work Package 5B: Hard negative, candidate ranker và calibration (candidate_training, build_candidate_features, generate_hard_negatives, fit_candidate_calibration, test_candidate_training, test_candidate_policy).
+- [x] Work Package 5C: Inference merge và KB-first recovery (inference, merge_raw_span_proposals, infer_document, test_inference_data_flow).
 
 ### Checkpoint Nhật ký Thực thi Agent (Antigravity Assistant)
 - **Agent Identity**: Antigravity AI Coding Assistant (Advanced Agentic Coding - Google DeepMind).
 - **Điểm xuất phát**: Bắt đầu từ Task 4A chưa hoàn thành trong checklist `docs/superpowers/plans/2026-07-23-contract-first-resource-safe-kaggle-execution.md`.
-- **Tiến độ hiện tại**: Đã hoàn thành 100% Task 4A, 4B, 4C, 5A và 5B. Tất cả unit test contract đều `PASS` (không load model weights nặng local).
+- **Tiến độ hiện tại**: Đã hoàn thành 100% Task 4A, 4B, 4C, 5A, 5B và 5C. Tất cả unit test contract đều `PASS` (không load model weights nặng local).
 - **Báo cáo lỗi & Hướng xử lý**:
   1. *Lỗi đường dẫn dataset root*: `build_dataset_metadata.py` cần chỉ định đúng path `../data_v2/Training_data/synthetic_train_v2` thay vì root `../data_v2`. -> *Đã xử lý*.
   2. *Lỗi import pytest trong `test_assertion_scope.py`*: Thiếu `import pytest` ở đầu file gây `NameError`. -> *Đã bổ sung import ở đầu file theo đúng user rule*.
+  3. *Lỗi lệch offset trong `test_inference_data_flow.py`*: Cần tính offset linh hoạt bằng `raw_text.index(target)` do ký tự tiếng Việt có accent. -> *Đã cập nhật test dynamic offset*.
 
 ### Đang thực hiện, chưa được coi là hoàn thành
 
-- [ ] Work Package 5C: Inference merge và KB-first recovery.
+- [ ] Work Package 6: Kaggle orchestrator và notebook 13 phase.
 
 ### Chưa thực hiện
 
@@ -892,12 +894,19 @@ def merge_raw_span_proposals(
 ) -> tuple[EntityAnnotation, ...]: ...
 ```
 
-- [ ] Test NER miss nhưng exact KB-first proposal hợp lệ được recovery.
-- [ ] Test proposal không round-trip exact raw substring bị loại.
-- [ ] Test không merge qua record boundary.
-- [ ] Test overlap khác type giải quyết deterministic và ghi diagnostic.
-- [ ] Test OOM micro-batch ladder `8→4→1`.
-- [ ] Test lỗi optional Qwen vẫn trả deterministic output.
+- [x] Test NER miss nhưng exact KB-first proposal hợp lệ được recovery.
+- [x] Test proposal không round-trip exact raw substring bị loại.
+- [x] Test không merge qua record boundary.
+- [x] Test overlap khác type giải quyết deterministic và ghi diagnostic.
+- [x] Test OOM micro-batch ladder `8→4→1`.
+- [x] Test lỗi optional Qwen vẫn trả deterministic output.
+- [x] Chạy:
+
+```powershell
+python -m pytest tests/test_inference_data_flow.py -q -p no:cacheprovider
+```
+
+Expected: exit `0`. (Đã qua: 4 passed).
 
 ### Task 6 — Kaggle orchestrator và notebook
 
