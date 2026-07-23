@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import FrozenInstanceError
+import threading
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -269,6 +270,50 @@ def test_retry_lifecycle_has_attempt_terminals_then_one_aggregate(tmp_path, monk
         logger.emit("train.stage2", "PHASE_START", "RUNNING", attempt=3)
 
 
+def test_attempt1_retriable_cuda_oom_requires_transition_and_attempt2_before_aggregate(
+    tmp_path, monkeypatch
+):
+    _stub_hardware(monkeypatch)
+    logger = RuntimeEventLogger("run-required-retry", tmp_path / "events.jsonl")
+    oom = PipelineContractError("E_TRAIN_CUDA_OOM", "hidden", retriable=True)
+    with pytest.raises(PipelineContractError):
+        with logger.phase("train", attempt=1):
+            raise oom
+
+    with pytest.raises(PipelineContractError) as aggregate:
+        logger.aggregate_terminal("train", succeeded=False, error=oom)
+    assert aggregate.value.code == "E_EVENT_SEQUENCE"
+    with pytest.raises(PipelineContractError) as finalize:
+        logger.finalize()
+    assert finalize.value.code == "E_EVENT_SEQUENCE"
+
+    logger.emit_oom_retry("train", from_attempt=1, to_attempt=2)
+    with logger.phase("train", attempt=2):
+        pass
+    logger.aggregate_terminal("train", succeeded=True)
+    assert logger.finalize() == {"logical_phases": 1, "aggregate_terminals": 1}
+
+
+def test_oom_retry_transition_requires_exact_oom_error_code(tmp_path, monkeypatch):
+    _stub_hardware(monkeypatch)
+    logger = RuntimeEventLogger("run-wrong-retry", tmp_path / "events.jsonl")
+    retryable = PipelineContractError("E_TRANSIENT", "hidden", retriable=True)
+    with pytest.raises(PipelineContractError):
+        with logger.phase("train", attempt=1):
+            raise retryable
+    with pytest.raises(PipelineContractError) as caught:
+        logger.emit_oom_retry("train", from_attempt=1, to_attempt=2)
+    assert caught.value.code == "E_EVENT_SEQUENCE"
+
+
+def test_finalize_rejects_empty_history_without_required_evidence(tmp_path, monkeypatch):
+    _stub_hardware(monkeypatch)
+    logger = RuntimeEventLogger("run-empty", tmp_path / "events.jsonl")
+    with pytest.raises(PipelineContractError) as caught:
+        logger.finalize()
+    assert caught.value.code == "E_EVENT_SEQUENCE"
+
+
 def test_transition_and_aggregate_scopes_require_null_attempt(tmp_path, monkeypatch):
     _stub_hardware(monkeypatch)
     logger = RuntimeEventLogger("run-scope", tmp_path / "events.jsonl")
@@ -443,6 +488,52 @@ def test_training_admission_thresholds_are_configurable():
     assert plan.train_batch_size == 2
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("require_gpu", "true"),
+        ("qwen_requested", 1),
+        ("fast_dev_run", "false"),
+        ("allow_qwen_7b_override", None),
+        ("min_host_ram_gib", math.nan),
+        ("min_host_ram_gib", math.inf),
+        ("min_host_ram_gib", True),
+        ("min_host_ram_gib", "10"),
+        ("min_host_ram_gib", 0),
+        ("min_disk_free_gib", -1),
+    ],
+)
+def test_resource_plan_rejects_nonexact_controls_before_admission(field, value):
+    arguments = {
+        "require_gpu": True,
+        "qwen_requested": False,
+        "fast_dev_run": False,
+        "allow_qwen_7b_override": False,
+        "min_host_ram_gib": 10.0,
+        "min_disk_free_gib": 15.0,
+    }
+    arguments[field] = value
+    with pytest.raises(PipelineContractError) as caught:
+        choose_resource_plan(_gpu_snapshot(), **arguments)
+    assert caught.value.code == "E_RESOURCE_CONTROL_INVALID"
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        {"gpu": {"available": "true", "total_gib": 16, "free_gib": 13}, "host": {}},
+        _gpu_snapshot(total=math.inf),
+        _gpu_snapshot(free=True),
+        _gpu_snapshot(ram=math.nan),
+        _gpu_snapshot(disk="50"),
+    ],
+)
+def test_resource_plan_rejects_malformed_hardware_measurements(snapshot):
+    with pytest.raises(PipelineContractError) as caught:
+        choose_resource_plan(snapshot, require_gpu=True, qwen_requested=False)
+    assert caught.value.code == "E_RESOURCE_CONTROL_INVALID"
+
+
 def test_hardware_snapshot_keeps_core_gpu_data_when_optional_peak_probe_fails(monkeypatch):
     gib = 1024**3
 
@@ -575,6 +666,31 @@ def test_model_inventory_active_flag_must_be_exact_boolean(active):
     with pytest.raises(PipelineContractError) as caught:
         validate_model_budget([_item("invalid-active", 5, active=active)])
     assert caught.value.code == "E_MODEL_INVENTORY_ACTIVE"
+
+
+def test_model_inventory_rejects_malformed_element_shape_with_typed_error():
+    with pytest.raises(PipelineContractError) as caught:
+        validate_model_budget([{"active": True}])
+    assert caught.value.code == "E_MODEL_INVENTORY_INVALID"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("model_id", None),
+        ("revision", 1),
+        ("role", False),
+        ("artifact_hash", 123),
+        ("quantization", None),
+        ("source", 123),
+    ],
+)
+def test_model_inventory_rejects_non_string_fields_with_typed_error(field, value):
+    item = _item("valid", 5)
+    malformed = replace(item, **{field: value})
+    with pytest.raises(PipelineContractError) as caught:
+        validate_model_budget([malformed])
+    assert caught.value.code == "E_MODEL_INVENTORY_INVALID"
 
 
 def test_strict_override_never_falls_back_and_reports_decision(tmp_path):
@@ -817,6 +933,45 @@ def test_finalize_requires_aggregate_and_prevents_reuse(tmp_path, monkeypatch):
         logger.emit("other", "PHASE_START", "RUNNING", attempt=1)
 
 
+def test_emit_rechecks_finalized_state_after_acquiring_writer_lock(tmp_path, monkeypatch):
+    _stub_hardware(monkeypatch)
+    logger = RuntimeEventLogger("run-finalize-race", tmp_path / "events.jsonl")
+    with logger.phase("ready", attempt=1):
+        pass
+    logger.aggregate_terminal("ready", succeeded=True)
+    records_before = _records(logger.jsonl_path)
+
+    snapshot_started = threading.Event()
+    release_snapshot = threading.Event()
+
+    def blocking_snapshot():
+        snapshot_started.set()
+        assert release_snapshot.wait(timeout=5)
+        return {"gpu": {"available": False}, "host": {}}
+
+    monkeypatch.setattr(runtime_control, "hardware_snapshot", blocking_snapshot)
+    emitted_errors = []
+
+    def emit_after_precheck():
+        try:
+            logger.emit("late", "PHASE_START", "RUNNING", attempt=1)
+        except BaseException as error:
+            emitted_errors.append(error)
+
+    worker = threading.Thread(target=emit_after_precheck)
+    worker.start()
+    assert snapshot_started.wait(timeout=5)
+    logger.finalize()
+    release_snapshot.set()
+    worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert len(emitted_errors) == 1
+    assert isinstance(emitted_errors[0], PipelineContractError)
+    assert emitted_errors[0].code == "E_EVENT_SEQUENCE"
+    assert _records(logger.jsonl_path) == records_before
+
+
 def test_logger_rejects_restart_on_nonempty_jsonl(tmp_path, monkeypatch):
     _stub_hardware(monkeypatch)
     path = tmp_path / "events.jsonl"
@@ -904,6 +1059,24 @@ def test_source_role_requirement_conditionals():
             resume_bundle_has_ner_base=True,
             final_artifact_self_contained=True,
         ) is required
+
+
+@pytest.mark.parametrize(
+    ("resume_has_ner", "artifact_self_contained"),
+    [("false", False), (False, 0), (None, False), (False, None)],
+)
+def test_source_role_condition_flags_must_be_exact_booleans(
+    resume_has_ner, artifact_self_contained
+):
+    with pytest.raises(PipelineContractError) as caught:
+        runtime_control.source_role_requirement(
+            runtime_control.RunMode.RESUME,
+            runtime_control.SourceRole.NER_BASE,
+            install_mode=runtime_control.InstallMode.PREINSTALLED,
+            resume_bundle_has_ner_base=resume_has_ner,
+            final_artifact_self_contained=artifact_self_contained,
+        )
+    assert caught.value.code == "E_SOURCE_CONTROL_INVALID"
 
 
 def _full_required_role_inputs(tmp_path):
@@ -1028,6 +1201,55 @@ def test_mode_aware_source_resolver_rejects_cross_role_canonical_path_collision(
     assert caught.value.code == "E_SOURCE_ROLE_COLLISION"
 
 
+def test_mode_source_failure_logs_complete_sorted_all_role_inventory(tmp_path, monkeypatch):
+    _stub_hardware(monkeypatch)
+    candidates, validators = _full_required_role_inputs(tmp_path)
+    embed_b = tmp_path / "embed-b"
+    embed_a = tmp_path / "embed-a"
+    embed_b.mkdir()
+    embed_a.mkdir()
+    invalid_qwen = tmp_path / "qwen-invalid"
+    invalid_qwen.write_text("not-a-directory", encoding="utf-8")
+    candidates[runtime_control.SourceRole.EMBEDDING_MODEL] = [embed_b, embed_a]
+    validators[runtime_control.SourceRole.EMBEDDING_MODEL] = lambda path: path.is_dir()
+    candidates[runtime_control.SourceRole.QWEN_MODEL] = [invalid_qwen]
+    validators[runtime_control.SourceRole.QWEN_MODEL] = lambda path: path.is_dir()
+    logger = RuntimeEventLogger("run-role-inventory", tmp_path / "events.jsonl")
+
+    with pytest.raises(PipelineContractError) as caught:
+        with logger.phase("source_resolution", attempt=1):
+            runtime_control.resolve_source_roles(
+                runtime_control.RunMode.FULL,
+                overrides={},
+                candidates=candidates,
+                validators=validators,
+                install_mode=runtime_control.InstallMode.PREINSTALLED,
+                resume_bundle_has_ner_base=False,
+                final_artifact_self_contained=False,
+                trusted_roots={"dataset": tmp_path},
+                logger=logger,
+                phase="source_resolution",
+                attempt=1,
+            )
+    assert caught.value.code == "E_EMBEDDING_MODEL_AMBIGUOUS"
+
+    inventory = next(
+        record for record in _records(logger.jsonl_path) if record["event"] == "SOURCE_RESOLVED"
+    )
+    assert inventory["status"] == "ERROR"
+    roles = inventory["context"]["roles"]
+    assert [item["role"] for item in roles] == [role.value for role in runtime_control.SourceRole]
+    embed = next(item for item in roles if item["role"] == "EMBEDDING_MODEL")
+    qwen = next(item for item in roles if item["role"] == "QWEN_MODEL")
+    expected_embed_hashes = [
+        runtime_control._safe_path_ref(path, {"dataset": tmp_path}).path_hash
+        for path in (embed_a.resolve(), embed_b.resolve())
+    ]
+    assert [item["path"]["path_hash"] for item in embed["decisions"]] == expected_embed_hashes
+    assert [item["reason"] for item in embed["decisions"]] == ["SOURCE_ACCEPTED"] * 2
+    assert qwen["decisions"][0]["reason"] == "SOURCE_VALIDATOR_REJECTED"
+
+
 def _stage_resource_input(**overrides):
     values = {
         "stage_id": runtime_control.SafeIdentifier("stage-1"),
@@ -1141,6 +1363,17 @@ def test_resource_estimator_rejects_invalid_declared_budgets(runtime_limit, disk
             [_stage_resource_input()],
             declared_runtime_limit_seconds=runtime_limit,
             usable_disk_quota_bytes=disk_quota,
+        )
+    assert caught.value.code == "E_RESOURCE_INPUT_INVALID"
+
+
+@pytest.mark.parametrize("malformed", [{"stage_id": "stage-1"}, object(), None])
+def test_resource_estimator_rejects_malformed_stage_shape_with_typed_error(malformed):
+    with pytest.raises(PipelineContractError) as caught:
+        runtime_control.estimate_resource_budget(
+            [malformed],
+            declared_runtime_limit_seconds=100,
+            usable_disk_quota_bytes=250,
         )
     assert caught.value.code == "E_RESOURCE_INPUT_INVALID"
 
@@ -1264,10 +1497,18 @@ def _execute_qwen_case(tmp_path, monkeypatch, *, initialize, generate, parse, cl
     _stub_hardware(monkeypatch)
     logger = RuntimeEventLogger("run-qwen", tmp_path / "events.jsonl")
     baseline = {"deterministic": [1, 2, 3]}
+    probe = _valid_qwen_probe()
+    resource_plan = choose_resource_plan(
+        _gpu_snapshot(),
+        require_gpu=True,
+        qwen_requested=True,
+        qwen_runtime_probe=probe,
+    )
+    assert resource_plan.qwen_admission.probe_evidence_hash == probe.evidence_hash
     with logger.phase("qwen.optional", attempt=1):
         result = runtime_control.execute_optional_qwen(
             deterministic_result=baseline,
-            profile=runtime_control.QwenProfile(),
+            resource_plan=resource_plan,
             logger=logger,
             phase="qwen.optional",
             attempt=1,
@@ -1280,6 +1521,55 @@ def _execute_qwen_case(tmp_path, monkeypatch, *, initialize, generate, parse, cl
     logger.aggregate_terminal("qwen.optional", succeeded=True)
     logger.finalize()
     return baseline, result, _records(logger.jsonl_path)
+
+
+def test_optional_qwen_refuses_disabled_or_tampered_admission_before_initialize(
+    tmp_path, monkeypatch
+):
+    _stub_hardware(monkeypatch)
+    initialized = []
+    baseline = {"deterministic": True}
+    logger = RuntimeEventLogger("run-qwen-rejected", tmp_path / "events.jsonl")
+
+    def attempt(plan):
+        return runtime_control.execute_optional_qwen(
+            deterministic_result=baseline,
+            resource_plan=plan,
+            logger=logger,
+            phase="qwen.optional",
+            attempt=1,
+            process_timeout_runner=lambda operation, timeout: operation(),
+            initialize=lambda profile: initialized.append(profile) or object(),
+            generate=lambda engine: object(),
+            parse=lambda raw: object(),
+            cleanup=lambda engine: None,
+        )
+
+    p100_plan = choose_resource_plan(
+        _gpu_snapshot(name="Tesla P100", capability="6.0"),
+        require_gpu=True,
+        qwen_requested=True,
+        qwen_runtime_probe=_valid_qwen_probe(capability=(6, 0)),
+    )
+    with pytest.raises(PipelineContractError) as disabled:
+        attempt(p100_plan)
+    assert disabled.value.code == "E_QWEN_ADMISSION"
+
+    admitted = choose_resource_plan(
+        _gpu_snapshot(),
+        require_gpu=True,
+        qwen_requested=True,
+        qwen_runtime_probe=_valid_qwen_probe(),
+    )
+    object.__setattr__(
+        admitted.qwen_admission,
+        "probe_evidence_hash",
+        runtime_control.SafeHash("0" * 64),
+    )
+    with pytest.raises(PipelineContractError) as tampered:
+        attempt(admitted)
+    assert tampered.value.code == "E_QWEN_ADMISSION"
+    assert initialized == []
 
 
 def test_optional_qwen_success_uses_process_timeout_runner_and_returns_refinement(tmp_path, monkeypatch):

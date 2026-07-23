@@ -479,6 +479,7 @@ class RuntimeEventLogger:
         self._lock = threading.Lock()
         self._owner_pid = os.getpid()
         self._attempt_states: dict[tuple[str, int], str] = {}
+        self._attempt_error_codes: dict[tuple[str, int], str] = {}
         self._retry_transitions: set[tuple[str, int, int]] = set()
         self._pending_retry_targets: set[tuple[str, int]] = set()
         self._aggregate_terminals: set[str] = set()
@@ -603,6 +604,13 @@ class RuntimeEventLogger:
                     context={"reason": "retry_without_retriable_error"},
                     next_action="End the source attempt with a retriable error first.",
                 )
+            if self._attempt_error_codes.get((phase, from_attempt)) != "E_TRAIN_CUDA_OOM":
+                raise PipelineContractError(
+                    "E_EVENT_SEQUENCE",
+                    "OOM_RETRY requires E_TRAIN_CUDA_OOM on the source attempt.",
+                    context={"reason": "retry_without_cuda_oom"},
+                    next_action="Emit OOM_RETRY only after a retriable E_TRAIN_CUDA_OOM.",
+                )
             retry_key = (phase, from_attempt, to_attempt)
             if retry_key in self._retry_transitions or (phase, to_attempt) in self._attempt_states:
                 raise PipelineContractError(
@@ -664,7 +672,11 @@ class RuntimeEventLogger:
             if event == "PHASE_END":
                 return ("ATTEMPT_END", key)
             retriable = bool(error_data and error_data.get("retriable") is True)
-            return ("ATTEMPT_ERROR_RETRIABLE" if retriable else "ATTEMPT_ERROR", key)
+            error_code = str(error_data["code"]) if error_data is not None else "E_UNEXPECTED"
+            return (
+                "ATTEMPT_ERROR_RETRIABLE" if retriable else "ATTEMPT_ERROR",
+                (key, error_code),
+            )
         if state != "STARTED":
             raise PipelineContractError(
                 "E_EVENT_SEQUENCE",
@@ -720,9 +732,15 @@ class RuntimeEventLogger:
         elif action == "ATTEMPT_END":
             self._attempt_states[key] = "END"
         elif action == "ATTEMPT_ERROR":
-            self._attempt_states[key] = "ERROR"
+            attempt_key, error_code = key
+            self._attempt_states[attempt_key] = "ERROR"
+            self._attempt_error_codes[attempt_key] = error_code
         elif action == "ATTEMPT_ERROR_RETRIABLE":
-            self._attempt_states[key] = "ERROR_RETRIABLE"
+            attempt_key, error_code = key
+            self._attempt_states[attempt_key] = "ERROR_RETRIABLE"
+            self._attempt_error_codes[attempt_key] = error_code
+            if attempt_key[1] == 1 and error_code == "E_TRAIN_CUDA_OOM":
+                self._pending_retry_targets.add((attempt_key[0], 2))
         elif action == "RETRY_TRANSITION":
             self._retry_transitions.add(key)
             self._pending_retry_targets.add((key[0], key[2]))
@@ -774,6 +792,17 @@ class RuntimeEventLogger:
         line = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
 
         with self._lock:
+            # The resource snapshot is intentionally collected outside the writer
+            # lock.  Finalization may therefore win the race while an emitter is
+            # sampling hardware; re-check the sealed state at the actual commit
+            # boundary so no event can be appended after ``finalize()``.
+            if self._finalized:
+                raise PipelineContractError(
+                    "E_EVENT_SEQUENCE",
+                    "No event may be emitted after logger finalization.",
+                    context={"reason": "post_finalize_event"},
+                    next_action="Create a new logger for a new run.",
+                )
             transition = self._lifecycle_transition(
                 phase_value,
                 scope_value,
@@ -796,6 +825,13 @@ class RuntimeEventLogger:
         self._assert_single_writer()
         with self._lock:
             logical_phases = {phase for phase, _ in self._attempt_states}
+            if not logical_phases:
+                raise PipelineContractError(
+                    "E_EVENT_SEQUENCE",
+                    "Cannot finalize an empty run without lifecycle evidence.",
+                    context={"reason": "empty_run_history"},
+                    next_action="Record and aggregate at least one logical phase before finalization.",
+                )
             if self._pending_retry_targets:
                 raise PipelineContractError(
                     "E_EVENT_SEQUENCE",
@@ -1177,6 +1213,97 @@ class QwenProfile:
                 raise ValueError("Qwen timeouts must be positive finite seconds")
 
 
+def _canonical_sha256(payload: Mapping[str, Any]) -> SafeHash:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(
+        "utf-8"
+    )
+    return SafeHash(hashlib.sha256(encoded).hexdigest())
+
+
+def _qwen_profile_hash(profile: QwenProfile) -> SafeHash:
+    return _canonical_sha256(asdict(profile))
+
+
+def _qwen_hardware_hash(gpu: Mapping[str, Any]) -> SafeHash:
+    return _canonical_sha256(
+        {
+            "capability": list(_capability_tuple(gpu.get("capability")) or ()),
+            "free_gib": _finite_measurement(gpu.get("free_gib")),
+            "name": str(gpu.get("name") or ""),
+            "total_gib": _finite_measurement(gpu.get("total_gib")),
+        }
+    )
+
+
+@dataclass(frozen=True, init=False)
+class QwenAdmission:
+    """Planner-issued binding between a profile and admitted hardware/runtime evidence."""
+
+    profile_hash: SafeHash
+    probe_evidence_hash: SafeHash
+    hardware_hash: SafeHash
+    gpu_capability: tuple[int, int]
+    allow_qwen_7b_override: bool
+    admission_hash: SafeHash
+
+    @classmethod
+    def _issue(
+        cls,
+        *,
+        profile: QwenProfile,
+        gpu: Mapping[str, Any],
+        runtime_probe: QwenRuntimeProbe,
+        allow_qwen_7b_override: bool,
+    ) -> "QwenAdmission":
+        capability = _capability_tuple(gpu.get("capability"))
+        if capability is None or not runtime_probe.has_valid_evidence_hash():
+            raise ValueError("Qwen admission requires canonical hardware and runtime evidence")
+        profile_hash = _qwen_profile_hash(profile)
+        hardware_hash = _qwen_hardware_hash(gpu)
+        admission_payload = {
+            "allow_qwen_7b_override": allow_qwen_7b_override,
+            "gpu_capability": list(capability),
+            "hardware_hash": hardware_hash.value,
+            "probe_evidence_hash": runtime_probe.evidence_hash.value,
+            "profile_hash": profile_hash.value,
+        }
+        admission = object.__new__(cls)
+        object.__setattr__(admission, "profile_hash", profile_hash)
+        object.__setattr__(admission, "probe_evidence_hash", runtime_probe.evidence_hash)
+        object.__setattr__(admission, "hardware_hash", hardware_hash)
+        object.__setattr__(admission, "gpu_capability", capability)
+        object.__setattr__(admission, "allow_qwen_7b_override", allow_qwen_7b_override)
+        object.__setattr__(admission, "admission_hash", _canonical_sha256(admission_payload))
+        return admission
+
+    def has_valid_binding(self, profile: QwenProfile) -> bool:
+        try:
+            if (
+                not isinstance(profile, QwenProfile)
+                or not isinstance(self.profile_hash, SafeHash)
+                or not isinstance(self.probe_evidence_hash, SafeHash)
+                or not isinstance(self.hardware_hash, SafeHash)
+                or not isinstance(self.admission_hash, SafeHash)
+                or not isinstance(self.allow_qwen_7b_override, bool)
+                or not isinstance(self.gpu_capability, tuple)
+                or self.gpu_capability < (7, 5)
+                or self.profile_hash != _qwen_profile_hash(profile)
+            ):
+                return False
+            expected = _canonical_sha256(
+                {
+                    "allow_qwen_7b_override": self.allow_qwen_7b_override,
+                    "gpu_capability": list(self.gpu_capability),
+                    "hardware_hash": self.hardware_hash.value,
+                    "probe_evidence_hash": self.probe_evidence_hash.value,
+                    "profile_hash": self.profile_hash.value,
+                }
+            )
+        except Exception:
+            return False
+        return self.admission_hash == expected
+
+
 @dataclass(frozen=True)
 class ResourcePlan:
     train_batch_size: int
@@ -1188,7 +1315,21 @@ class ResourcePlan:
     gradient_checkpointing: bool
     qwen_enabled: bool
     qwen_profile: QwenProfile | None
+    qwen_admission: QwenAdmission | None = None
     qwen_disabled_reason: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.qwen_enabled, bool):
+            raise ValueError("ResourcePlan qwen_enabled must be an exact boolean")
+        if self.qwen_enabled:
+            if (
+                not isinstance(self.qwen_profile, QwenProfile)
+                or not isinstance(self.qwen_admission, QwenAdmission)
+                or not self.qwen_admission.has_valid_binding(self.qwen_profile)
+            ):
+                raise ValueError("Enabled Qwen requires one valid planner-issued admission")
+        elif self.qwen_profile is not None or self.qwen_admission is not None:
+            raise ValueError("Disabled Qwen cannot retain a profile or admission")
 
 
 def _gpu_details(snapshot: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -1268,6 +1409,37 @@ def _finite_measurement(value: Any) -> float | None:
     return numeric if math.isfinite(numeric) else None
 
 
+def _resource_control_error(field_name: str) -> PipelineContractError:
+    return PipelineContractError(
+        "E_RESOURCE_CONTROL_INVALID",
+        f"Resource control or measurement {field_name!r} is invalid.",
+        context={"reason": "invalid_resource_control"},
+        next_action="Provide exact booleans and finite numeric resource values.",
+    )
+
+
+def _exact_resource_bool(value: Any, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise _resource_control_error(field_name)
+    return value
+
+
+def _positive_resource_control(value: Any, field_name: str) -> float:
+    measurement = _finite_measurement(value)
+    if measurement is None or measurement <= 0:
+        raise _resource_control_error(field_name)
+    return measurement
+
+
+def _optional_resource_measurement(value: Any, field_name: str) -> float | None:
+    if value is None:
+        return None
+    measurement = _finite_measurement(value)
+    if measurement is None:
+        raise _resource_control_error(field_name)
+    return measurement
+
+
 def choose_resource_plan(
     snapshot: Mapping[str, Any],
     *,
@@ -1282,11 +1454,30 @@ def choose_resource_plan(
 ) -> ResourcePlan:
     """Validate the hardware budget and choose the single-GPU safe profile."""
 
+    if not isinstance(snapshot, Mapping):
+        raise _resource_control_error("snapshot")
+    require_gpu = _exact_resource_bool(require_gpu, "require_gpu")
+    qwen_requested = _exact_resource_bool(qwen_requested, "qwen_requested")
+    fast_dev_run = _exact_resource_bool(fast_dev_run, "fast_dev_run")
+    allow_qwen_7b_override = _exact_resource_bool(
+        allow_qwen_7b_override, "allow_qwen_7b_override"
+    )
+    min_host_ram = _positive_resource_control(min_host_ram_gib, "min_host_ram_gib")
+    min_disk_free = _positive_resource_control(min_disk_free_gib, "min_disk_free_gib")
+    if qwen_model_id is not None and (
+        not isinstance(qwen_model_id, str) or not qwen_model_id.strip()
+    ):
+        raise _resource_control_error("qwen_model_id")
+    if "gpu" in snapshot and not isinstance(snapshot["gpu"], Mapping):
+        raise _resource_control_error("gpu")
     gpu = _gpu_details(snapshot)
     total = gpu.get("total_gib")
     free = gpu.get("free_gib")
-    gpu_available = bool(gpu.get("available", total is not None))
-    selected_qwen_model = str(qwen_model_id or DEFAULT_QWEN_MODEL_ID)
+    available_value = gpu.get("available", total is not None)
+    gpu_available = _exact_resource_bool(available_value, "gpu.available")
+    total_measurement = _optional_resource_measurement(total, "gpu.total_gib")
+    free_measurement = _optional_resource_measurement(free, "gpu.free_gib")
+    selected_qwen_model = qwen_model_id or DEFAULT_QWEN_MODEL_ID
 
     if not gpu_available:
         if require_gpu:
@@ -1309,8 +1500,6 @@ def choose_resource_plan(
             qwen_disabled_reason="Qwen requires a supported CUDA GPU." if qwen_requested else "",
         )
 
-    total_measurement = _finite_measurement(total)
-    free_measurement = _finite_measurement(free)
     gpu_budget_satisfied = (
         total_measurement is not None
         and free_measurement is not None
@@ -1339,26 +1528,32 @@ def choose_resource_plan(
         )
 
     host = snapshot.get("host")
+    if host is not None and not isinstance(host, Mapping):
+        raise _resource_control_error("host")
     host = host if isinstance(host, Mapping) else {}
-    host_available = _finite_measurement(host.get("ram_available_gib"))
-    disk_free = _finite_measurement(host.get("disk_free_gib"))
-    if require_gpu and (host_available is None or host_available < float(min_host_ram_gib)):
+    host_available = _optional_resource_measurement(
+        host.get("ram_available_gib"), "host.ram_available_gib"
+    )
+    disk_free = _optional_resource_measurement(
+        host.get("disk_free_gib"), "host.disk_free_gib"
+    )
+    if require_gpu and (host_available is None or host_available < min_host_ram):
         raise PipelineContractError(
             "E_RUNTIME_BUDGET",
             "Training host RAM admission failed.",
             context={
                 "ram_available_gib": host_available,
-                "min_host_ram_gib": float(min_host_ram_gib),
+                "min_host_ram_gib": min_host_ram,
             },
             next_action="Free host RAM or attach a runtime with more memory.",
         )
-    if require_gpu and (disk_free is None or disk_free < float(min_disk_free_gib)):
+    if require_gpu and (disk_free is None or disk_free < min_disk_free):
         raise PipelineContractError(
             "E_DISK_BUDGET",
             "Training disk admission failed.",
             context={
                 "disk_free_gib": disk_free,
-                "min_disk_free_gib": float(min_disk_free_gib),
+                "min_disk_free_gib": min_disk_free,
             },
             next_action="Free working disk space or increase the declared disk quota.",
         )
@@ -1373,6 +1568,18 @@ def choose_resource_plan(
         )
     qwen_enabled = bool(qwen_requested and not reason)
     qwen_profile = QwenProfile(model_id=selected_qwen_model) if qwen_enabled else None
+    qwen_admission = (
+        QwenAdmission._issue(
+            profile=qwen_profile,
+            gpu=gpu,
+            runtime_probe=qwen_runtime_probe,
+            allow_qwen_7b_override=allow_qwen_7b_override,
+        )
+        if qwen_enabled
+        and qwen_profile is not None
+        and isinstance(qwen_runtime_probe, QwenRuntimeProbe)
+        else None
+    )
     return ResourcePlan(
         train_batch_size=1 if fast_dev_run else 2,
         eval_batch_size=1 if fast_dev_run else 2,
@@ -1383,6 +1590,7 @@ def choose_resource_plan(
         gradient_checkpointing=True,
         qwen_enabled=qwen_enabled,
         qwen_profile=qwen_profile,
+        qwen_admission=qwen_admission,
         qwen_disabled_reason=reason,
     )
 
@@ -1416,7 +1624,7 @@ def _emit_qwen_fallback(
 def execute_optional_qwen(
     *,
     deterministic_result: Any,
-    profile: QwenProfile,
+    resource_plan: ResourcePlan,
     logger: RuntimeEventLogger,
     phase: str,
     attempt: int,
@@ -1432,13 +1640,27 @@ def execute_optional_qwen(
     ``process_timeout_runner`` must enforce termination outside the model process.
     """
 
-    if not isinstance(profile, QwenProfile) or not callable(process_timeout_runner):
+    if (
+        not isinstance(resource_plan, ResourcePlan)
+        or resource_plan.qwen_enabled is not True
+        or not isinstance(resource_plan.qwen_profile, QwenProfile)
+        or not isinstance(resource_plan.qwen_admission, QwenAdmission)
+        or not resource_plan.qwen_admission.has_valid_binding(resource_plan.qwen_profile)
+    ):
+        raise PipelineContractError(
+            "E_QWEN_ADMISSION",
+            "Optional Qwen execution requires a valid planner-issued admission.",
+            context={"reason": "qwen_not_admitted"},
+            next_action="Use the enabled ResourcePlan returned by choose_resource_plan().",
+        )
+    if not callable(process_timeout_runner):
         raise PipelineContractError(
             "E_QWEN_EXECUTION_CONFIG",
-            "Optional Qwen execution requires a typed profile and timeout runner.",
+            "Optional Qwen execution requires a process-boundary timeout runner.",
             context={"reason": "invalid_qwen_execution_config"},
-            next_action="Provide the admitted QwenProfile and a process-boundary timeout runner.",
+            next_action="Provide a process-boundary timeout runner.",
         )
+    profile = resource_plan.qwen_profile
     engine: Any | None = None
     result = deterministic_result
     failure_reason: EventReason | None = None
@@ -1629,6 +1851,8 @@ def estimate_resource_budget(
     stage_inputs = list(stages)
     if not stage_inputs:
         raise _resource_input_error("stages")
+    if any(not isinstance(stage, StageResourceInput) for stage in stage_inputs):
+        raise _resource_input_error("stages")
     if any(not isinstance(stage.stage_id, SafeIdentifier) for stage in stage_inputs):
         raise _resource_input_error("stage_id")
     stage_inputs.sort(key=lambda stage: stage.stage_id.value)
@@ -1807,6 +2031,13 @@ def validate_model_budget(
         )
     inventory = list(items)
     for item in inventory:
+        if not isinstance(item, ModelInventoryItem):
+            raise PipelineContractError(
+                "E_MODEL_INVENTORY_INVALID",
+                "Every model inventory element must use the typed inventory schema.",
+                context={"reason": "invalid_inventory_element"},
+                next_action="Regenerate the inventory with ModelInventoryItem records.",
+            )
         if not isinstance(item.active, bool):
             raise PipelineContractError(
                 "E_MODEL_INVENTORY_ACTIVE",
@@ -1817,18 +2048,32 @@ def validate_model_budget(
     active_items = [item for item in inventory if item.active]
     normalized_items: list[ModelInventoryItem] = []
     for item in active_items:
-        artifact_hash = item.artifact_hash.strip().casefold()
-        source = item.source.strip()
-        if not source or re.fullmatch(r"[0-9a-f]{64}", artifact_hash) is None:
+        string_fields = {
+            "model_id": item.model_id,
+            "revision": item.revision,
+            "role": item.role,
+            "artifact_hash": item.artifact_hash,
+            "quantization": item.quantization,
+            "source": item.source,
+        }
+        if any(not isinstance(value, str) for value in string_fields.values()):
             raise PipelineContractError(
                 "E_MODEL_INVENTORY_INVALID",
-                f"Active model {item.model_id!r} requires source and a full SHA-256 artifact hash.",
-                context={
-                    "model_id": item.model_id,
-                    "revision": item.revision,
-                    "role": item.role,
-                    "reason": "missing_source_or_invalid_sha256",
-                },
+                "Active model inventory string fields must have exact string types.",
+                context={"reason": "invalid_inventory_string_field"},
+                next_action="Regenerate the typed model inventory.",
+            )
+        normalized_strings = {name: value.strip() for name, value in string_fields.items()}
+        artifact_hash = normalized_strings["artifact_hash"].casefold()
+        source = normalized_strings["source"]
+        if (
+            any(not normalized_strings[name] for name in ("model_id", "revision", "role", "quantization", "source"))
+            or re.fullmatch(r"[0-9a-f]{64}", artifact_hash) is None
+        ):
+            raise PipelineContractError(
+                "E_MODEL_INVENTORY_INVALID",
+                "Active model inventory requires non-empty identity fields and a full SHA-256 hash.",
+                context={"reason": "missing_identity_or_invalid_sha256"},
                 next_action="Record the immutable model source and 64-character SHA-256 weight-set hash.",
             )
         if (
@@ -1842,7 +2087,17 @@ def validate_model_budget(
                 context={"model_id": item.model_id, "revision": item.revision, "role": item.role},
                 next_action="Record a positive parameter_count in the model inventory.",
             )
-        normalized_items.append(replace(item, artifact_hash=artifact_hash, source=source))
+        normalized_items.append(
+            replace(
+                item,
+                model_id=normalized_strings["model_id"],
+                revision=normalized_strings["revision"],
+                role=normalized_strings["role"],
+                artifact_hash=artifact_hash,
+                quantization=normalized_strings["quantization"],
+                source=source,
+            )
+        )
 
     hashes_by_identity: dict[tuple[str, str, str, str], set[str]] = {}
     for item in normalized_items:
@@ -1957,6 +2212,15 @@ def source_role_requirement(
     resume_bundle_has_ner_base: bool,
     final_artifact_self_contained: bool,
 ) -> SourceRequirement:
+    if not isinstance(resume_bundle_has_ner_base, bool) or not isinstance(
+        final_artifact_self_contained, bool
+    ):
+        raise PipelineContractError(
+            "E_SOURCE_CONTROL_INVALID",
+            "Source-role condition flags must be exact booleans.",
+            context={"reason": "invalid_source_condition"},
+            next_action="Set bundle and final-artifact sufficiency flags to true or false.",
+        )
     run_mode = RunMode(run_mode)
     role = SourceRole(role)
     install_mode = InstallMode(install_mode)
@@ -2078,6 +2342,22 @@ class RoleSourceResolution:
             "decisions": [decision.as_dict() for decision in self.decisions],
         }
 
+    def as_event_context(self) -> dict[str, Any]:
+        selected_ref = next(
+            (
+                decision.path_ref
+                for decision in self.decisions
+                if decision.accepted and decision.path == self.selected
+            ),
+            None,
+        )
+        return {
+            "role": SafeIdentifier(self.role.value),
+            "requirement": SafeIdentifier(self.requirement.value),
+            "selected": selected_ref,
+            "decisions": [decision.as_event_context() for decision in self.decisions],
+        }
+
 
 @dataclass(frozen=True)
 class SourceRoleResolution:
@@ -2090,6 +2370,12 @@ class SourceRoleResolution:
 
     def as_dict(self) -> dict[str, Any]:
         return {"run_mode": self.run_mode.value, "roles": [item.as_dict() for item in self.roles]}
+
+    def as_event_context(self) -> dict[str, Any]:
+        return {
+            "run_mode": SafeIdentifier(self.run_mode.value),
+            "roles": [item.as_event_context() for item in self.roles],
+        }
 
 
 def _evaluate_candidate(
@@ -2182,6 +2468,7 @@ def resolve_unique_source(
                 decisions=decisions,
                 error=contract_error,
             )
+            contract_error.source_decisions = decisions
             raise contract_error
         _emit_source_resolution(
             logger,
@@ -2254,6 +2541,7 @@ def resolve_unique_source(
             decisions=decisions,
             error=contract_error,
         )
+        contract_error.source_decisions = decisions
         raise contract_error
     if len(matches) > 1:
         contract_error = PipelineContractError(
@@ -2274,6 +2562,7 @@ def resolve_unique_source(
             decisions=decisions,
             error=contract_error,
         )
+        contract_error.source_decisions = decisions
         raise contract_error
     selected = matches[0]
     _emit_source_resolution(
@@ -2314,12 +2603,14 @@ def _resolve_role_input(
         )
         assert isinstance(resolution, SourceResolution)
         if resolution.decisions[0].path_ref.root_alias == "untrusted":
-            raise PipelineContractError(
+            error = PipelineContractError(
                 "E_SOURCE_PATH_UNTRUSTED",
                 "Resolved role source is outside all trusted roots.",
                 context={"role": role.value},
                 next_action="Attach the source below a configured trusted root.",
             )
+            error.source_decisions = resolution.decisions
+            raise error
         return RoleSourceResolution(role, requirement, resolution.selected, resolution.decisions)
 
     if not candidates:
@@ -2381,30 +2672,36 @@ def _resolve_role_input(
         if decision.accepted:
             matches.append(path)
     if len(matches) > 1:
-        raise PipelineContractError(
+        error = PipelineContractError(
             _error_code(role.value, "AMBIGUOUS"),
             f"Source role {role.value} has multiple valid candidates.",
             context={"role": role.value, "decisions": tuple(decisions)},
             next_action="Set the role-specific override to exactly one source.",
         )
+        error.source_decisions = tuple(decisions)
+        raise error
     if not matches:
         if requirement is SourceRequirement.REQUIRED:
-            raise PipelineContractError(
+            error = PipelineContractError(
                 _error_code(role.value, "MISSING"),
                 f"Required source role {role.value} has no valid candidate.",
                 context={"role": role.value, "decisions": tuple(decisions)},
                 next_action="Attach exactly one valid source for the required role.",
             )
+            error.source_decisions = tuple(decisions)
+            raise error
         return RoleSourceResolution(role, requirement, None, tuple(decisions))
     selected = matches[0]
     selected_decision = next(decision for decision in decisions if decision.path == selected and decision.accepted)
     if selected_decision.path_ref.root_alias == "untrusted":
-        raise PipelineContractError(
+        error = PipelineContractError(
             "E_SOURCE_PATH_UNTRUSTED",
             "Resolved role source is outside all trusted roots.",
             context={"role": role.value},
             next_action="Attach the source below a configured trusted root.",
         )
+        error.source_decisions = tuple(decisions)
+        raise error
     return RoleSourceResolution(role, requirement, selected, tuple(decisions))
 
 
@@ -2418,8 +2715,11 @@ def resolve_source_roles(
     resume_bundle_has_ner_base: bool,
     final_artifact_self_contained: bool,
     trusted_roots: Mapping[str, str | os.PathLike[str]],
+    logger: RuntimeEventLogger | None = None,
+    phase: str = "source_resolution",
+    attempt: int = 1,
 ) -> SourceRoleResolution:
-    """Resolve every source role under the authoritative run-mode matrix."""
+    """Resolve all roles, then emit one complete inventory before returning or raising."""
 
     mode = RunMode(run_mode)
     normalized_overrides = {SourceRole(role): value for role, value in overrides.items()}
@@ -2438,47 +2738,95 @@ def resolve_source_roles(
         for role in SourceRole
     }
 
-    for role, requirement in requirements.items():
-        if requirement is not SourceRequirement.FORBIDDEN:
-            continue
-        override = normalized_overrides.get(role)
-        attached = normalized_candidates.get(role, ())
-        if (override is not None and str(override).strip()) or attached:
-            raise PipelineContractError(
-                "E_SOURCE_ROLE_FORBIDDEN",
-                f"Source role {role.value} is forbidden in run mode {mode.value}.",
-                context={"role": role.value, "reason": EventReason.SOURCE_ROLE_FORBIDDEN},
-                next_action="Detach the forbidden source or choose the correct run mode.",
-            )
-
     role_results: list[RoleSourceResolution] = []
+    errors: list[PipelineContractError] = []
+    forbidden_errors: list[PipelineContractError] = []
     selected_by_identity: dict[str, SourceRole] = {}
     for role in SourceRole:
         requirement = requirements[role]
         if requirement is SourceRequirement.FORBIDDEN:
-            role_results.append(RoleSourceResolution(role, requirement, None, ()))
+            forbidden_values: list[str | os.PathLike[str]] = []
+            override = normalized_overrides.get(role)
+            if override is not None and str(override).strip():
+                forbidden_values.append(override)
+            forbidden_values.extend(normalized_candidates.get(role, ()))
+            forbidden_paths: list[Path] = []
+            for value in forbidden_values:
+                raw_path = Path(value).expanduser()
+                try:
+                    forbidden_paths.append(raw_path.resolve())
+                except Exception:
+                    forbidden_paths.append(raw_path.absolute())
+            forbidden_paths.sort(key=lambda path: (str(path).casefold(), str(path)))
+            decisions = tuple(
+                SourceCandidateDecision(
+                    path,
+                    False,
+                    EventReason.SOURCE_ROLE_FORBIDDEN,
+                    _safe_path_ref(path, trusted_roots),
+                )
+                for path in forbidden_paths
+            )
+            role_results.append(RoleSourceResolution(role, requirement, None, decisions))
+            if forbidden_paths:
+                error = PipelineContractError(
+                    "E_SOURCE_ROLE_FORBIDDEN",
+                    f"Source role {role.value} is forbidden in run mode {mode.value}.",
+                    context={"role": role.value, "reason": EventReason.SOURCE_ROLE_FORBIDDEN},
+                    next_action="Detach the forbidden source or choose the correct run mode.",
+                )
+                error.source_decisions = decisions
+                errors.append(error)
+                forbidden_errors.append(error)
             continue
-        role_result = _resolve_role_input(
-            role,
-            requirement,
-            normalized_overrides.get(role),
-            normalized_candidates.get(role, ()),
-            normalized_validators.get(role),
-            trusted_roots,
-        )
+        try:
+            role_result = _resolve_role_input(
+                role,
+                requirement,
+                normalized_overrides.get(role),
+                normalized_candidates.get(role, ()),
+                normalized_validators.get(role),
+                trusted_roots,
+            )
+        except PipelineContractError as error:
+            decisions = tuple(getattr(error, "source_decisions", ()))
+            role_result = RoleSourceResolution(role, requirement, None, decisions)
+            errors.append(error)
         if role_result.selected is not None:
             identity = os.path.normcase(str(role_result.selected.resolve()))
             prior_role = selected_by_identity.get(identity)
             if prior_role is not None:
-                raise PipelineContractError(
+                errors.append(PipelineContractError(
                     "E_SOURCE_ROLE_COLLISION",
                     "One canonical path cannot satisfy multiple source roles.",
-                    context={"reason": EventReason.SOURCE_ROLE_COLLISION},
+                    context={
+                        "reason": EventReason.SOURCE_ROLE_COLLISION,
+                        "roles": (
+                            SafeIdentifier(prior_role.value),
+                            SafeIdentifier(role.value),
+                        ),
+                    },
                     next_action="Attach distinct paths for each source role.",
-                )
-            selected_by_identity[identity] = role
+                ))
+            else:
+                selected_by_identity[identity] = role
         role_results.append(role_result)
-    return SourceRoleResolution(mode, tuple(role_results))
+    resolution = SourceRoleResolution(mode, tuple(role_results))
+    primary_error = forbidden_errors[0] if forbidden_errors else (errors[0] if errors else None)
+    if primary_error is not None:
+        primary_error.context.update(resolution.as_event_context())
+    if logger is not None:
+        logger.emit(
+            phase,
+            "SOURCE_RESOLVED",
+            "ERROR" if primary_error is not None else "SUCCESS",
+            attempt=attempt,
+            context=resolution.as_event_context(),
+            error=primary_error,
+        )
+    if primary_error is not None:
+        raise primary_error
+    return resolution
 
 
 __all__ = [
