@@ -22,7 +22,7 @@ Hệ thống nhận vào:
 - từ điển mã bệnh ICD-10 và mã thuốc RxNorm;
 - một model ngôn ngữ ban đầu, mặc định là `xlm-roberta-base`.
 
-Hệ thống thực hiện:
+Ở mức rất cao, có **7 nhóm việc lớn**:
 
 1. kiểm tra dữ liệu có hợp lệ không;
 2. chia dữ liệu thành các phần nhỏ để model đọc được;
@@ -32,23 +32,57 @@ Hệ thống thực hiện:
 6. chạy model trên input thật;
 7. kiểm tra kết quả và đóng thành `output.zip`.
 
-Hãy hình dung đây là một dây chuyền bệnh viện:
+Đây là bản tóm tắt để dễ hình dung, không phải danh sách phase kỹ thuật.
+Một nhóm lớn có thể chứa nhiều phase; ví dụ “huấn luyện NER” chứa bốn stage.
+
+### Sơ đồ đầy đủ 13 trạm
+
+Hãy hình dung mỗi phase kỹ thuật là một trạm riêng trong dây chuyền bệnh viện:
 
 ```text
-Lễ tân kiểm tra hồ sơ
+01 Preflight dữ liệu
         ↓
-Điều dưỡng chia bệnh án thành các trang
+02 Resolve đường dẫn input/model/KB
         ↓
-Bác sĩ đánh dấu bệnh/thuốc/triệu chứng
+03 Kiểm kê GPU và model
         ↓
-Điều dưỡng ghi chú phủ định, tiền sử, gia đình
+04 Tạo record metadata
         ↓
-Tra sổ mã ICD-10/RxNorm
+05 Tạo fixed/OOF splits
         ↓
-Kiểm tra giấy tờ và đóng hồ sơ gửi đi
+06 Tạo owner-window training contract
+        ↓
+07 Train curriculum stage 1
+        ↓
+08 Train curriculum stage 2
+        ↓
+09 Train curriculum stage 3
+        ↓
+10 Final-fit encoder
+        ↓
+11 Train assertion head + candidate calibration
+        ↓
+12 Inference + KB-first recovery
+        ↓
+13 Validate và đóng gói ZIP
 ```
 
-13 phase trong notebook chính là 13 trạm của dây chuyền đó.
+### 7 nhóm lớn ánh xạ vào 13 phase
+
+| Nhóm tóm tắt | Các phase kỹ thuật | Giải thích |
+|---|---|---|
+| 1. Kiểm tra dữ liệu | 01, 02, 03 | Kiểm tra dữ liệu, đường dẫn, GPU và model |
+| 2. Chia dữ liệu | 04, 05, 06 | Metadata, split và window/tensor contract |
+| 3. Train NER | 07, 08, 09, 10 | Bốn lần train: stage 1, 2, 3 và final fit |
+| 4. Học trạng thái | 11 | Assertion head học phủ định/tiền sử/gia đình |
+| 5. Nối mã chuẩn | 11, 12 | Phase 11 học calibration; phase 12 tra KB khi inference |
+| 6. Chạy input thật | 12 | Reload model và tạo prediction |
+| 7. Kiểm tra/đóng gói | 13 | Kiểm tra ZIP, CRC và inventory |
+
+Vì vậy không phải 7 phase bị thiếu. Có **7 cách nói ở mức nghiệp vụ** và
+**13 phase ở mức implementation**. Phase 11 xuất hiện ở hai nhóm vì nó vừa
+chuẩn bị candidate calibration, vừa hoàn thiện phần nối mã; phase 12 vừa chạy
+model vừa dùng KB để recovery.
 
 ---
 
