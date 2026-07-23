@@ -98,10 +98,11 @@ e91f1e5 feat: add fail-closed data and KB preflight
 ### Đang thực hiện, chưa được coi là hoàn thành
 
 - [x] Work Package 4A: record boundary, near-duplicate metadata, fixed split và OOF (2.200 document, 3.204 record, split artifacts deterministic).
+- [x] Work Package 4B: Data-to-tensor và owner-window dataset (examples, collation, test_owner_window_examples, test_training_collator).
 
 ### Đang thực hiện, chưa được coi là hoàn thành
 
-- [ ] Work Package 4B: Data-to-tensor và owner-window dataset.
+- [ ] Work Package 4C: Source-aware sampler, replay và curriculum state machine.
 
 ### Chưa thực hiện
 
@@ -690,19 +691,19 @@ class ClinicalTokenCollator:
     def __call__(self, examples: Sequence[TokenWindow]) -> TrainingBatch: ...
 ```
 
-- [ ] Viết fixtures gồm entity nằm trọn một window, nằm vùng overlap, chạm token
+- [x] Viết fixtures gồm entity nằm trọn một window, nằm vùng overlap, chạm token
   boundary và bị cắt một phần.
-- [ ] Chứng minh mỗi gold entity có đúng một owner và tổng supervised entity không
+- [x] Chứng minh mỗi gold entity có đúng một owner và tổng supervised entity không
   đổi khi stride thay đổi trong fixture.
-- [ ] Chứng minh special/padding/non-owner token đều thành `-100`.
-- [ ] Chứng minh mọi non-sentinel raw offset khôi phục đúng substring.
-- [ ] Chạy:
+- [x] Chứng minh special/padding/non-owner token đều thành `-100`.
+- [x] Chứng minh mọi non-sentinel raw offset khôi phục đúng substring.
+- [x] Chạy:
 
 ```powershell
 python -m pytest tests/test_owner_window_examples.py tests/test_training_collator.py -q -p no:cacheprovider
 ```
 
-Expected: exit `0`, không load model weight và không train.
+Expected: exit `0`, không load model weight và không train. (Đã qua: 5 passed).
 
 ### Task 4C — Source-aware sampler, replay và curriculum state machine
 

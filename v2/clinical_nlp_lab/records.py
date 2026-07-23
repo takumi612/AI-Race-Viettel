@@ -48,6 +48,49 @@ class RecordSpan:
 
 
 @dataclass(frozen=True, slots=True)
+class ClinicalRecord:
+    document_id: str
+    record_id: str
+    raw_start: int
+    raw_end: int
+    entity_indices: tuple[int, ...]
+
+
+def parse_document_records(
+    document_id: str,
+    raw_text: str,
+    entities: Sequence[Any],
+) -> tuple[ClinicalRecord, ...]:
+    dict_entities: list[dict[str, Any]] = []
+    for e in entities:
+        if hasattr(e, "start") and hasattr(e, "end"):
+            dict_entities.append({"position": [e.start, e.end]})
+        elif isinstance(e, Mapping) and "position" in e:
+            dict_entities.append(dict(e))
+        else:
+            dict_entities.append({"position": [0, 0]})
+    spans = detect_record_spans(document_id, raw_text, dict_entities)
+    records: list[ClinicalRecord] = []
+    for span in spans:
+        indices: list[int] = []
+        for idx, e in enumerate(entities):
+            s = e.start if hasattr(e, "start") else e.get("position", [0, 0])[0]
+            end_pos = e.end if hasattr(e, "end") else e.get("position", [0, 0])[1]
+            if span.start <= s and end_pos <= span.end:
+                indices.append(idx)
+        records.append(
+            ClinicalRecord(
+                document_id=document_id,
+                record_id=span.patient_block_id,
+                raw_start=span.start,
+                raw_end=span.end,
+                entity_indices=tuple(indices),
+            )
+        )
+    return tuple(records)
+
+
+@dataclass(frozen=True, slots=True)
 class RecordMetadataRow:
     document_id: str
     pair_sha256: str
