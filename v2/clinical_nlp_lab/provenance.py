@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from .schema import validate_submission_payload
+from .schema import ALLOWED_ASSERTIONS, OFFICIAL_SCHEMA_KEYS
 
 
 PAIR_ALGORITHM = "clinical-nlp-dataset-pair/v1"
@@ -20,15 +22,14 @@ PROVENANCE_SCHEMA_ID = "clinical_nlp.dataset_provenance"
 PROVENANCE_SCHEMA_VERSION = 1
 REPORT_STATUS_SCHEMA_ID = "clinical_nlp.report_status"
 REPORT_STATUS_SCHEMA_VERSION = 1
+REPORT_ENVELOPE_SCHEMA_ID = "clinical_nlp.report_envelope"
+REPORT_ENVELOPE_SCHEMA_VERSION = 1
 LEGACY_SHA256_SEMANTICS = "utf8-decoded-universal-newline-text-sha256"
 DOCUMENT_ID_ORDER = "canonical-positive-decimal-numeric-ascending"
 TOOL_VERSION = "1.0.0"
 
 _DOCUMENT_ID_RE = re.compile(r"[1-9][0-9]*\Z")
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
-_SOURCE_BUCKETS = frozenset({"reconstructed", "organizer_gt", "synthetic"})
-
-
 class ProvenanceError(ValueError):
     """Raised when dataset provenance is ambiguous or invalid."""
 
@@ -73,6 +74,9 @@ class ProvenanceVerification:
     descriptor_path: Path
     descriptor_bytes: bytes
     descriptor: dict[str, Any]
+    report_index_path: Path | None = None
+    report_index_bytes: bytes | None = None
+    report_index_rows: tuple[dict[str, Any], ...] = ()
 
     @property
     def dataset_fingerprint(self) -> str:
@@ -92,6 +96,77 @@ class ReportStatus:
 
 def sha256_bytes(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def is_path_link_or_reparse(path: str | Path) -> bool:
+    """Return true for POSIX symlinks and Windows reparse points/junctions."""
+    try:
+        metadata = os.lstat(Path(path))
+    except FileNotFoundError:
+        return False
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    file_attributes = getattr(metadata, "st_file_attributes", 0)
+    return stat.S_ISLNK(metadata.st_mode) or bool(file_attributes & reparse_flag)
+
+
+def _absolute_path_components(path: Path) -> tuple[Path, ...]:
+    absolute = path.absolute()
+    current = Path(absolute.anchor)
+    components: list[Path] = [current]
+    for part in absolute.parts[1:]:
+        current = current / part
+        components.append(current)
+    return tuple(components)
+
+
+def validate_artifact_path(
+    dataset_root: str | Path,
+    artifact_path: str | Path,
+    *,
+    allow_missing_leaf: bool = False,
+) -> Path:
+    """Reject link/reparse traversal and resolved escape for a dataset artifact path."""
+    root = Path(dataset_root).absolute()
+    target = Path(artifact_path).absolute()
+    try:
+        relative = target.relative_to(root)
+    except ValueError as exc:
+        raise ProvenanceError("Dataset artifact path escapes the selected dataset root") from exc
+
+    for component in _absolute_path_components(root):
+        if os.path.lexists(component) and is_path_link_or_reparse(component):
+            raise ProvenanceError("Dataset path contains a symlink or reparse point")
+    if not root.is_dir():
+        raise ProvenanceError("Dataset root does not exist or is not a directory")
+    resolved_root = root.resolve(strict=True)
+
+    current = root
+    parts = relative.parts
+    for index, part in enumerate(parts):
+        current = current / part
+        exists = os.path.lexists(current)
+        if exists and is_path_link_or_reparse(current):
+            raise ProvenanceError("Dataset artifact path contains a symlink or reparse point")
+        if exists and index < len(parts) - 1 and not current.is_dir():
+            raise ProvenanceError("Dataset artifact parent is not a directory")
+        if not exists:
+            if not allow_missing_leaf:
+                raise ProvenanceError("Dataset artifact path is missing")
+            break
+
+    nearest_existing = target
+    while not os.path.lexists(nearest_existing):
+        nearest_existing = nearest_existing.parent
+    try:
+        nearest_existing.resolve(strict=True).relative_to(resolved_root)
+    except ValueError as exc:
+        raise ProvenanceError("Dataset artifact path resolves outside the selected root") from exc
+    if os.path.lexists(target):
+        try:
+            target.resolve(strict=True).relative_to(resolved_root)
+        except ValueError as exc:
+            raise ProvenanceError("Dataset artifact resolves outside the selected root") from exc
+    return target
 
 
 def _u32be(value: int) -> bytes:
@@ -232,15 +307,15 @@ def canonical_jsonl_bytes(rows: Iterable[Mapping[str, Any]]) -> bytes:
 
 
 def _scan_payload_directory(directory: Path, expected_suffix: str) -> dict[str, Path]:
-    if directory.is_symlink():
-        raise ProvenanceError(f"Dataset payload directory must not be a symlink: {directory}")
+    if is_path_link_or_reparse(directory):
+        raise ProvenanceError(f"Dataset payload directory must not be a symlink/reparse point: {directory}")
     if not directory.is_dir():
         raise ProvenanceError(f"Missing dataset payload directory: {directory}")
     paths: dict[str, Path] = {}
     casefold_names: dict[str, str] = {}
     for path in directory.iterdir():
-        if path.is_symlink():
-            raise ProvenanceError(f"Dataset payload must not be a symlink: {path}")
+        if is_path_link_or_reparse(path):
+            raise ProvenanceError(f"Dataset payload must not be a symlink/reparse point: {path}")
         if path.is_dir():
             raise ProvenanceError(f"Unexpected nested payload path: {path}")
         if not path.is_file():
@@ -262,23 +337,72 @@ def _scan_payload_directory(directory: Path, expected_suffix: str) -> dict[str, 
 
 def _validate_gt(document_id: str, input_bytes: bytes, gt_bytes: bytes, gt_path: Path) -> None:
     raw_text = _universal_newline_text(input_bytes, str(gt_path.parent.parent / "input" / f"{document_id}.txt"))
-    payload = load_json_strict(gt_bytes, source=str(gt_path))
-    if not isinstance(payload, list):
-        raise ProvenanceError(f"GT JSON must be a list: {gt_path}")
-    errors = validate_submission_payload(payload, raw_text)
-    if errors:
-        raise ProvenanceError(f"Invalid GT schema/offset for document {document_id}: {errors[0]}")
+    try:
+        payload = load_json_strict(gt_bytes, source=str(gt_path))
+    except ProvenanceError:
+        raise ProvenanceError(
+            f"GT validation failed: document_id={document_id} entity_index=-1 code=invalid_json"
+        ) from None
+    if type(payload) is not list:
+        raise ProvenanceError(
+            f"GT validation failed: document_id={document_id} entity_index=-1 "
+            "code=invalid_top_level_type"
+        )
+    for entity_index, item in enumerate(payload):
+        prefix = f"GT validation failed: document_id={document_id} entity_index={entity_index}"
+        if type(item) is not dict:
+            raise ProvenanceError(f"{prefix} code=invalid_entity_type")
+        entity_type = item.get("type")
+        if type(entity_type) is not str:
+            raise ProvenanceError(f"{prefix} code=invalid_entity_label_type")
+        expected_keys = OFFICIAL_SCHEMA_KEYS.get(entity_type)
+        if expected_keys is None:
+            raise ProvenanceError(f"{prefix} code=unsupported_entity_type")
+        if set(item) != expected_keys:
+            raise ProvenanceError(f"{prefix} code=invalid_entity_keys")
+        text = item.get("text")
+        if type(text) is not str:
+            raise ProvenanceError(f"{prefix} code=invalid_text_type")
+        position = item.get("position")
+        if (
+            type(position) is not list
+            or len(position) != 2
+            or any(type(value) is not int for value in position)
+        ):
+            raise ProvenanceError(f"{prefix} code=invalid_position_type")
+        start, end = position
+        if not 0 <= start <= end <= len(raw_text):
+            raise ProvenanceError(
+                f"{prefix} code=invalid_position_bounds start={start} end={end}"
+            )
+        if raw_text[start:end] != text:
+            raise ProvenanceError(
+                f"{prefix} code=offset_text_mismatch start={start} end={end}"
+            )
+        if "candidates" in expected_keys:
+            candidates = item.get("candidates")
+            if type(candidates) is not list:
+                raise ProvenanceError(f"{prefix} code=invalid_candidates_container")
+            if any(type(value) is not str for value in candidates):
+                raise ProvenanceError(f"{prefix} code=invalid_candidate_type")
+        if "assertions" in expected_keys:
+            assertions = item.get("assertions")
+            if type(assertions) is not list:
+                raise ProvenanceError(f"{prefix} code=invalid_assertions_container")
+            if any(type(value) is not str for value in assertions):
+                raise ProvenanceError(f"{prefix} code=invalid_assertion_type")
+            if any(value not in ALLOWED_ASSERTIONS for value in assertions):
+                raise ProvenanceError(f"{prefix} code=unsupported_assertion")
 
 
 def scan_dataset_layout(dataset_root: str | Path) -> DatasetSnapshot:
-    requested_root = Path(dataset_root)
-    if requested_root.is_symlink():
-        raise ProvenanceError(f"Dataset root must not be a symlink: {requested_root}")
-    if not requested_root.is_dir():
-        raise ProvenanceError(f"Dataset root does not exist: {requested_root}")
-    root = requested_root.resolve()
-    input_paths = _scan_payload_directory(root / "input", ".txt")
-    gt_paths = _scan_payload_directory(root / "gt", ".json")
+    requested_root = Path(dataset_root).absolute()
+    validate_artifact_path(requested_root, requested_root)
+    root = requested_root.resolve(strict=True)
+    input_directory = validate_artifact_path(root, root / "input")
+    gt_directory = validate_artifact_path(root, root / "gt")
+    input_paths = _scan_payload_directory(input_directory, ".txt")
+    gt_paths = _scan_payload_directory(gt_directory, ".json")
     input_ids = set(input_paths)
     gt_ids = set(gt_paths)
     if input_ids != gt_ids:
@@ -345,14 +469,29 @@ def _require_manifest_identity(
     return by_id
 
 
+def _source_and_eligibility_policy(document_id: str) -> tuple[str, bool]:
+    numeric_id = int(_validate_document_id(document_id))
+    if numeric_id <= 100:
+        return "reconstructed", False
+    if numeric_id <= 200:
+        return "organizer_gt", True
+    return "synthetic", True
+
+
 def _require_eligibility_and_source(row: Mapping[str, Any], document_id: str) -> None:
-    if type(row.get("train_eligible")) is not bool:
-        raise ProvenanceError(f"Manifest row {document_id} requires explicit boolean train_eligible")
-    source_bucket = row.get("source_bucket")
-    if not isinstance(source_bucket, str) or source_bucket not in _SOURCE_BUCKETS:
-        raise ProvenanceError(
-            f"Manifest row {document_id} has invalid source_bucket: {source_bucket!r}"
-        )
+    expected_source, expected_train = _source_and_eligibility_policy(document_id)
+    checks = {
+        "source_bucket": expected_source,
+        "train_eligible": expected_train,
+    }
+    for field, expected in checks.items():
+        actual = row.get(field)
+        if actual != expected or (
+            field.endswith("eligible") and type(actual) is not bool
+        ):
+            raise ProvenanceError(
+                f"Manifest policy mismatch: document_id={document_id} field={field}"
+            )
 
 
 def _require_sha256(value: Any, field: str, document_id: str) -> str:
@@ -468,11 +607,13 @@ def build_provenance_descriptor(
     created_at: str,
     git_commit: str | None,
     manifest_path: str = "reports/dataset_manifest.jsonl",
+    report_index_bytes: bytes | None = None,
+    report_index_path: str = "reports/report_index.jsonl",
 ) -> dict[str, Any]:
     _require_sha256(legacy_manifest_sha256, "legacy manifest sha256", "descriptor")
     if not created_at:
         raise ProvenanceError("Descriptor created_at must be non-empty")
-    return {
+    descriptor = {
         "schema_id": PROVENANCE_SCHEMA_ID,
         "schema_version": PROVENANCE_SCHEMA_VERSION,
         "manifest": {
@@ -503,6 +644,19 @@ def build_provenance_descriptor(
         "created_at": created_at,
         "identity_excludes": ["created_at"],
     }
+    if report_index_bytes:
+        report_rows = load_jsonl_strict(report_index_bytes, source="report status index")
+        if canonical_jsonl_bytes(report_rows) != report_index_bytes:
+            raise ProvenanceError("Report status index is not canonical JSONL")
+        descriptor["report_index"] = {
+            "path": report_index_path,
+            "schema_id": REPORT_STATUS_SCHEMA_ID,
+            "schema_version": REPORT_STATUS_SCHEMA_VERSION,
+            "sha256": sha256_bytes(report_index_bytes),
+            "size_bytes": len(report_index_bytes),
+            "row_count": len(report_rows),
+        }
+    return descriptor
 
 
 def validate_provenance_descriptor(
@@ -511,6 +665,8 @@ def validate_provenance_descriptor(
     manifest_bytes: bytes,
     *,
     manifest_path: str = "reports/dataset_manifest.jsonl",
+    report_index_bytes: bytes | None = None,
+    report_index_path: str = "reports/report_index.jsonl",
 ) -> dict[str, Any]:
     """Validate the detached descriptor against already-validated manifest bytes."""
     expected_top_level = {
@@ -523,6 +679,8 @@ def validate_provenance_descriptor(
         "created_at",
         "identity_excludes",
     }
+    if report_index_bytes:
+        expected_top_level.add("report_index")
     if set(descriptor) != expected_top_level:
         raise ProvenanceError(
             "Dataset provenance descriptor fields mismatch: "
@@ -598,6 +756,20 @@ def validate_provenance_descriptor(
         raise ProvenanceError("Descriptor producer identity is invalid")
     if producer.get("git_commit") is not None and not isinstance(producer.get("git_commit"), str):
         raise ProvenanceError("Descriptor producer.git_commit is invalid")
+    if report_index_bytes:
+        report_rows = load_jsonl_strict(report_index_bytes, source="bound report status index")
+        if canonical_jsonl_bytes(report_rows) != report_index_bytes:
+            raise ProvenanceError("Bound report index is not canonical JSONL")
+        expected_report_index = {
+            "path": report_index_path,
+            "schema_id": REPORT_STATUS_SCHEMA_ID,
+            "schema_version": REPORT_STATUS_SCHEMA_VERSION,
+            "sha256": sha256_bytes(report_index_bytes),
+            "size_bytes": len(report_index_bytes),
+            "row_count": len(report_rows),
+        }
+        if descriptor.get("report_index") != expected_report_index:
+            raise ProvenanceError("Descriptor report index binding mismatch")
     return dict(descriptor)
 
 
@@ -607,12 +779,54 @@ def _resolve_relative_artifact(root: Path, relative: Any, field: str) -> Path:
     candidate = Path(relative)
     if candidate.is_absolute() or ".." in candidate.parts:
         raise ProvenanceError(f"Descriptor {field} escapes the dataset root: {relative!r}")
-    resolved = (root / candidate).resolve()
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        raise ProvenanceError(f"Descriptor {field} escapes the dataset root: {relative!r}") from exc
-    return resolved
+    artifact = root / candidate
+    validate_artifact_path(root, artifact, allow_missing_leaf=True)
+    return artifact
+
+
+def validate_report_status_index(
+    rows: Sequence[Mapping[str, Any]], dataset_root: str | Path
+) -> tuple[dict[str, Any], ...]:
+    root = Path(dataset_root).resolve(strict=True)
+    expected_fields = {
+        "schema_id",
+        "schema_version",
+        "relative_path",
+        "payload_sha256",
+        "effective_status",
+        "reason",
+    }
+    seen_paths: set[str] = set()
+    validated: list[dict[str, Any]] = []
+    for index, row in enumerate(rows, 1):
+        if set(row) != expected_fields:
+            raise ProvenanceError(f"Report index row {index} fields are invalid")
+        if row.get("schema_id") != REPORT_STATUS_SCHEMA_ID or row.get(
+            "schema_version"
+        ) != REPORT_STATUS_SCHEMA_VERSION:
+            raise ProvenanceError(f"Report index row {index} schema is invalid")
+        relative_path = row.get("relative_path")
+        if (
+            not isinstance(relative_path, str)
+            or not relative_path.startswith("reports/")
+            or "\\" in relative_path
+            or ".." in Path(relative_path).parts
+            or relative_path in seen_paths
+        ):
+            raise ProvenanceError(f"Report index row {index} relative_path is invalid")
+        seen_paths.add(relative_path)
+        payload_sha = _require_sha256(
+            row.get("payload_sha256"), "report payload sha256", str(index)
+        )
+        if row.get("effective_status") not in {"stale", "archived"}:
+            raise ProvenanceError(f"Report index row {index} status is invalid")
+        if row.get("reason") not in {"missing_fingerprint", "historical_artifact"}:
+            raise ProvenanceError(f"Report index row {index} reason is invalid")
+        payload_path = validate_artifact_path(root, root / relative_path)
+        if not payload_path.is_file() or sha256_bytes(payload_path.read_bytes()) != payload_sha:
+            raise ProvenanceError(f"Report index row {index} payload hash mismatch")
+        validated.append(dict(row))
+    return tuple(validated)
 
 
 def verify_dataset_provenance(
@@ -630,8 +844,7 @@ def verify_dataset_provenance(
         else root / "reports" / "dataset_provenance.json"
     )
     for path, label in ((manifest, "manifest"), (descriptor_file, "descriptor")):
-        if path.is_symlink():
-            raise ProvenanceError(f"Active {label} must not be a symlink: {path}")
+        validate_artifact_path(root, path, allow_missing_leaf=True)
         if not path.is_file():
             raise ProvenanceError(f"Missing active {label}: {path}")
 
@@ -652,8 +865,31 @@ def verify_dataset_provenance(
         manifest_relative = manifest.resolve().relative_to(root).as_posix()
     except ValueError as exc:
         raise ProvenanceError("Active manifest must be inside the dataset root") from exc
+    report_index_path: Path | None = None
+    report_index_bytes: bytes | None = None
+    report_index_rows: tuple[dict[str, Any], ...] = ()
+    report_index_info = descriptor.get("report_index")
+    if report_index_info is not None:
+        if not isinstance(report_index_info, Mapping):
+            raise ProvenanceError("Descriptor report index section is invalid")
+        report_index_path = _resolve_relative_artifact(
+            root, report_index_info.get("path"), "report_index.path"
+        )
+        if not report_index_path.is_file():
+            raise ProvenanceError("Missing descriptor-bound report index")
+        report_index_bytes = report_index_path.read_bytes()
+        parsed_report_rows = load_jsonl_strict(
+            report_index_bytes, source="descriptor-bound report index"
+        )
+        if canonical_jsonl_bytes(parsed_report_rows) != report_index_bytes:
+            raise ProvenanceError("Descriptor-bound report index is not canonical JSONL")
+        report_index_rows = validate_report_status_index(parsed_report_rows, root)
     descriptor = validate_provenance_descriptor(
-        descriptor, snapshot, manifest_bytes, manifest_path=manifest_relative
+        descriptor,
+        snapshot,
+        manifest_bytes,
+        manifest_path=manifest_relative,
+        report_index_bytes=report_index_bytes,
     )
     legacy_info = descriptor["legacy_manifest"]
     archive_sha = _require_sha256(
@@ -662,7 +898,8 @@ def verify_dataset_provenance(
     archive_path = _resolve_relative_artifact(
         root, legacy_info.get("archive_path"), "legacy_manifest.archive_path"
     )
-    if archive_path.is_symlink() or not archive_path.is_file():
+    validate_artifact_path(root, archive_path)
+    if not archive_path.is_file():
         raise ProvenanceError(f"Missing legacy manifest archive: {archive_path}")
     actual_archive_sha = sha256_bytes(archive_path.read_bytes())
     if actual_archive_sha != archive_sha:
@@ -679,6 +916,9 @@ def verify_dataset_provenance(
         descriptor_path=descriptor_file,
         descriptor_bytes=descriptor_bytes,
         descriptor=descriptor,
+        report_index_path=report_index_path,
+        report_index_bytes=report_index_bytes,
+        report_index_rows=report_index_rows,
     )
 
 
@@ -731,8 +971,82 @@ def _normalized_scope(scope: Any) -> Any:
     return scope
 
 
+def validate_report_envelope(
+    envelope: Mapping[str, Any],
+    *,
+    verified_payload_hashes: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Validate a typed report and bind its declared payload hash."""
+    required = {
+        "schema_id",
+        "schema_version",
+        "report_type",
+        "scope",
+        "status_at_creation",
+        "created_at",
+        "producer_version",
+        "validator_version",
+        "fingerprints",
+        "facts",
+        "payload_sha256",
+    }
+    payload_fields = {field for field in ("payload", "payload_path") if field in envelope}
+    if len(payload_fields) != 1:
+        raise ProvenanceError("Report envelope requires exactly one payload binding")
+    expected_fields = required | payload_fields
+    if set(envelope) != expected_fields:
+        raise ProvenanceError("Report envelope fields are invalid")
+    if envelope.get("schema_id") != REPORT_ENVELOPE_SCHEMA_ID or envelope.get(
+        "schema_version"
+    ) != REPORT_ENVELOPE_SCHEMA_VERSION:
+        raise ProvenanceError("Report envelope schema is invalid")
+    if not isinstance(envelope.get("report_type"), str) or not envelope["report_type"]:
+        raise ProvenanceError("Report envelope report_type is invalid")
+    if not isinstance(envelope.get("scope"), Mapping):
+        raise ProvenanceError("Report envelope scope is invalid")
+    if envelope.get("status_at_creation") not in {"current", "stale", "archived"}:
+        raise ProvenanceError("Report envelope status_at_creation is invalid")
+    for field in ("created_at", "producer_version", "validator_version"):
+        if not isinstance(envelope.get(field), str) or not envelope[field]:
+            raise ProvenanceError(f"Report envelope {field} is invalid")
+    fingerprints = envelope.get("fingerprints")
+    if not isinstance(fingerprints, Mapping) or any(
+        not isinstance(key, str) or not isinstance(value, str)
+        for key, value in fingerprints.items()
+    ):
+        raise ProvenanceError("Report envelope fingerprints are invalid")
+    if not isinstance(envelope.get("facts"), Mapping):
+        raise ProvenanceError("Report envelope facts are invalid")
+    declared_hash = _require_sha256(
+        envelope.get("payload_sha256"), "report payload sha256", "envelope"
+    )
+    if "payload" in envelope:
+        actual_hash = sha256_bytes(canonical_json_bytes(envelope["payload"]))
+        if actual_hash != declared_hash:
+            raise ProvenanceError("Report envelope payload hash mismatch")
+    else:
+        payload_path = envelope.get("payload_path")
+        if (
+            not isinstance(payload_path, str)
+            or not payload_path
+            or "\\" in payload_path
+            or Path(payload_path).is_absolute()
+            or ".." in Path(payload_path).parts
+        ):
+            raise ProvenanceError("Report envelope payload_path is invalid")
+        if (
+            verified_payload_hashes is None
+            or verified_payload_hashes.get(payload_path) != declared_hash
+        ):
+            raise ProvenanceError("Report envelope requires a verified payload binding")
+    return dict(envelope)
+
+
 def detect_report_conflicts(
-    envelopes: Iterable[Mapping[str, Any]], required_fingerprints: Iterable[str]
+    envelopes: Iterable[Mapping[str, Any]],
+    required_fingerprints: Iterable[str],
+    *,
+    verified_payload_hashes: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], ...]:
     required = tuple(sorted(set(required_fingerprints)))
     groups: dict[tuple[Any, ...], set[str]] = {}
@@ -740,6 +1054,41 @@ def detect_report_conflicts(
     for envelope in envelopes:
         if envelope.get("status_at_creation") != "current":
             continue
+        if envelope.get("schema_id") == REPORT_ENVELOPE_SCHEMA_ID:
+            envelope = validate_report_envelope(
+                envelope, verified_payload_hashes=verified_payload_hashes
+            )
+            payload_sha = str(envelope["payload_sha256"])
+        else:
+            required_typed_fields = {
+                "schema_id",
+                "schema_version",
+                "report_type",
+                "scope",
+                "status_at_creation",
+                "fingerprints",
+            }
+            if not required_typed_fields.issubset(envelope):
+                raise ProvenanceError("Report conflict input is not a typed envelope")
+            declared_hash = envelope.get("payload_sha256")
+            if declared_hash is not None:
+                _require_sha256(declared_hash, "report payload sha256", "envelope")
+            # Legacy typed reports embed their semantic payload directly. Never trust
+            # the declared digest: derive conflict identity from canonical content,
+            # excluding display timestamps and recursive inventory fields.
+            semantic_payload = {
+                key: value
+                for key, value in envelope.items()
+                if key
+                not in {
+                    "payload_sha256",
+                    "generated_at",
+                    "created_at",
+                    "prior_report_inventory",
+                    "report_conflicts",
+                }
+            }
+            payload_sha = sha256_bytes(canonical_json_bytes(semantic_payload))
         report_type = envelope.get("report_type")
         if not isinstance(report_type, str) or not report_type:
             continue
@@ -752,11 +1101,6 @@ def detect_report_conflicts(
         scope_bytes = canonical_json_bytes(normalized_scope)
         fingerprint_key = tuple((name, str(fingerprints[name])) for name in required)
         group_key = (report_type, scope_bytes, fingerprint_key)
-        payload_sha = envelope.get("payload_sha256")
-        if not isinstance(payload_sha, str):
-            if "payload" not in envelope:
-                continue
-            payload_sha = sha256_bytes(canonical_json_bytes(envelope["payload"]))
         groups.setdefault(group_key, set()).add(payload_sha)
         scopes[group_key] = normalized_scope
     conflicts: list[dict[str, Any]] = []
@@ -775,12 +1119,18 @@ def detect_report_conflicts(
 
 
 def detect_report_fact_conflicts(
-    envelopes: Iterable[Mapping[str, Any]], required_fingerprints: Iterable[str]
+    envelopes: Iterable[Mapping[str, Any]],
+    required_fingerprints: Iterable[str],
+    *,
+    verified_payload_hashes: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], ...]:
     """Compare only shared canonical facts across current report types."""
     required = tuple(sorted(set(required_fingerprints)))
     groups: dict[tuple[Any, ...], list[Mapping[str, Any]]] = {}
     for envelope in envelopes:
+        envelope = validate_report_envelope(
+            envelope, verified_payload_hashes=verified_payload_hashes
+        )
         if envelope.get("status_at_creation") != "current":
             continue
         fingerprints = envelope.get("fingerprints")
