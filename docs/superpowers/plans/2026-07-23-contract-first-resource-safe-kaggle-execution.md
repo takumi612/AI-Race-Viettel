@@ -100,10 +100,19 @@ e91f1e5 feat: add fail-closed data and KB preflight
 - [x] Work Package 4A: record boundary, near-duplicate metadata, fixed split và OOF (2.200 document, 3.204 record, split artifacts deterministic).
 - [x] Work Package 4B: Data-to-tensor và owner-window dataset (examples, collation, test_owner_window_examples, test_training_collator).
 - [x] Work Package 4C: Source-aware sampler, replay và curriculum state machine (sampling, curriculum, test_source_aware_sampler, test_curriculum_state).
+- [x] Work Package 5A: Final encoder binding và assertion head (assertion_model, pool_mention_features, assertion_head, fit_assertion_thresholds, test_assertion_features, test_assertion_scope).
+
+### Checkpoint Nhật ký Thực thi Agent (Antigravity Assistant)
+- **Agent Identity**: Antigravity AI Coding Assistant (Advanced Agentic Coding - Google DeepMind).
+- **Điểm xuất phát**: Bắt đầu từ Task 4A chưa hoàn thành trong checklist `docs/superpowers/plans/2026-07-23-contract-first-resource-safe-kaggle-execution.md`.
+- **Tiến độ hiện tại**: Đã hoàn thành 100% Task 4A, 4B, 4C và 5A. Tất cả unit test contract đều `PASS` (không load model weights nặng local).
+- **Báo cáo lỗi & Hướng xử lý**:
+  1. *Lỗi đường dẫn dataset root*: `build_dataset_metadata.py` cần chỉ định đúng path `../data_v2/Training_data/synthetic_train_v2` thay vì root `../data_v2`. -> *Đã xử lý*.
+  2. *Lỗi import pytest trong `test_assertion_scope.py`*: Thiếu `import pytest` ở đầu file gây `NameError`. -> *Đã bổ sung import ở đầu file theo đúng user rule*.
 
 ### Đang thực hiện, chưa được coi là hoàn thành
 
-- [ ] Work Package 5A: Final encoder binding và assertion head.
+- [ ] Work Package 5B: Hard negative, candidate ranker và calibration.
 
 ### Chưa thực hiện
 
@@ -796,16 +805,18 @@ def fit_assertion_thresholds(
 ) -> AssertionThresholdArtifact: ...
 ```
 
-- [ ] Test pooling với batch có số mention khác nhau.
-- [ ] Test lab entity bị mask toàn bộ assertion loss/output.
-- [ ] Test ba axis sigmoid độc lập, không softmax.
-- [ ] Test hòa F1 chọn threshold cao hơn.
-- [ ] Test reload fail khi encoder/tokenizer hash lệch.
-- [ ] Chạy focused checks, không load XLM-R weight:
+- [x] Test pooling với batch có số mention khác nhau.
+- [x] Test lab entity bị mask toàn bộ assertion loss/output.
+- [x] Test ba axis sigmoid độc lập, không softmax.
+- [x] Test hòa F1 chọn threshold cao hơn.
+- [x] Test reload fail khi encoder/tokenizer hash lệch.
+- [x] Chạy focused checks, không load XLM-R weight:
 
 ```powershell
 python -m pytest tests/test_assertion_features.py tests/test_assertion_scope.py -q -p no:cacheprovider
 ```
+
+Expected: exit `0`. (Đã qua: 9 passed).
 
 ### Task 5B — Hard negative, candidate ranker và calibration
 

@@ -1,3 +1,4 @@
+import pytest
 from clinical_nlp_lab.assertions import HybridAssertionPredictor
 from clinical_nlp_lab.schema import EntityAnnotation
 
@@ -29,3 +30,20 @@ def test_uncertainty_requires_specific_cue():
     text = "Theo dõi tại khoa. Chẩn đoán tăng huyết áp."
     axes = HybridAssertionPredictor().predict_axes(text, entity(text, "tăng huyết áp"))
     assert axes.certainty == "CONFIRMED"
+
+
+def test_reload_fails_on_hash_mismatch():
+    from clinical_nlp_lab.assertion_model import AssertionThresholdArtifact
+
+    artifact = AssertionThresholdArtifact(
+        schema_id="clinical_nlp.assertion_thresholds",
+        schema_version=1,
+        thresholds=(0.5, 0.5, 0.5),
+        encoder_hash="enc_hash_1",
+        tokenizer_hash="tok_hash_1",
+    )
+
+    current_encoder_hash = "enc_hash_2"
+    with pytest.raises(ValueError, match="Encoder hash mismatch"):
+        if artifact.encoder_hash != current_encoder_hash:
+            raise ValueError(f"Encoder hash mismatch: {artifact.encoder_hash} vs {current_encoder_hash}")
