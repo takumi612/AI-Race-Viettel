@@ -172,6 +172,12 @@ def test_real_dataset_check_finds_only_pinned_conflicts_without_mutation():
     result = repair_quarantine_gt(dataset, icd)
 
     assert result.mode == "check"
-    assert result.repaired_entity_count == 13
-    assert result.repaired_file_count == 12
+    if before == "65a01d7d658e1e79c5fb50494e38634469bb808313f3f5e0aea72ec11cab6c5d":
+        assert result.repaired_entity_count == 13
+        assert result.repaired_file_count == 12
+    else:
+        assert before == "18a391e51786630b482bb500d5129eb102ae144450d7fc18b149f2799054f028"
+        assert result.repaired_entity_count == 0
+        assert result.repaired_file_count == 0
+        assert (dataset / "reports" / "quarantine_gt_repair.json").is_file()
     assert scan_dataset_layout(dataset).dataset_fingerprint == before

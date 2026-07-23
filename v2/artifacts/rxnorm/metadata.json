@@ -1,7 +1,7 @@
 {
   "artifact": "artifacts/rxnorm/rxnorm_dictionary.jsonl.gz",
   "candidate_count": 56311,
-  "dataset_pair_fingerprint": "65a01d7d658e1e79c5fb50494e38634469bb808313f3f5e0aea72ec11cab6c5d",
+  "dataset_pair_fingerprint": "18a391e51786630b482bb500d5129eb102ae144450d7fc18b149f2799054f028",
   "filtered_rows": 56053,
   "filters": {
     "LAT": [
@@ -37,7 +37,7 @@
   "source_sha256": "53523ee9f1fcd7ee426698edf566aedebe548a6ec8cc372c41271fc5b28e784c",
   "supplement_candidate_count": 258,
   "supplement_evidence_artifact": "artifacts/rxnorm/organizer_supplement_evidence.jsonl.gz",
-  "supplement_evidence_sha256": "92f14e8cc3233f160a46e885c7a9b86f655fd50e653763a73ac389af86e83617",
+  "supplement_evidence_sha256": "d9d7db3d3cd3cbd14168694b86ba8c880bd253fd956819f511f4edb7a128722e",
   "supplement_suppress_counts": {
     "E": 1,
     "O": 257

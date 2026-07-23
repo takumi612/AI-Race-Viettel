@@ -24,9 +24,9 @@
     "total_non_empty_occurrences": 2239,
     "unresolved": []
   },
-  "dataset_pair_fingerprint": "65a01d7d658e1e79c5fb50494e38634469bb808313f3f5e0aea72ec11cab6c5d",
-  "evidence_sha256": "92f14e8cc3233f160a46e885c7a9b86f655fd50e653763a73ac389af86e83617",
-  "kb_build_report_sha256": "6485b7bb7bd97cf0910e8fb2e1fd06f83542b8e18afe766c5ce0fb922d650b14",
+  "dataset_pair_fingerprint": "18a391e51786630b482bb500d5129eb102ae144450d7fc18b149f2799054f028",
+  "evidence_sha256": "d9d7db3d3cd3cbd14168694b86ba8c880bd253fd956819f511f4edb7a128722e",
+  "kb_build_report_sha256": "fd64b0fc72d4f08e62874391b0fbdd45866dec81bae9f3257effe13c1ab78176",
   "linking_train_eligible_bypass_allowed": false,
   "manifest_sha256": "7c29f552557db967e4ab531388bfebad62ed18e56597f0b2326f2c16356eeae2",
   "schema_id": "clinical_nlp.kb_coverage",

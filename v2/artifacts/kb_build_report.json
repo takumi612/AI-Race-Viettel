@@ -2,7 +2,7 @@
   "builder_version": "2.0.0",
   "config_sha256": "7c47f458c6eda6eff1290f3581aa50dd9eeec1531cff386aa2fe43218d9e77d0",
   "contract_version": "1.0.0",
-  "dataset_pair_fingerprint": "65a01d7d658e1e79c5fb50494e38634469bb808313f3f5e0aea72ec11cab6c5d",
+  "dataset_pair_fingerprint": "18a391e51786630b482bb500d5129eb102ae144450d7fc18b149f2799054f028",
   "icd10": {
     "path": "artifacts/icd10/icd10_dictionary.jsonl.gz",
     "record_count": 12137,
@@ -26,8 +26,8 @@
   "save_load_passed": true,
   "supplement_evidence": {
     "artifact": "artifacts/rxnorm/organizer_supplement_evidence.jsonl.gz",
-    "metadata_sha256": "4cfd9973f86a710cf9631e9d3fc20b51a667a261aae33a28e535571dc956d537",
+    "metadata_sha256": "bc9199c2effe14b5506924e6181952429e6fd58419aa6b64104509f2fe2b8768",
     "record_count": 258,
-    "sha256": "92f14e8cc3233f160a46e885c7a9b86f655fd50e653763a73ac389af86e83617"
+    "sha256": "d9d7db3d3cd3cbd14168694b86ba8c880bd253fd956819f511f4edb7a128722e"
   }
 }
