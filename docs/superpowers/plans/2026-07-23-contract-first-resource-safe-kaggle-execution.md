@@ -123,13 +123,13 @@ e91f1e5 feat: add fail-closed data and KB preflight
 
 ### Chưa thực hiện
 
-- [ ] Data-to-tensor contract và owner-window training dataset.
-- [ ] Curriculum Stage 1/2/3 và final-fit.
-- [ ] Assertion head thực sự dùng frozen/shared encoder feature.
-- [ ] Candidate hard-negative/ranking/calibration artifact.
-- [ ] Inference merge ở raw offset và KB-first recovery end-to-end.
-- [ ] Kaggle orchestrator/notebook 13 phase hoàn chỉnh.
-- [ ] Runbook, pipeline tiếng Việt và checklist vận hành.
+- [x] Data-to-tensor contract và owner-window training dataset.
+- [x] Curriculum Stage 1/2/3 và final-fit manifest/hash contract.
+- [x] Assertion head thực sự dùng frozen/shared encoder feature.
+- [x] Candidate hard-negative/ranking/calibration artifact.
+- [x] Inference merge ở raw offset và KB-first recovery contract path.
+- [x] Kaggle orchestrator/notebook 13 phase hoàn chỉnh với built-in runtime phase runners; Run All acceptance vẫn pending.
+- [x] Runbook, pipeline tiếng Việt và checklist vận hành.
 - [ ] Người dùng chạy Kaggle `Run All`; theo dõi, sửa lỗi và nghiệm thu artifact.
 
 ## Sơ đồ pipeline canonical
@@ -1049,7 +1049,7 @@ Không tự sửa GT organizer 101–200. Reconstructed GT 1–100 chỉ đượ
 structural có bằng chứng, không được biến thành train-eligible hay tuyên bố sạch
 về ngữ nghĩa. Artifact chỉ mở rộng từ raw KB có bằng chứng.
 
-## Work package 4 — Development split, chunking và curriculum `[IN PROGRESS]`
+## Work package 4 — Development split, chunking và curriculum `[COMPLETE — CPU verified]`
 
 **Ownership:** split/record/training/curriculum modules và CLI train.
 
@@ -1073,7 +1073,7 @@ Deliverables:
 Evidence: split/owner invariants, fake trainer stage order/resume, CPU unit/contract
 checks có phạm vi nhỏ và manifest/hash determinism; không local train.
 
-## Work package 5 — Assertion và inference hardening `[PENDING]`
+## Work package 5 — Assertion và inference hardening `[COMPLETE — CPU verified]`
 
 **Ownership:** assertion head/adapter, NER inference micro-batch, Qwen guard.
 
@@ -1092,7 +1092,7 @@ Deliverables:
 Evidence: model inventory dưới 9B, fallback/error simulation và schema/offset
 validation.
 
-## Work package 6 — Kaggle orchestrator và notebook 13 phase `[PENDING]`
+## Work package 6 — Kaggle orchestrator và notebook 13 phase `[COMPLETE — built-in runtime hooks; Kaggle acceptance pending]`
 
 **Ownership:** Kaggle orchestrator, notebook builder, canonical notebook.
 
@@ -1114,7 +1114,7 @@ Deliverables:
 Evidence: AST compile mọi code cell, generator/notebook deterministic, simulated
 three-mode execution và regression suite.
 
-## Work package 7 — Runbook và tài liệu vận hành `[PENDING]`
+## Work package 7 — Runbook và tài liệu vận hành `[COMPLETE — CPU verified]`
 
 **Ownership:** `KAGGLE_RUNBOOK.md`, `README.md`, `PIPELINE_VI.md`.
 
@@ -1134,7 +1134,7 @@ Runbook bắt buộc có:
 `PIPELINE_VI.md` phải có Mermaid data flow, giải thích kỹ thuật từng phase và
 ELI5 bằng ví dụ bệnh viện.
 
-## Work package 8 — Kiểm tra trước khi bàn giao và nghiệm thu trên Kaggle `[PENDING]`
+## Work package 8 — Kiểm tra trước khi bàn giao và nghiệm thu trên Kaggle `[COMPLETE PRE-KAGGLE — Run All pending]`
 
 Phần Codex có thể thực hiện trước khi bàn giao notebook:
 
@@ -1180,3 +1180,31 @@ dẫn resume/chạy lại.
 Sau mỗi task, cập nhật checkbox, bằng chứng command/hash, file đã đổi và bước kế
 tiếp ngay trong implementation plan.
 ```
+## Verified execution status — 2026-07-23
+
+This section supersedes the older duplicated handoff/status blocks above.
+
+- [x] Owner-window and collator are exposed through `TrainingContract` with deterministic label-map fingerprints.
+- [x] Curriculum stage manifests carry config, dataset, split, and checkpoint hashes; stale resume is rejected.
+- [x] Deterministic inference composes NER proposals, KB-first recovery, raw-offset merge, assertion masking, and candidate policy.
+- [x] Orchestrator dispatches 13 phases with `full`, `resume`, and `inference_only` modes and atomic `LATEST.json` publication.
+- [x] Canonical notebook is a thin orchestrator API client with 13 documented phases and AST validation.
+- [x] Runbook and Vietnamese pipeline documentation describe CPU-only verification and Kaggle handoff.
+- [ ] User runs Kaggle `Save Version → Run All` and returns artifacts; this remains externally pending.
+
+Local tests and notebook generation do not constitute Kaggle acceptance. No local model training is required or authorized.
+
+## Verified execution status — continuation 2026-07-23
+
+The continuation pass added the missing runtime bindings and fail-closed guards
+without training or downloading weights locally:
+
+- [x] `TrainingContract` now carries the curriculum stage manifest used for hash-guarded resume.
+- [x] The shared assertion adapter keeps the encoder frozen and in evaluation mode while the head trains.
+- [x] Candidate calibration artifacts bind to `CandidatePolicy`; persisted KB fingerprints are checked when supplied.
+- [x] `run_inference_with_bundle` is a production submission path that validates raw offsets and writes a CRC-checked `output.zip`.
+- [x] Missing phase runners now fail closed and publish an atomic error artifact instead of claiming `PASS`.
+- [x] Fresh CPU verification: `347 passed, 2 skipped`; notebook build and contract checks pass.
+- [x] Built-in Kaggle phase dispatcher now binds all 13 phases; phases 07–10 use distributed training subprocesses and phases 11–13 fit/reload/package artifacts.
+- [x] Notebook now exposes one observable code cell per phase (setup + 13 phase cells + finalization).
+- [ ] Real Kaggle `Run All` artifact acceptance remains externally pending; local training is still prohibited.

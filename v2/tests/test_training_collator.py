@@ -49,3 +49,21 @@ def test_collator_empty_list_raises():
     collator = ClinicalTokenCollator()
     with pytest.raises(ValueError, match="Cannot collate empty examples list"):
         collator([])
+
+
+def test_collator_carries_assertion_targets_and_masks_labs():
+    window = TokenWindow(
+        document_id="doc-1",
+        record_id="record-1",
+        window_id="window-1",
+        input_ids=(1, 2, 3),
+        attention_mask=(1, 1, 1),
+        raw_offsets=((0, 1), (1, 5), (5, 6)),
+        label_ids=(1, 2, 0),
+        loss_mask=(True, True, True),
+        owned_entity_ids=("doc-1_e0_1_5",),
+        assertion_labels=(("isNegated", "isFamily"),),
+    )
+    batch = ClinicalTokenCollator(pad_token_id=0)([window])
+    assert batch["assertion_targets"].tolist() == [[1.0, 0.0, 1.0]]
+    assert batch["assertion_mask"].tolist() == [[True, True, True]]

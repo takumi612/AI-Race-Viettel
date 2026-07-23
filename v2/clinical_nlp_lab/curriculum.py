@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from typing import Any, Mapping, Sequence, Literal
 
 
@@ -28,6 +30,73 @@ class StageSpec:
             "replay_fraction": self.replay_fraction,
             "update_encoder": self.update_encoder,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class StageManifest:
+    schema_id: str
+    schema_version: int
+    stage_name: str
+    parent_stage: str | None
+    config_hash: str
+    fingerprints: dict[str, str]
+    checkpoint_sha256: str
+    status: Literal["completed"]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_id": self.schema_id,
+            "schema_version": self.schema_version,
+            "stage_name": self.stage_name,
+            "parent_stage": self.parent_stage,
+            "config_hash": self.config_hash,
+            "fingerprints": dict(sorted(self.fingerprints.items())),
+            "checkpoint_sha256": self.checkpoint_sha256,
+            "status": self.status,
+        }
+
+
+def build_stage_manifest(
+    stage_spec: StageSpec,
+    fingerprints: Mapping[str, str],
+    checkpoint_sha256: str,
+) -> StageManifest:
+    if len(checkpoint_sha256) != 64 or any(ch not in "0123456789abcdef" for ch in checkpoint_sha256.lower()):
+        raise ValueError("checkpoint_sha256 must be a 64-character hexadecimal hash")
+    config_bytes = json.dumps(stage_spec.to_dict(), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return StageManifest(
+        schema_id="clinical_nlp.stage_manifest",
+        schema_version=1,
+        stage_name=stage_spec.name,
+        parent_stage=stage_spec.parent_stage,
+        config_hash=hashlib.sha256(config_bytes).hexdigest(),
+        fingerprints={str(key): str(value) for key, value in fingerprints.items()},
+        checkpoint_sha256=checkpoint_sha256,
+        status="completed",
+    )
+
+
+def validate_resume_manifest(
+    manifest: StageManifest | Mapping[str, Any],
+    stage_spec: StageSpec,
+    current_fingerprints: Mapping[str, str],
+) -> None:
+    data = manifest.to_dict() if isinstance(manifest, StageManifest) else dict(manifest)
+    if data.get("stage_name") != stage_spec.name:
+        raise ValueError(f"stage mismatch: expected {stage_spec.name}")
+    config_bytes = json.dumps(stage_spec.to_dict(), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    expected_config_hash = hashlib.sha256(config_bytes).hexdigest()
+    if data.get("config_hash") != expected_config_hash:
+        raise ValueError("stage config fingerprint mismatch")
+    checkpoint = str(data.get("checkpoint_sha256", ""))
+    if len(checkpoint) != 64:
+        raise ValueError("resume manifest is missing checkpoint hash")
+    saved_fingerprints = data.get("fingerprints")
+    if not isinstance(saved_fingerprints, Mapping):
+        raise ValueError("resume manifest is missing fingerprints")
+    for key, current in current_fingerprints.items():
+        if saved_fingerprints.get(key) != current:
+            raise ValueError(f"resume fingerprint mismatch for {key}")
 
 
 def plan_curriculum(

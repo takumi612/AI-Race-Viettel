@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from pathlib import Path
 import shutil
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from .schema import ClinicalDocument, EntityAnnotation
 
@@ -75,6 +77,112 @@ class TrainingAvailability:
     available: bool
     missing_packages: list[str]
     reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingContract:
+    """CPU-buildable contract shared by the Kaggle trainer and its manifest."""
+
+    dataset_fingerprint: str
+    split_fingerprint: str
+    label_map_fingerprint: str
+    max_length: int
+    stride: int
+    window_count: int
+    owned_entity_count: int
+    windows: tuple[Any, ...]
+    batches: tuple[Any, ...]
+    curriculum_manifest: Mapping[str, Any] | None = None
+
+    @property
+    def fingerprints(self) -> dict[str, str]:
+        return {
+            "dataset": self.dataset_fingerprint,
+            "split": self.split_fingerprint,
+            "label_map": self.label_map_fingerprint,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_id": "clinical_nlp.training_contract",
+            "schema_version": 1,
+            "fingerprints": self.fingerprints,
+            "max_length": self.max_length,
+            "stride": self.stride,
+            "window_count": self.window_count,
+            "owned_entity_count": self.owned_entity_count,
+            "curriculum_manifest": (
+                dict(self.curriculum_manifest) if self.curriculum_manifest is not None else None
+            ),
+        }
+
+
+def build_training_contract(
+    documents: Sequence[ClinicalDocument],
+    records_by_document: Mapping[str, Sequence[Any]],
+    tokenizer: Any,
+    label_to_id: Mapping[str, int],
+    dataset_fingerprint: str,
+    split_fingerprint: str,
+    max_length: int = 512,
+    stride: int = 128,
+    batch_size: int = 8,
+    curriculum_manifest: Mapping[str, Any] | Any | None = None,
+) -> TrainingContract:
+    """Build owner windows and collated batches without loading a model.
+
+    This is the boundary consumed by the real Kaggle trainer. Keeping it
+    independent from Trainer/model construction lets contract tests exercise
+    the exact data path on CPU.
+    """
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if not dataset_fingerprint or not split_fingerprint:
+        raise ValueError("dataset_fingerprint and split_fingerprint are required")
+
+    from .collation import ClinicalTokenCollator
+    from .examples import build_owner_windows
+
+    all_windows: list[Any] = []
+    for document in documents:
+        if document.document_id not in records_by_document:
+            raise ValueError(f"Missing records for document {document.document_id}")
+        all_windows.extend(
+            build_owner_windows(
+                document,
+                records_by_document[document.document_id],
+                tokenizer,
+                label_to_id,
+                max_length=max_length,
+                stride=stride,
+            )
+        )
+
+    pad_token_id = int(getattr(tokenizer, "pad_token_id", 1) or 1)
+    collator = ClinicalTokenCollator(pad_token_id=pad_token_id)
+    batches = tuple(
+        collator(all_windows[start : start + batch_size])
+        for start in range(0, len(all_windows), batch_size)
+    )
+    label_map_bytes = json.dumps(
+        sorted((str(key), int(value)) for key, value in label_to_id.items()),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if curriculum_manifest is not None and callable(getattr(curriculum_manifest, "to_dict", None)):
+        curriculum_manifest = curriculum_manifest.to_dict()
+    return TrainingContract(
+        dataset_fingerprint=str(dataset_fingerprint),
+        split_fingerprint=str(split_fingerprint),
+        label_map_fingerprint=hashlib.sha256(label_map_bytes).hexdigest(),
+        max_length=max_length,
+        stride=stride,
+        window_count=len(all_windows),
+        owned_entity_count=sum(len(window.owned_entity_ids) for window in all_windows),
+        windows=tuple(all_windows),
+        batches=batches,
+        curriculum_manifest=(dict(curriculum_manifest) if curriculum_manifest is not None else None),
+    )
 
 
 def chunk_token_indices(token_count: int, max_length: int = 512, stride: int = 128) -> list[tuple[int, int]]:
@@ -257,6 +365,7 @@ def train_transformer_ner(
     batch_size: int = 8,
     gradient_accumulation_steps: int = 1,
     seed: int = 42,
+    curriculum_manifest: Mapping[str, Any] | Any | None = None,
 ) -> dict[str, Any]:
     if not train_documents:
         return {"trained": False, "reason": "No annotated training documents were provided"}
@@ -270,7 +379,6 @@ def train_transformer_ner(
     from transformers import (
         AutoModelForTokenClassification,
         AutoTokenizer,
-        DataCollatorForTokenClassification,
         EarlyStoppingCallback,
         Trainer,
         TrainingArguments,
@@ -279,26 +387,62 @@ def train_transformer_ner(
     entity_types = {entity.type for document in train_documents for entity in document.entities}
     label_to_id, id_to_label = build_bio_label_map(entity_types)
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-    train_features = prepare_token_classification_features(
-        train_documents, tokenizer, label_to_id, max_length, stride
+    from .records import parse_document_records
+
+    train_records = {
+        document.document_id: parse_document_records(document.document_id, document.raw_text, document.entities)
+        for document in train_documents
+    }
+    validation_records = {
+        document.document_id: parse_document_records(document.document_id, document.raw_text, document.entities)
+        for document in validation_documents
+    }
+    train_contract = build_training_contract(
+        train_documents,
+        train_records,
+        tokenizer,
+        label_to_id,
+        dataset_fingerprint="train_documents",
+        split_fingerprint="train_split",
+        max_length=max_length,
+        stride=stride,
+        batch_size=batch_size,
+        curriculum_manifest=curriculum_manifest,
     )
-    validation_features = prepare_token_classification_features(
-        validation_documents, tokenizer, label_to_id, max_length, stride
+    validation_contract = build_training_contract(
+        validation_documents,
+        validation_records,
+        tokenizer,
+        label_to_id,
+        dataset_fingerprint="validation_documents",
+        split_fingerprint="validation_split",
+        max_length=max_length,
+        stride=stride,
+        batch_size=batch_size,
+        curriculum_manifest=curriculum_manifest,
     )
 
     class FeatureDataset(Dataset):
-        def __init__(self, features: list[dict[str, Any]]) -> None:
-            self.features = features
+        def __init__(self, windows: Sequence[Any]) -> None:
+            self.windows = tuple(windows)
 
         def __len__(self) -> int:
-            return len(self.features)
+            return len(self.windows)
 
         def __getitem__(self, index: int) -> dict[str, Any]:
-            return {
-                key: value
-                for key, value in self.features[index].items()
-                if key not in {"offset_mapping", "document_id"}
-            }
+            return {"window": self.windows[index]}
+
+    from .collation import ClinicalTokenCollator
+
+    owner_collator = ClinicalTokenCollator(pad_token_id=int(getattr(tokenizer, "pad_token_id", 1) or 1))
+
+    def collate_owner_windows(examples: Sequence[dict[str, Any]]) -> dict[str, Any]:
+        batch = owner_collator([example["window"] for example in examples])
+        return {
+            "input_ids": batch["input_ids"],
+            "attention_mask": batch["attention_mask"],
+            "labels": batch["ner_labels"],
+        }
 
     model = AutoModelForTokenClassification.from_pretrained(
         model_name,
@@ -316,50 +460,51 @@ def train_transformer_ner(
         "per_device_eval_batch_size": batch_size,
         "weight_decay": 0.01,
         "warmup_ratio": 0.1,
-        "save_strategy": "epoch" if validation_features else "no",
+        "save_strategy": "epoch" if validation_contract.windows else "no",
         "save_total_limit": 1,
-        "load_best_model_at_end": bool(validation_features),
+        "load_best_model_at_end": bool(validation_contract.windows),
         "seed": seed,
         "report_to": [],
+        "remove_unused_columns": False,
         "fp16": torch.cuda.is_available(),
         "gradient_accumulation_steps": max(1, int(gradient_accumulation_steps)),
         "gradient_checkpointing": bool(torch.cuda.is_available()),
-        "metric_for_best_model": "f1" if validation_features else None,
-        "greater_is_better": True if validation_features else None,
+        "metric_for_best_model": "f1" if validation_contract.windows else None,
+        "greater_is_better": True if validation_contract.windows else None,
     }
-    if not validation_features:
+    if not validation_contract.windows:
         training_kwargs.pop("metric_for_best_model", None)
         training_kwargs.pop("greater_is_better", None)
     # Transformers renamed evaluation_strategy to eval_strategy in newer releases.
     argument_parameters = inspect.signature(TrainingArguments.__init__).parameters
     evaluation_key = "eval_strategy" if "eval_strategy" in argument_parameters else "evaluation_strategy"
-    training_kwargs[evaluation_key] = "epoch" if validation_features else "no"
+    training_kwargs[evaluation_key] = "epoch" if validation_contract.windows else "no"
     arguments = TrainingArguments(**training_kwargs)
     trainer_kwargs = {
         "model": model,
         "args": arguments,
-        "train_dataset": FeatureDataset(train_features),
-        "eval_dataset": FeatureDataset(validation_features) if validation_features else None,
-        "data_collator": DataCollatorForTokenClassification(tokenizer),
-        "compute_metrics": compute_non_o_metrics if validation_features else None,
+        "train_dataset": FeatureDataset(train_contract.windows),
+        "eval_dataset": FeatureDataset(validation_contract.windows) if validation_contract.windows else None,
+        "data_collator": collate_owner_windows,
+        "compute_metrics": compute_non_o_metrics if validation_contract.windows else None,
     }
     # `processing_class` replaced the older `tokenizer` Trainer argument.
     trainer_parameters = inspect.signature(Trainer.__init__).parameters
     trainer_kwargs["processing_class" if "processing_class" in trainer_parameters else "tokenizer"] = tokenizer
-    if validation_features:
+    if validation_contract.windows:
         trainer_kwargs["callbacks"] = [EarlyStoppingCallback(early_stopping_patience=2)]
     trainer = Trainer(**trainer_kwargs)
     train_result = trainer.train()
     trainer.save_model(str(output_path))
     tokenizer.save_pretrained(str(output_path))
     removed_checkpoints = remove_nested_checkpoints(output_path)
-    evaluation = trainer.evaluate() if validation_features else {}
+    evaluation = trainer.evaluate() if validation_contract.windows else {}
     return {
         "trained": True,
         "train_documents": len(train_documents),
         "validation_documents": len(validation_documents),
-        "train_chunks": len(train_features),
-        "validation_chunks": len(validation_features),
+        "train_chunks": train_contract.window_count,
+        "validation_chunks": validation_contract.window_count,
         "label_to_id": label_to_id,
         "training_loss": float(train_result.training_loss),
         "evaluation": {key: float(value) for key, value in evaluation.items() if isinstance(value, (int, float))},

@@ -59,6 +59,7 @@ class ClinicalTokenCollator:
         for b_idx, ex in enumerate(examples):
             seq_len = len(ex.input_ids)
             idx = 0
+            owned_entity_index = 0
             while idx < seq_len:
                 lbl = ex.label_ids[idx]
                 mask = ex.loss_mask[idx]
@@ -70,8 +71,21 @@ class ClinicalTokenCollator:
                     entity_spans_list.append([b_idx, start_tok, end_tok])
                     entity_type_id = (lbl - 1) // 2
                     entity_types_list.append(entity_type_id)
-                    assertion_targets_list.append([0.0, 0.0, 0.0])
-                    assertion_mask_list.append([True, True, True])
+                    labels = (
+                        ex.assertion_labels[owned_entity_index]
+                        if owned_entity_index < len(ex.assertion_labels)
+                        else ()
+                    )
+                    label_set = set(labels)
+                    assertion_targets_list.append(
+                        [
+                            1.0 if axis in label_set else 0.0
+                            for axis in ("isNegated", "isHistorical", "isFamily")
+                        ]
+                    )
+                    is_lab = entity_type_id in {3, 4}
+                    assertion_mask_list.append([not is_lab, not is_lab, not is_lab])
+                    owned_entity_index += 1
                     idx = end_tok
                 else:
                     idx += 1

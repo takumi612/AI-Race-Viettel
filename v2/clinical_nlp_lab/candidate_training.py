@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from typing import Any, Literal, Sequence
 import numpy as np
 
@@ -73,6 +75,33 @@ class CandidateCalibrationArtifact:
             "confidence_threshold": self.confidence_threshold,
             "policy": self.policy,
             "kb_hash": self.kb_hash,
+        }
+
+
+@dataclass(frozen=True)
+class CandidateTrainingArtifact:
+    schema_id: str
+    schema_version: int
+    kb_hash: str
+    generator_version: str
+    hard_negatives: tuple[HardNegative, ...]
+    calibration: CandidateCalibrationArtifact
+    artifact_sha256: str
+
+    @property
+    def hard_negative_count(self) -> int:
+        return len(self.hard_negatives)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_id": self.schema_id,
+            "schema_version": self.schema_version,
+            "kb_hash": self.kb_hash,
+            "generator_version": self.generator_version,
+            "hard_negative_count": self.hard_negative_count,
+            "hard_negatives": [item.__dict__ for item in self.hard_negatives],
+            "calibration": self.calibration.to_dict(),
+            "artifact_sha256": self.artifact_sha256,
         }
 
 
@@ -187,4 +216,46 @@ def fit_candidate_calibration(
         confidence_threshold=best_th,
         policy="calibrated_ranker",
         kb_hash=kb_hash,
+    )
+
+
+def build_candidate_training_artifact(
+    positives: Sequence[Any],
+    retrieved: Sequence[Sequence[Any]],
+    scored_examples: Sequence[ScoredCandidate],
+    kb_hash: str,
+    objective: Literal["precision_first"] = "precision_first",
+    hard_negative_limit: int = 5,
+) -> CandidateTrainingArtifact:
+    if len(positives) != len(retrieved):
+        raise ValueError("positives and retrieved must have equal length")
+    if len(kb_hash) != 64:
+        raise ValueError("kb_hash must be a SHA-256 value")
+    hard_negatives: list[HardNegative] = []
+    for positive, candidates in zip(positives, retrieved):
+        hard_negatives.extend(
+            generate_hard_negatives(
+                positive,
+                candidates,
+                limit=hard_negative_limit,
+                kb_hash=kb_hash,
+            )
+        )
+    calibration = fit_candidate_calibration(scored_examples, objective=objective, kb_hash=kb_hash)
+    payload = {
+        "kb_hash": kb_hash,
+        "hard_negatives": [item.__dict__ for item in hard_negatives],
+        "calibration": calibration.to_dict(),
+    }
+    artifact_sha256 = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return CandidateTrainingArtifact(
+        schema_id="clinical_nlp.candidate_training_artifact",
+        schema_version=1,
+        kb_hash=kb_hash,
+        generator_version="1.0.0",
+        hard_negatives=tuple(hard_negatives),
+        calibration=calibration,
+        artifact_sha256=artifact_sha256,
     )

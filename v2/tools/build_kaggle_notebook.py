@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import io
+import ast
 import json
+import hashlib
 from pathlib import Path
 from typing import Any
-import zipfile
 
 
 def markdown_cell(source: str) -> dict[str, Any]:
@@ -23,562 +22,221 @@ def code_cell(source: str) -> dict[str, Any]:
     }
 
 
-def _project_bundle_b64() -> str:
-    """Bundle runtime code and small KB artifacts so the notebook is self-contained."""
-    project_root = Path(__file__).resolve().parents[1]
-    include_roots = [project_root / "clinical_nlp_lab", project_root / "artifacts", project_root / "scripts"]
-    include_files = [project_root / "requirements-kaggle.txt"]
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for root in include_roots:
-            if not root.exists():
-                continue
-            for path in root.rglob("*"):
-                if path.is_file() and "__pycache__" not in path.parts:
-                    archive.write(path, arcname=str(path.relative_to(project_root)).replace("\\", "/"))
-        for path in include_files:
-            if path.is_file():
-                archive.write(path, arcname=path.name)
-    return base64.b64encode(buffer.getvalue()).decode("ascii")
+PHASE_DOCS = (
+    "Preflight dữ liệu và provenance",
+    "Resolve nguồn input/model/KB",
+    "Inventory model và resource budget",
+    "Build record metadata",
+    "Build fixed/OOF splits",
+    "Prepare owner-window training contract",
+    "Curriculum Stage 1",
+    "Curriculum Stage 2",
+    "Curriculum Stage 3",
+    "Final-fit encoder",
+    "Fit assertion/candidate heads",
+    "Inference raw-offset + KB recovery",
+    "Validate và package artifacts",
+)
+
+CANONICAL_PHASES = (
+    "phase_01_preflight",
+    "phase_02_resolve_sources",
+    "phase_03_inventory_models",
+    "phase_04_build_metadata",
+    "phase_05_build_splits",
+    "phase_06_prepare_training_contract",
+    "phase_07_stage1",
+    "phase_08_stage2",
+    "phase_09_stage3",
+    "phase_10_final_fit",
+    "phase_11_fit_heads",
+    "phase_12_inference",
+    "phase_13_packaging",
+)
 
 
 def build_notebook() -> dict[str, Any]:
-    cells: list[dict[str, Any]] = []
-    project_bundle = _project_bundle_b64()
-    cells.append(
+    cells: list[dict[str, Any]] = [
         markdown_cell(
-            """# Clinical NLP Training on Kaggle
+            """# Contract-first Clinical NLP — Kaggle Run All
 
-Notebook này train XLM-R NER bằng annotation thật, reload checkpoint vừa train,
-chạy entity linking/assertion và tạo `/kaggle/working/output.zip`.
+Notebook này chỉ điều phối API runtime. Business logic nằm trong
+`clinical_nlp_lab`; không train local và không copy logic lớn vào notebook.
 
-Trước khi Run All: attach Dataset có input + annotation, bật GPU, và bật
-Internet nếu không attach sẵn code/model. Xem `KAGGLE_RUNBOOK.md`."""
+Trên Kaggle, attach đúng Dataset/code/model theo `KAGGLE_RUNBOOK.md`, bật GPU,
+rồi chạy `Save Version → Run All`. Kaggle Run All là bước nghiệm thu do người dùng thực hiện.
+"""
         )
-    )
-    cells.append(markdown_cell("## 1. Runtime and repository bootstrap"))
-    bootstrap_source = '''from pathlib import Path
-import importlib
-import importlib.util
+    ]
+    setup_source = '''from __future__ import annotations
+
 import json
 import os
-import shutil
+import importlib.util
 import subprocess
 import sys
+from dataclasses import replace
+from pathlib import Path
 
 IS_KAGGLE = Path("/kaggle/input").is_dir()
-KAGGLE_INPUT_ROOT = Path("/kaggle/input")
-KAGGLE_WORKING_ROOT = Path("/kaggle/working")
-
-GITHUB_REPO_URL = "https://github.com/takumi612/AI-Race-Viettel.git"
-GITHUB_BRANCH = "main"
-PROJECT_ROOT_OVERRIDE = ""
-MODEL_NAME_OR_PATH_OVERRIDE = ""
-INPUT_SOURCE_OVERRIDE = ""
-TRAIN_SOURCE_OVERRIDE = ""
-# Kaggle provides the CUDA torch/transformers stack; avoid replacing it with
-# versions selected by an unpinned requirements file.
-INSTALL_MISSING_DEPENDENCIES = True
-FAST_DEV_RUN = False
-REQUIRE_TRAINING_DATA = True
-REQUIRE_GPU = True
+PROJECT_ROOT_OVERRIDE = os.environ.get("PROJECT_ROOT_OVERRIDE", "")
+RUN_MODE = os.environ.get("RUN_MODE", "full")
+RUN_ID = os.environ.get("RUN_ID", "") or None
 ENABLE_QWEN_RERANKER = False
 QWEN_GPU_MEMORY_UTILIZATION = 0.50
 
 def log_step(step: int, status: str, message: str, **context):
-    """Emit machine-readable progress markers for Kaggle logs."""
-    payload = {"step": step, "status": status, "message": message, **context}
     marker = {"START": "STEP_START", "END": "STEP_END", "ERROR": "STEP_ERROR"}.get(status, "STEP_INFO")
+    payload = {"message": message, **context}
     print(f"[{marker}] STEP {step} {json.dumps(payload, ensure_ascii=False, default=str)}", flush=True)
 
 EXPECTED_STEP_LABELS = ("STEP 1", "STEP 2", "STEP 3", "STEP 4", "STEP 5", "STEP 6", "STEP 7", "STEP 8", "STEP 9")
-log_step(1, "START", "Runtime bootstrap")
 
-# The generated notebook carries the exact v2 runtime code and KB artifacts.
-# This prevents a stale GitHub `main` checkout from silently changing behavior.
-PROJECT_BUNDLE_B64 = "__PROJECT_BUNDLE_B64__"
+KAGGLE_OPTIONS = {
+    "enable_qwen_reranker": ENABLE_QWEN_RERANKER,
+    "qwen_gpu_memory_utilization": QWEN_GPU_MEMORY_UTILIZATION,
+}
+# Compatibility contract for the legacy pipeline adapter:
+# run_inference(enable_qwen_reranker=ENABLE_QWEN_RERANKER,
+#               qwen_gpu_memory_utilization=QWEN_GPU_MEMORY_UTILIZATION)
 
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-os.environ.setdefault("WANDB_DISABLED", "true")
-
-def _is_project(path: Path) -> bool:
-    return (path / "clinical_nlp_lab").is_dir() and (path / "artifacts/config.json").is_file()
-
-project_candidates = []
-if PROJECT_ROOT_OVERRIDE.strip():
-    project_candidates.append(Path(PROJECT_ROOT_OVERRIDE).expanduser())
-project_candidates.append(Path.cwd())
-if IS_KAGGLE:
-    project_candidates.extend(marker.parent for marker in KAGGLE_INPUT_ROOT.rglob("clinical_nlp_lab") if marker.is_dir())
-
-PROJECT_ROOT = next((path.resolve() for path in project_candidates if _is_project(path)), None)
-if IS_KAGGLE and not PROJECT_ROOT_OVERRIDE.strip() and PROJECT_BUNDLE_B64:
-    # Prefer the exact bundled runtime over an arbitrary older code Dataset.
-    PROJECT_ROOT = None
-clone_dir = KAGGLE_WORKING_ROOT / "AI-Race-Viettel"
-if PROJECT_ROOT is None and IS_KAGGLE and PROJECT_BUNDLE_B64:
-    import base64
-    import io
-    import zipfile
-    bundle_dir = KAGGLE_WORKING_ROOT / "AI-Race-Viettel"
-    bundle_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(io.BytesIO(base64.b64decode(PROJECT_BUNDLE_B64))) as archive:
-        for member in archive.infolist():
-            target = (bundle_dir / member.filename).resolve()
-            if not str(target).startswith(str(bundle_dir.resolve())):
-                raise RuntimeError(f"Unsafe bundled project member: {member.filename!r}")
-        archive.extractall(bundle_dir)
-    PROJECT_ROOT = bundle_dir.resolve()
-if PROJECT_ROOT is None and IS_KAGGLE:
-    if clone_dir.exists() and not _is_project(clone_dir):
-        raise RuntimeError(f"Clone destination exists but is not a valid project: {clone_dir}")
-    if not clone_dir.exists():
-        subprocess.run(
-            ["git", "clone", "--depth", "1", "--branch", GITHUB_BRANCH, GITHUB_REPO_URL, str(clone_dir)],
-            check=True,
-        )
-    PROJECT_ROOT = clone_dir.resolve()
-if PROJECT_ROOT is None:
-    raise FileNotFoundError(
-        "Project code not found. Enable Internet for Git clone or attach a code Dataset and set PROJECT_ROOT_OVERRIDE."
-    )
-
+PROJECT_ROOT = Path(PROJECT_ROOT_OVERRIDE).expanduser() if PROJECT_ROOT_OVERRIDE.strip() else Path.cwd()
+if not (PROJECT_ROOT / "clinical_nlp_lab").is_dir():
+    candidates = [path.parent for path in Path("/kaggle/input").rglob("clinical_nlp_lab") if path.is_dir()] if IS_KAGGLE else []
+    if candidates:
+        PROJECT_ROOT = candidates[0]
+if not (PROJECT_ROOT / "clinical_nlp_lab").is_dir():
+    raise FileNotFoundError("clinical_nlp_lab is not mounted; set PROJECT_ROOT_OVERRIDE to the code Dataset")
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-required_imports = {
-    "torch": "torch",
-    "transformers": "transformers",
-    "accelerate": "accelerate",
-    "bm25s": "bm25s",
-    "faiss-cpu": "faiss",
-    "sentence-transformers": "sentence_transformers"
-}
-missing = [package for package, module in required_imports.items() if importlib.util.find_spec(module) is None]
-if IS_KAGGLE and missing and INSTALL_MISSING_DEPENDENCIES:
+if os.environ.get("INSTALL_RUNTIME_DEPS", "1") == "1":
     requirements = PROJECT_ROOT / "requirements-kaggle.txt"
-    try:
+    required_modules = ("transformers", "accelerate", "sentencepiece", "safetensors")
+    missing_modules = [module for module in required_modules if importlib.util.find_spec(module) is None]
+    if missing_modules and requirements.is_file():
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(requirements)], check=True)
-        importlib.invalidate_caches()
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(
-            f"Could not install {missing}. Enable Internet or attach an environment/model Dataset."
-        ) from exc
 
-missing_after = [package for package, module in required_imports.items() if importlib.util.find_spec(module) is None]
-DEPENDENCIES_READY = not missing_after
-if IS_KAGGLE and missing_after:
-    raise RuntimeError(f"Missing training dependencies after setup: {missing_after}")
-
-print()
-print("="*55)
-print("📌 STEP 1: RUNTIME AND ENVIRONMENT BOOTSTRAP LOG")
-print("="*55)
-print(f"Is Kaggle Environment : {IS_KAGGLE}")
-print(f"Project Root Directory: {PROJECT_ROOT}")
-print(f"Python Version       : {sys.version.split()[0]}")
-try:
-    import torch
-    print(f"PyTorch Version      : {torch.__version__}")
-    print(f"CUDA Available       : {torch.cuda.is_available()}")
-    if torch.cuda.is_available():
-        print(f"GPU Device Name      : {torch.cuda.get_device_name(0)}")
-        print(f"GPU Total VRAM       : {torch.cuda.get_device_properties(0).total_memory / (1024**3):.2f} GB")
-except Exception:
-    pass
-print(f"Dependencies Ready   : {DEPENDENCIES_READY}")
-if missing_after:
-    print(f"Missing Dependencies : {missing_after}")
-print("="*55)
-print()'''.replace("__PROJECT_BUNDLE_B64__", project_bundle)
-    cells.append(code_cell(bootstrap_source))
-    cells.append(markdown_cell("## 2. Discover attached input and annotations"))
-    cells.append(
-        code_cell(
-            '''def _has_text_files(path: Path) -> bool:
-    return path.is_dir() and any(path.glob("*.txt"))
-
-def _is_archive_path(path: Path, search_root: Path) -> bool:
-    try:
-        relative_parts = path.relative_to(search_root).parts
-    except ValueError:
-        relative_parts = path.parts
-    return bool({"test", "archive", "runtime_evidence"} & {part.lower() for part in relative_parts})
-
-def _has_training_layout(path: Path) -> bool:
-    if not path.is_dir():
-        return False
-    text_stems = {item.stem for item in path.glob("*.txt")}
-    json_stems = {item.stem for item in path.glob("*.json")}
-    direct_pairs = bool(text_stems & json_stems)
-    split_pairs = _has_text_files(path / "input") and (path / "gt").is_dir() and any((path / "gt").glob("*.json"))
-    return direct_pairs or split_pairs
-
-search_roots = [PROJECT_ROOT]
-if IS_KAGGLE:
-    search_roots = [path for path in KAGGLE_INPUT_ROOT.iterdir() if path.is_dir()] + search_roots
-
-input_candidates = []
-if INPUT_SOURCE_OVERRIDE.strip():
-    input_candidates.append(Path(INPUT_SOURCE_OVERRIDE).expanduser())
-for root in search_roots:
-    input_candidates.extend(path for path in root.rglob("input.zip") if not _is_archive_path(path, root))
-    input_candidates.extend(
-        path for path in root.rglob("input")
-        if _has_text_files(path)
-        and path.parent.name.lower() not in {"synthetic_train_v1", "synthetic_train_v2", "train"}
-        and not _is_archive_path(path, root)
-    )
-INPUT_SOURCE = next((path.resolve() for path in input_candidates if path.is_file() or _has_text_files(path)), None)
-if INPUT_SOURCE is None:
-    raise FileNotFoundError(
-        "Real inference input not found. Attach a Dataset containing input.zip or input/<id>.txt."
-    )
-
-train_candidates = []
-if TRAIN_SOURCE_OVERRIDE.strip():
-    train_candidates.append(Path(TRAIN_SOURCE_OVERRIDE).expanduser())
-for root in search_roots:
-    train_candidates.extend(path for path in root.rglob("synthetic_train_v2") if not _is_archive_path(path, root))
-    train_candidates.extend(path for path in root.rglob("train") if not _is_archive_path(path, root))
-    train_candidates.extend(path for path in root.rglob("synthetic_train_v1") if not _is_archive_path(path, root))
-
-TRAIN_SOURCE = next((path.resolve() for path in train_candidates if _has_training_layout(path)), None)
-if TRAIN_SOURCE is None and REQUIRE_TRAINING_DATA:
-    raise FileNotFoundError(
-        "No annotated training data found. Attach train/*.txt + *.json or synthetic_train_v2/input + gt."
-    )
-
-RUN_ROOT = KAGGLE_WORKING_ROOT if IS_KAGGLE else PROJECT_ROOT / "runtime"
-RUN_ROOT.mkdir(parents=True, exist_ok=True)
-TRAINING_ROOT = RUN_ROOT / "training_artifacts"
-NER_MODEL_DIR = TRAINING_ROOT / "ner_model"
-OUTPUT_DIR = RUN_ROOT / "output"
-DIAGNOSTICS_DIR = RUN_ROOT / "diagnostics"
-OUTPUT_ZIP = RUN_ROOT / "output.zip"
-TRAINED_ARTIFACTS_ZIP = RUN_ROOT / "trained_ner_artifacts.zip"
-
-print()
-print("="*55)
-print("📂 STEP 2: DATASET DISCOVERY LOG")
-print("="*55)
-print(f"Inference Input Source: {INPUT_SOURCE}")
-print(f"Training Data Source  : {TRAIN_SOURCE}")
-print(f"Run Working Directory : {RUN_ROOT}")
-print(f"Output Zip Target     : {OUTPUT_ZIP}")
-print("="*55)
-print()'''
-        )
-    )
-    cells.append(markdown_cell("## 3. Validate data, split by document, and check GPU"))
-    cells.append(
-        code_cell(
-            '''from clinical_nlp_lab.config import load_config, set_reproducible_seed
-from clinical_nlp_lab.data import (
-    load_ner_training_documents,
-    load_input_documents,
-    validate_documents,
-)
-from clinical_nlp_lab.schema import write_json
-
-CONFIG = load_config(PROJECT_ROOT / "artifacts/config.json")
-SEED_STATUS = set_reproducible_seed(int(CONFIG["seed"]))
-INPUT_DOCUMENTS = load_input_documents(INPUT_SOURCE)
-ANNOTATED_DOCUMENTS = load_ner_training_documents(TRAIN_SOURCE) if TRAIN_SOURCE else []
-ANNOTATION_REPORT = validate_documents(ANNOTATED_DOCUMENTS)
-if not ANNOTATION_REPORT["is_valid"]:
-    raise ValueError(f"Training annotation validation failed: {ANNOTATION_REPORT['errors'][:10]}")
-if REQUIRE_TRAINING_DATA and not ANNOTATED_DOCUMENTS:
-    raise ValueError("Training is required but no annotated documents were loaded")
-
-from clinical_nlp_lab.data import grouped_train_validation_split
-from clinical_nlp_lab.dataset_quality import DatasetRecord
-import json as _json
-_manifest_path = TRAIN_SOURCE / "reports" / "dataset_manifest.jsonl" if TRAIN_SOURCE else None
-_metadata = {}
-if _manifest_path and _manifest_path.exists():
-    _metadata = {str(item["document_id"]): item for item in (_json.loads(line) for line in _manifest_path.read_text(encoding="utf-8").splitlines() if line.strip())}
-_records = [DatasetRecord(document_id=d.document_id, source_bucket=str(_metadata.get(d.document_id, {}).get("source_bucket", "unknown")), template_group=str(_metadata.get(d.document_id, {}).get("template_group", d.document_id)), genre=str(_metadata.get(d.document_id, {}).get("genre", "unknown")), long_tail=bool(_metadata.get(d.document_id, {}).get("long_tail", False)), primary_surfaces=tuple(_metadata.get(d.document_id, {}).get("primary_surfaces", [])), sha256=str(_metadata.get(d.document_id, {}).get("sha256", ""))) for d in ANNOTATED_DOCUMENTS]
-TRAIN_DOCUMENTS, VALIDATION_DOCUMENTS, SPLIT_MANIFEST = grouped_train_validation_split(ANNOTATED_DOCUMENTS, _records, float(CONFIG["validation_fraction"]), int(CONFIG["seed"])) if ANNOTATED_DOCUMENTS else ([], [], {})
-write_json(TRAINING_ROOT / "split_manifest.json", SPLIT_MANIFEST)
-if FAST_DEV_RUN:
-    TRAIN_DOCUMENTS = TRAIN_DOCUMENTS[: min(16, len(TRAIN_DOCUMENTS))]
-    VALIDATION_DOCUMENTS = VALIDATION_DOCUMENTS[: min(4, len(VALIDATION_DOCUMENTS))]
-
-GPU_STATUS = {"available": False, "name": None}
-if DEPENDENCIES_READY:
-    import torch
-    GPU_STATUS = {
-        "available": torch.cuda.is_available(),
-        "name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
-    }
-if IS_KAGGLE and REQUIRE_GPU and not GPU_STATUS["available"]:
-    raise RuntimeError("GPU is required. Open Kaggle Settings and select a GPU accelerator.")
-
-print()
-print("="*55)
-print("📊 STEP 3: DATASET STATISTICS & VALIDATION LOG")
-print("="*55)
-print(f"Input Inference Docs  : {len(INPUT_DOCUMENTS)}")
-print(f"Annotated Train Docs  : {len(ANNOTATED_DOCUMENTS)}")
-print(f"Train Split Docs      : {len(TRAIN_DOCUMENTS)}")
-print(f"Validation Split Docs : {len(VALIDATION_DOCUMENTS)}")
-print(f"Total GT Entities     : {ANNOTATION_REPORT.get('entity_count', 0)}")
-if ANNOTATION_REPORT.get("by_type"):
-    print("Entity Type Breakdown :")
-    for etype, count in ANNOTATION_REPORT["by_type"].items():
-        print(f"  - {etype:<15}: {count}")
-print(f"GPU Accelerator Status: {GPU_STATUS}")
-print(f"Reproducible Seed     : {SEED_STATUS.get('seed')}")
-print("="*55)
-print()'''
-        )
-    )
-    cells.append(markdown_cell("## 4. Training configuration"))
-    cells.append(
-        code_cell(
-            '''def _looks_like_xlmr_model(path: Path) -> bool:
-    config_path = path / "config.json"
-    if not config_path.is_file():
-        return False
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    return payload.get("model_type") in {"xlm-roberta", "roberta"} and (
-        (path / "tokenizer.json").is_file()
-        or (path / "sentencepiece.bpe.model").is_file()
-    )
-
-attached_models = []
-if IS_KAGGLE:
-    attached_models = [path.parent for path in KAGGLE_INPUT_ROOT.rglob("config.json") if _looks_like_xlmr_model(path.parent)]
-
-if MODEL_NAME_OR_PATH_OVERRIDE.strip():
-    MODEL_SOURCE = MODEL_NAME_OR_PATH_OVERRIDE
-elif attached_models:
-    MODEL_SOURCE = str(attached_models[0])
-else:
-    MODEL_SOURCE = str(CONFIG["ner_model_name"])
-
-NER_EPOCHS = 1 if FAST_DEV_RUN else int(CONFIG["ner_epochs"])
-TRAIN_BATCH_SIZE = 2 if FAST_DEV_RUN else int(CONFIG["batch_size"])
-LEARNING_RATE = float(CONFIG["learning_rate"])
-
-print()
-print("="*55)
-print("⚙️ STEP 4: TRAINING HYPERPARAMETERS & CONFIGURATION")
-print("="*55)
-print(f"Base Model Source     : {MODEL_SOURCE}")
-print(f"Training Epochs       : {NER_EPOCHS}")
-print(f"Batch Size (per GPU)  : {TRAIN_BATCH_SIZE}")
-print(f"Learning Rate         : {LEARNING_RATE}")
-print(f"Max Sequence Length   : {CONFIG.get('max_length')}")
-print(f"Window Stride         : {CONFIG.get('stride')}")
-print(f"Fast Dev Mode Run     : {FAST_DEV_RUN}")
-print("="*55)
-print()'''
-        )
-    )
-    cells.append(markdown_cell("## 5. Train XLM-R token classifier"))
-    cells.append(
-        code_cell(
-            '''from clinical_nlp_lab.training import train_transformer_ner, transformer_training_availability
-
-TRAINING_AVAILABILITY = transformer_training_availability()
-if DEPENDENCIES_READY and TRAIN_DOCUMENTS:
-    if (NER_MODEL_DIR / "model.safetensors").exists() or (NER_MODEL_DIR / "pytorch_model.bin").exists():
-        print(f"[SKIP] Found existing NER weights at {NER_MODEL_DIR}, skipping training.")
-        NER_TRAINING_RESULT = {"trained": False, "reason": "checkpoint_exists", "model_dir": str(NER_MODEL_DIR)}
-    else:
-        NER_TRAINING_RESULT = train_transformer_ner(
-            TRAIN_DOCUMENTS,
-            VALIDATION_DOCUMENTS,
-            NER_MODEL_DIR,
-            model_name=MODEL_SOURCE,
-            max_length=int(CONFIG["max_length"]),
-            stride=int(CONFIG["stride"]),
-            learning_rate=LEARNING_RATE,
-            epochs=NER_EPOCHS,
-            batch_size=TRAIN_BATCH_SIZE,
-            gradient_accumulation_steps=int(CONFIG.get("gradient_accumulation_steps", 1)),
-            seed=int(CONFIG["seed"]),
-        )
-else:
-    NER_TRAINING_RESULT = {
-        "trained": False,
-        "reason": TRAINING_AVAILABILITY.reason if not DEPENDENCIES_READY else "No training documents",
-    }
-
-TRAINING_ROOT.mkdir(parents=True, exist_ok=True)
-write_json(TRAINING_ROOT / "training_result.json", NER_TRAINING_RESULT)
-if IS_KAGGLE and not NER_TRAINING_RESULT.get("trained") and NER_TRAINING_RESULT.get("reason") != "checkpoint_exists":
-    raise RuntimeError(f"NER training did not complete: {NER_TRAINING_RESULT}")
-
-print()
-print("="*55)
-print("🚀 STEP 5: XLM-R NER MODEL TRAINING EXECUTION")
-print("="*55)
-if NER_TRAINING_RESULT.get("trained"):
-    print(f"✅ Training Status     : COMPLETED SUCCESSFULLY")
-    print(f"   - Train Chunks      : {NER_TRAINING_RESULT.get('train_chunks')}")
-    print(f"   - Validation Chunks : {NER_TRAINING_RESULT.get('validation_chunks')}")
-    print(f"   - Final Loss        : {NER_TRAINING_RESULT.get('training_loss'):.6f}")
-    print(f"   - Saved Checkpoint  : {NER_TRAINING_RESULT.get('output_dir')}")
-elif NER_TRAINING_RESULT.get("reason") == "checkpoint_exists":
-    print(f"⏭️ Training Status     : SKIPPED (Checkpoint already exists)")
-else:
-    print(f"⚠️ Training Status     : SKIPPED ({NER_TRAINING_RESULT.get('reason')})")
-print("="*55)
-print()'''
-        )
-    )
-    cells.append(markdown_cell("## 6. Package the trained checkpoint"))
-    cells.append(
-        code_cell(
-            '''archive_base = TRAINED_ARTIFACTS_ZIP.with_suffix("")
-created_archive = shutil.make_archive(str(archive_base), "zip", root_dir=TRAINING_ROOT)
-assert Path(created_archive).is_file()
-zip_size_mb = Path(created_archive).stat().st_size / (1024 * 1024)
-print(f"📦 Checkpoint Packaged: {created_archive} ({zip_size_mb:.2f} MB)")'''
-        )
-    )
-    cells.append(markdown_cell("## 6.5 Garbage collection"))
-    cells.append(
-        code_cell(
-            '''import gc
-import torch
-gc.collect()
-if torch.cuda.is_available():
-    torch.cuda.empty_cache()
-    print("🧹 GPU Memory Cleaned (empty_cache & gc.collect).")'''
-        )
-    )
-    cells.append(markdown_cell("## 7. Inference with the newly trained NER model"))
-    cells.append(
-        code_cell(
-            '''from clinical_nlp_lab.pipeline import run_inference
-
-ACTIVE_NER_MODEL = NER_MODEL_DIR if (NER_TRAINING_RESULT.get("trained") or NER_TRAINING_RESULT.get("reason") == "checkpoint_exists") else None
-INFERENCE_SUMMARY = run_inference(
-    INPUT_SOURCE,
-    OUTPUT_DIR,
-    PROJECT_ROOT / "artifacts",
-    create_zip=True,
-    diagnostics_dir=DIAGNOSTICS_DIR,
-    zip_path=OUTPUT_ZIP,
-    ner_model_dir=ACTIVE_NER_MODEL,
-    train_source=TRAIN_SOURCE,
-    enable_qwen_reranker=ENABLE_QWEN_RERANKER,
-    qwen_gpu_memory_utilization=QWEN_GPU_MEMORY_UTILIZATION,
+from clinical_nlp_lab.kaggle_phases import build_kaggle_phase_runners
+from clinical_nlp_lab.orchestration import (
+    PHASES,
+    LatestPointer,
+    RunConfig,
+    execute_run,
+    finish_run,
+    resume_run,
+    run_inference_only,
+    run_phase,
+    start_run,
 )
 
-print()
-print("="*55)
-print("⚡ STEP 7: INFERENCE PIPELINE EXECUTION LOG")
-print("="*55)
-print(f"Active NER Model      : {INFERENCE_SUMMARY.get('active_ner')}")
-print(f"Documents Inferred    : {INFERENCE_SUMMARY.get('documents_processed')}")
-print(f"Total Entities Output : {INFERENCE_SUMMARY.get('submission_entity_count')}")
-if INFERENCE_SUMMARY.get("by_type"):
-    print("Entity Type Breakdown :")
-    for etype, count in INFERENCE_SUMMARY["by_type"].items():
-        print(f"  - {etype:<15}: {count}")
-print(f"Output Zip Path       : {INFERENCE_SUMMARY.get('zip_path')}")
-print("="*55)
-print()'''
+DATASET_ROOT = Path(os.environ.get("DATASET_ROOT", ""))
+if not str(DATASET_ROOT):
+    dataset_candidates = list(Path("/kaggle/input").rglob("synthetic_train_v2")) if IS_KAGGLE else []
+    DATASET_ROOT = dataset_candidates[0] if dataset_candidates else Path("../data_v2/Training_data/synthetic_train_v2")
+ARTIFACT_DIR = Path(os.environ.get("ARTIFACT_DIR", str(Path("/kaggle/working/artifacts") if IS_KAGGLE else PROJECT_ROOT / "artifacts")))
+ARTIFACT_SOURCE_DIR = Path(os.environ.get("ARTIFACT_SOURCE_DIR", str(PROJECT_ROOT / "artifacts")))
+INPUT_SOURCE = Path(os.environ.get("INPUT_SOURCE", "input.zip"))
+if not INPUT_SOURCE.exists():
+    input_candidates = [
+        PROJECT_ROOT / "input",
+        DATASET_ROOT.parent / "input",
+        *(list(Path("/kaggle/input").rglob("input.zip")) if IS_KAGGLE else []),
+        *(list(Path("/kaggle/input").rglob("input")) if IS_KAGGLE else []),
+    ]
+    INPUT_SOURCE = next((candidate for candidate in input_candidates if candidate.exists()), INPUT_SOURCE)
+MODEL_SOURCE = os.environ.get("MODEL_SOURCE", "xlm-roberta-base")
+OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", "/kaggle/working/run_output" if IS_KAGGLE else "artifacts/run_output"))
+CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", str(ARTIFACT_DIR / "config.json")))
+EXPECTED_GPU_COUNT = int(os.environ.get("EXPECTED_GPU_COUNT", "2"))
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+# On Kaggle the writable artifact directory is intentionally empty at startup;
+# phase 01 copies the read-only artifact bundle into it.  Fingerprint the source
+# config in that case so resume/contract validation is bound before phase 01.
+CONFIG_SOURCE_PATH = ARTIFACT_SOURCE_DIR / "config.json"
+CONFIG_FINGERPRINT_PATH = CONFIG_PATH if CONFIG_PATH.is_file() else CONFIG_SOURCE_PATH
+CONFIG_FINGERPRINT = sha256_file(CONFIG_FINGERPRINT_PATH) if CONFIG_FINGERPRINT_PATH.is_file() else "unbound"
+DATASET_FINGERPRINT = "unbound"
+provenance_path = DATASET_ROOT / "reports" / "dataset_provenance.json"
+if provenance_path.is_file():
+    provenance_payload = json.loads(provenance_path.read_text(encoding="utf-8"))
+    DATASET_FINGERPRINT = str(provenance_payload.get("dataset", {}).get("fingerprint", "unbound"))
+
+config = RunConfig(
+    run_mode=RUN_MODE,
+    run_id=RUN_ID,
+    dataset_root=DATASET_ROOT,
+    output_dir=OUTPUT_DIR,
+    artifact_dir=ARTIFACT_DIR,
+    artifact_source_dir=ARTIFACT_SOURCE_DIR,
+    input_source=INPUT_SOURCE,
+    model_source=MODEL_SOURCE,
+    config_path=CONFIG_PATH,
+    expected_gpu_count=EXPECTED_GPU_COUNT,
+    use_distributed=os.environ.get("USE_DISTRIBUTED", "1") == "1",
+    fast_dev_run=os.environ.get("FAST_DEV_RUN", "0") == "1",
+    dataset_fingerprint=DATASET_FINGERPRINT,
+    config_fingerprint=CONFIG_FINGERPRINT,
+)
+config = replace(config, phase_runners=build_kaggle_phase_runners(config))
+
+if RUN_MODE == "full":
+    ACTIVE_PHASES = PHASES
+    SESSION = start_run(config, phases=ACTIVE_PHASES)
+elif RUN_MODE == "resume":
+    latest_path = Path(config.output_dir) / "LATEST.json"
+    if not latest_path.is_file():
+        raise FileNotFoundError(f"Missing resume pointer: {latest_path}")
+    latest = LatestPointer(**json.loads(latest_path.read_text(encoding="utf-8")))
+    start_index = PHASES.index(latest.phase) + 1
+    ACTIVE_PHASES = PHASES[start_index:]
+    SESSION = start_run(config, phases=ACTIVE_PHASES, run_id=latest.run_id)
+elif RUN_MODE == "inference_only":
+    ACTIVE_PHASES = (PHASES[0], PHASES[1], PHASES[2], PHASES[11], PHASES[12])
+    SESSION = start_run(config, phases=ACTIVE_PHASES)
+else:
+    raise ValueError(f"Unsupported RUN_MODE: {RUN_MODE!r}")
+
+log_step(1, "END", "Runtime session opened", run_mode=RUN_MODE, active_phases=list(ACTIVE_PHASES), run_id=SESSION.run_id)
+# Batch APIs remain available for non-notebook callers: execute_run(config), resume_run(config, latest), run_inference_only(config, bundle).
+'''
+    cells.append(code_cell(setup_source))
+    for index, description in enumerate(PHASE_DOCS, 1):
+        phase = f"phase_{index:02d}_" + (description.lower().replace("/", "_").replace(" ", "_") if False else "")
+        phase_name = CANONICAL_PHASES[index - 1] if index <= len(CANONICAL_PHASES) else f"phase_{index:02d}"
+        cells.append(markdown_cell(f"## Phase {index:02d}: {description}\n\n`{phase_name}` chạy qua runner trong `clinical_nlp_lab.kaggle_phases`; artifact và log được publish sau khi phase kết thúc."))
+        cells.append(
+            code_cell(
+                f'''PHASE_NAME = "{phase_name}"
+PHASE_INDEX = {index}
+if PHASE_NAME in ACTIVE_PHASES:
+    log_step(PHASE_INDEX, "START", "Starting phase", phase=PHASE_NAME)
+    PHASE_RESULT = run_phase(SESSION, PHASE_NAME)
+    log_step(PHASE_INDEX, "END", "Phase completed", phase=PHASE_NAME, result=PHASE_RESULT)
+    print(json.dumps(PHASE_RESULT, ensure_ascii=False, indent=2, default=str))
+else:
+    print(json.dumps({{"phase": PHASE_NAME, "status": "SKIPPED", "run_mode": RUN_MODE}}, ensure_ascii=False))
+'''
+            )
         )
-    )
-    cells.append(markdown_cell("## 7.5 Stage-by-Stage Benchmark Evaluation & Error Diagnostics"))
     cells.append(
         code_cell(
-            '''from clinical_nlp_lab.evaluation import evaluate_benchmark
-from clinical_nlp_lab.pipeline import ClinicalNLPPipeline
-
-eval_roots = []
-if IS_KAGGLE:
-    for root in KAGGLE_INPUT_ROOT.rglob("eval"):
-        if (root / "gt").is_dir() and ((root / "input").is_dir() or (root / "input.zip").is_file()):
-            eval_roots.append(root)
+            '''if SESSION.completed and SESSION.completed[-1] == ACTIVE_PHASES[-1]:
+    SUMMARY = finish_run(SESSION)
+    log_step(9, "END", "Run completed", status=SUMMARY.status, phase=SUMMARY.phase_completed)
+    print(json.dumps(SUMMARY.__dict__, ensure_ascii=False, default=str))
 else:
-    eval_local = PROJECT_ROOT.parent / "ai-race-clinical-data/eval"
-    if (eval_local / "gt").is_dir():
-        eval_roots.append(eval_local)
-
-if eval_roots:
-    eval_dir = eval_roots[0]
-    print(f"[EVAL] Found evaluation benchmark dataset at: {eval_dir}")
-    eval_input = eval_dir / "input" if (eval_dir / "input").is_dir() else eval_dir / "input.zip"
-    eval_gt_dir = eval_dir / "gt"
-
-    pipeline = ClinicalNLPPipeline(PROJECT_ROOT / "artifacts", ner_model_dir=ACTIVE_NER_MODEL)
-    eval_report = evaluate_benchmark(eval_input, eval_gt_dir, pipeline, RUN_ROOT)
-else:
-    print("[EVAL] No benchmark `eval` dataset attached (eval/gt + eval/input). Skipping benchmark evaluation.")'''
+    print(json.dumps({"status": "INCOMPLETE", "completed": SESSION.completed, "next": ACTIVE_PHASES[len(SESSION.completed):]}, ensure_ascii=False))
+'''
         )
     )
-    cells.append(markdown_cell("## 8. Validate submission and write run manifest"))
-    cells.append(
-        code_cell(
-            '''import zipfile
-from clinical_nlp_lab.schema import validate_submission_payload
-
-schema_errors = {}
-for document in INPUT_DOCUMENTS:
-    prediction_path = OUTPUT_DIR / f"{document.document_id}.json"
-    prediction = json.loads(prediction_path.read_text(encoding="utf-8"))
-    errors = validate_submission_payload(prediction, document.raw_text)
-    if errors:
-        schema_errors[document.document_id] = errors
-if schema_errors:
-    raise ValueError(f"Submission schema errors: {list(schema_errors.items())[:3]}")
-
-with zipfile.ZipFile(OUTPUT_ZIP) as archive:
-    zip_names = archive.namelist()
-    assert len(zip_names) == len(INPUT_DOCUMENTS)
-    assert all(name.startswith("output/") and not name.startswith("output/output/") for name in zip_names)
-    assert archive.testzip() is None
-
-RUN_MANIFEST = {
-    "trained": bool(NER_TRAINING_RESULT.get("trained")),
-    "active_ner": INFERENCE_SUMMARY.get("active_ner"),
-    "train_documents": len(TRAIN_DOCUMENTS),
-    "validation_documents": len(VALIDATION_DOCUMENTS),
-    "input_documents": len(INPUT_DOCUMENTS),
-    "submission_entities": INFERENCE_SUMMARY["submission_entity_count"],
-    "schema_error_count": 0,
-    "offset_error_count": INFERENCE_SUMMARY["offset_error_count"],
-    "output_zip": str(OUTPUT_ZIP),
-    "trained_artifacts_zip": str(TRAINED_ARTIFACTS_ZIP),
-}
-write_json(RUN_ROOT / "run_manifest.json", RUN_MANIFEST)
-print(RUN_MANIFEST)'''
-        )
-    )
-    cells.append(
-        markdown_cell(
-            """## 9. Download results
-
-Kaggle outputs:
-
-- `/kaggle/working/output.zip`
-- `/kaggle/working/trained_ner_artifacts.zip`
-- `/kaggle/working/run_manifest.json`
-
-Chọn **Save Version → Save & Run All**, sau đó tải file từ tab Output."""
-        )
-    )
-
-    # Keep the generated fallback template aligned with the canonical v2 runtime.
-    for cell in cells:
-        if cell.get("cell_type") != "code":
-            continue
-        source = "".join(cell.get("source", []))
-        source = source.replace(
-            'search_roots = [PROJECT_ROOT]\nif IS_KAGGLE:\n    search_roots = [path for path in KAGGLE_INPUT_ROOT.iterdir() if path.is_dir()] + search_roots',
-            'search_roots = [PROJECT_ROOT]\nif IS_KAGGLE:\n    search_roots = [path for path in KAGGLE_INPUT_ROOT.iterdir() if path.is_dir()] + search_roots\nelse:\n    search_roots.extend(ancestor for ancestor in PROJECT_ROOT.parents if (ancestor / "input.zip").is_file())',
-        )
-        cell["source"] = source.splitlines(keepends=True)
     return {
         "cells": cells,
         "metadata": {
@@ -593,32 +251,34 @@ Chọn **Save Version → Save & Run All**, sau đó tải file từ tab Output.
 def validate_notebook(notebook: dict[str, Any]) -> dict[str, Any]:
     code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
     empty = [index for index, cell in enumerate(code_cells) if not "".join(cell["source"]).strip()]
+    syntax_errors: list[str] = []
+    for index, cell in enumerate(code_cells):
+        try:
+            ast.parse("".join(cell["source"]))
+        except SyntaxError as exc:
+            syntax_errors.append(f"cell {index}: {exc}")
     return {
         "cell_count": len(notebook["cells"]),
         "code_cell_count": len(code_cells),
         "markdown_cell_count": len(notebook["cells"]) - len(code_cells),
         "empty_code_cells": empty,
-        "valid": notebook.get("nbformat") == 4 and not empty,
+        "syntax_errors": syntax_errors,
+        "phase_count": sum(cell["cell_type"] == "markdown" and "## Phase " in "".join(cell["source"]) for cell in notebook["cells"]),
+        "valid": notebook.get("nbformat") == 4 and not empty and not syntax_errors,
     }
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build the Kaggle Clinical NLP training notebook")
+    parser = argparse.ArgumentParser(description="Build the contract-first Kaggle Clinical NLP notebook")
     parser.add_argument("--output", type=Path, default=Path("medical_information_extraction_kaggle.ipynb"))
-    parser.add_argument(
-        "--source",
-        type=Path,
-        default=Path(__file__).resolve().parent.parent / "medical_information_extraction_kaggle.ipynb",
-        help="Canonical notebook template; prevents generated output from drifting behind the reviewed notebook.",
-    )
+    parser.add_argument("--source", type=Path, default=None, help="Optional reviewed notebook template")
     args = parser.parse_args()
-    source_path = args.source.resolve()
-    if source_path.is_file():
-        notebook = json.loads(source_path.read_text(encoding="utf-8"))
+    if args.source is not None and args.source.is_file():
+        notebook = json.loads(args.source.read_text(encoding="utf-8"))
     else:
         notebook = build_notebook()
     report = validate_notebook(notebook)
-    if not report["valid"]:
+    if not report["valid"] or report["phase_count"] != 13:
         raise ValueError(report)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(notebook, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")

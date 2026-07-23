@@ -18,6 +18,7 @@ class TokenWindow:
     label_ids: tuple[int, ...]
     loss_mask: tuple[bool, ...]
     owned_entity_ids: tuple[str, ...]
+    assertion_labels: tuple[tuple[str, ...], ...] = ()
 
 
 def _find_owner_window(
@@ -122,6 +123,11 @@ def build_owner_windows(
                 for ent_id, entity in record_entities
                 if entity_owner_window[ent_id] == w_idx
             )
+            assertion_labels = tuple(
+                tuple(entity.assertions)
+                for ent_id, entity in record_entities
+                if entity_owner_window[ent_id] == w_idx
+            )
 
             label_ids: list[int] = []
             loss_masks: list[bool] = []
@@ -174,6 +180,7 @@ def build_owner_windows(
                     label_ids=tuple(label_ids),
                     loss_mask=tuple(loss_masks),
                     owned_entity_ids=owned_ent_ids,
+                    assertion_labels=assertion_labels,
                 )
             )
 

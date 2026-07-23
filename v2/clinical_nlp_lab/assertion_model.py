@@ -25,6 +25,24 @@ class AssertionThresholdArtifact:
         }
 
 
+@dataclass(frozen=True)
+class AssertionBindingArtifact:
+    schema_id: str
+    schema_version: int
+    encoder_hash: str
+    tokenizer_hash: str
+    encoder_frozen: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_id": self.schema_id,
+            "schema_version": self.schema_version,
+            "encoder_hash": self.encoder_hash,
+            "tokenizer_hash": self.tokenizer_hash,
+            "encoder_frozen": self.encoder_frozen,
+        }
+
+
 def pool_mention_features(
     hidden_states: Tensor,  # [B, L, D]
     entity_spans: Tensor,   # [N, 3] = (b_idx, start_tok, end_tok)
@@ -84,6 +102,74 @@ class AssertionHead(nn.Module):
                 logits = logits.masked_fill(is_lab.unsqueeze(-1), -10000.0)
 
         return logits
+
+
+class FrozenAssertionAdapter(nn.Module):
+    """Reuse the final NER encoder while allowing gradients only in the head."""
+
+    def __init__(
+        self,
+        encoder: nn.Module,
+        head: AssertionHead,
+        binding: AssertionBindingArtifact,
+    ) -> None:
+        super().__init__()
+        self.encoder = encoder
+        self.head = head
+        self.binding = binding
+        self.encoder.eval()
+        for parameter in self.encoder.parameters():
+            parameter.requires_grad_(False)
+
+    def train(self, mode: bool = True) -> "FrozenAssertionAdapter":
+        """Keep the shared encoder in eval mode even when the head trains."""
+        super().train(mode)
+        self.encoder.eval()
+        return self
+
+    def forward(
+        self,
+        input_ids: Tensor,
+        attention_mask: Tensor,
+        entity_spans: Tensor,
+        entity_types: Tensor,
+    ) -> Tensor:
+        with torch.no_grad():
+            outputs = self.encoder(input_ids=input_ids, attention_mask=attention_mask)
+            hidden_states = outputs.last_hidden_state
+        mention_features = pool_mention_features(hidden_states, entity_spans, entity_types)
+        return self.head(mention_features, entity_types=entity_types)
+
+
+def build_frozen_assertion_adapter(
+    encoder: nn.Module,
+    hidden_dim: int,
+    encoder_hash: str,
+    tokenizer_hash: str,
+) -> FrozenAssertionAdapter:
+    if len(encoder_hash) != 64 or len(tokenizer_hash) != 64:
+        raise ValueError("encoder_hash and tokenizer_hash must be SHA-256 values")
+    binding = AssertionBindingArtifact(
+        schema_id="clinical_nlp.assertion_binding",
+        schema_version=1,
+        encoder_hash=encoder_hash,
+        tokenizer_hash=tokenizer_hash,
+        encoder_frozen=True,
+    )
+    return FrozenAssertionAdapter(encoder, AssertionHead(hidden_dim=hidden_dim), binding)
+
+
+def validate_assertion_binding(
+    adapter: FrozenAssertionAdapter,
+    encoder_hash: str,
+    tokenizer_hash: str,
+) -> None:
+    if adapter.binding.encoder_hash != encoder_hash:
+        raise ValueError("encoder hash mismatch")
+    if adapter.binding.tokenizer_hash != tokenizer_hash:
+        raise ValueError("tokenizer hash mismatch")
+    if not adapter.binding.encoder_frozen or any(parameter.requires_grad for parameter in adapter.encoder.parameters()):
+        raise ValueError("assertion encoder must remain frozen")
 
 
 def fit_assertion_thresholds(

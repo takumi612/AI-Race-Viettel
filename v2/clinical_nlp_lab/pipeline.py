@@ -5,7 +5,7 @@ import logging
 import zipfile
 from collections import Counter
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from .assertions import HybridAssertionPredictor
 from .candidate_policy import CandidatePolicy, apply_candidate_policy
@@ -51,6 +51,26 @@ def enrich_records_from_train_documents(
                         rxnorm_added += 1
 
     return icd10_added, rxnorm_added
+
+
+def load_candidate_policy(
+    artifact_dir: str | Path,
+    *,
+    default_min_score: float = 0.5,
+    default_min_margin: float = 0.05,
+    output_k: int = 1,
+) -> CandidatePolicy:
+    """Load a persisted calibration artifact, falling back deterministically."""
+    path = Path(artifact_dir) / "candidate_calibration.json"
+    if not path.is_file():
+        return CandidatePolicy(
+            min_score=default_min_score,
+            min_margin=default_min_margin,
+            output_k=output_k,
+        )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    calibration = payload.get("calibration", payload) if isinstance(payload, dict) else payload
+    return CandidatePolicy.from_calibration(calibration, min_margin=default_min_margin)
 
 
 class ClinicalNLPPipeline:
@@ -120,9 +140,10 @@ class ClinicalNLPPipeline:
             rxnorm_index,
             top_k=int(self.config["candidate_top_k"])
         )
-        self.candidate_policy = CandidatePolicy(
-            min_score=float(self.config["thresholds"].get("candidate_min_score", 0.5)),
-            min_margin=float(self.config["thresholds"].get("candidate_min_margin", 0.05)),
+        self.candidate_policy = load_candidate_policy(
+            self.artifact_dir,
+            default_min_score=float(self.config["thresholds"].get("candidate_min_score", 0.5)),
+            default_min_margin=float(self.config["thresholds"].get("candidate_min_margin", 0.05)),
             output_k=int(self.config.get("candidate_output_k", 1)),
         )
         self.assertion_predictor = HybridAssertionPredictor()
@@ -232,6 +253,121 @@ class ClinicalNLPPipeline:
         }
 
 
+def run_inference_with_bundle(
+    input_source: str | Path,
+    output_dir: str | Path,
+    bundle: Any,
+    entity_mapping: Mapping[str, Any],
+    assertion_mapping: Mapping[str, Any] | None = None,
+    config: Any | None = None,
+    create_zip: bool = True,
+    diagnostics_dir: str | Path | None = None,
+    zip_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Run the final model bundle through the production submission contract.
+
+    This path deliberately accepts an already-bound ``FinalModelBundle``. It does
+    not instantiate or fit a model and therefore is safe for the Kaggle inference
+    phase and for CPU contract tests.
+    """
+    from .inference import InferenceConfig, infer_document
+
+    inference_config = config if config is not None else InferenceConfig()
+    documents = load_input_documents(input_source)
+    output_path = Path(output_dir)
+    diagnostics_path = Path(diagnostics_dir) if diagnostics_dir else output_path.parent / "diagnostics"
+    output_path.mkdir(parents=True, exist_ok=True)
+    diagnostics_path.mkdir(parents=True, exist_ok=True)
+    for directory in (output_path, diagnostics_path):
+        for existing in directory.glob("*.json"):
+            existing.unlink()
+
+    internal_to_official = dict(entity_mapping.get("internal_to_official", {}))
+    assertion_internal_to_official = dict((assertion_mapping or {}).get("internal_to_official", {}))
+    drop_unmapped = bool(entity_mapping.get("drop_unmapped", True))
+    type_counts: Counter[str] = Counter()
+    candidate_linked = 0
+    output_files: list[Path] = []
+
+    for source_document in documents:
+        inferred = infer_document(
+            source_document.document_id,
+            source_document.raw_text,
+            bundle,
+            inference_config,
+        )
+        submission: list[dict[str, Any]] = []
+        dropped: Counter[str] = Counter()
+        for entity in inferred.entities:
+            official_type = internal_to_official.get(entity.type)
+            if not official_type:
+                dropped[entity.type] += 1
+                if drop_unmapped:
+                    continue
+                official_type = entity.type
+            official_assertions = [
+                assertion_internal_to_official.get(label, label)
+                for label in entity.assertions
+            ]
+            submission.append(entity.to_submission(official_type, official_assertions))
+            type_counts[entity.type] += 1
+            candidate_linked += bool(entity.candidates)
+
+        errors = validate_submission_payload(submission, source_document.raw_text)
+        if errors:
+            raise ValueError(f"Submission validation failed for {source_document.document_id}: {errors}")
+        output_file = output_path / f"{source_document.document_id}.json"
+        write_json(output_file, submission)
+        write_json(
+            diagnostics_path / f"{source_document.document_id}.json",
+            {
+                "document_id": source_document.document_id,
+                "raw_text_length": len(source_document.raw_text),
+                "internal_entities": [entity.to_diagnostic() for entity in inferred.entities],
+                "dropped_unmapped_types": dict(dropped),
+                "submission_entity_count": len(submission),
+                "offset_validation_passed": True,
+                "training_or_fitting_on_input": False,
+                "primary_path": "final_model_bundle",
+            },
+        )
+        output_files.append(output_file)
+
+    output_files.sort(key=lambda item: natural_document_key(item.stem))
+    if len(output_files) != len(documents):
+        raise ValueError(f"Expected {len(documents)} output files, found {len(output_files)}")
+
+    final_zip: Path | None = None
+    if create_zip:
+        final_zip = Path(zip_path) if zip_path else output_path.parent / "output.zip"
+        final_zip.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(final_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for output_file in output_files:
+                archive.write(output_file, arcname=f"output/{output_file.name}")
+        with zipfile.ZipFile(final_zip) as archive:
+            expected = [f"output/{path.name}" for path in output_files]
+            if archive.namelist() != expected or archive.testzip() is not None:
+                raise ValueError("Invalid output.zip structure or CRC")
+
+    summary = {
+        "document_count": len(documents),
+        "output_json_count": len(output_files),
+        "internal_entity_count": sum(type_counts.values()),
+        "internal_type_counts": dict(type_counts.most_common()),
+        "candidate_linked_entity_count": candidate_linked,
+        "submission_entity_count": sum(
+            len(json.loads(path.read_text(encoding="utf-8"))) for path in output_files
+        ),
+        "offset_error_count": 0,
+        "zip_path": str(final_zip) if final_zip else None,
+        "zip_structure_valid": bool(final_zip),
+        "training_or_fitting_on_input": False,
+        "primary_path": "final_model_bundle",
+    }
+    write_json(diagnostics_path / "run_summary.json", summary)
+    return summary
+
+
 def run_inference(
     input_source: str | Path,
     output_dir: str | Path,
@@ -247,7 +383,27 @@ def run_inference(
     qwen_batch_size: int = 64,
     train_source: str | Path | None = None,
     train_documents: Sequence[ClinicalDocument] | None = None,
+    final_bundle: Any | None = None,
 ) -> dict[str, Any]:
+    if final_bundle is not None:
+        artifact_root = Path(artifact_dir)
+        entity_mapping = json.loads((artifact_root / "entity_type_mapping.json").read_text(encoding="utf-8"))
+        assertion_mapping = json.loads((artifact_root / "assertion_mapping.json").read_text(encoding="utf-8"))
+        from .inference import InferenceConfig
+
+        return run_inference_with_bundle(
+            input_source=input_source,
+            output_dir=output_dir,
+            bundle=final_bundle,
+            entity_mapping=entity_mapping,
+            assertion_mapping=assertion_mapping,
+            config=InferenceConfig(
+                enable_qwen=enable_qwen_reranker,
+            ),
+            create_zip=create_zip,
+            diagnostics_dir=diagnostics_dir,
+            zip_path=zip_path,
+        )
     def gpu_memory_snapshot(stage: str) -> dict[str, str | float | int | None]:
         try:
             import torch

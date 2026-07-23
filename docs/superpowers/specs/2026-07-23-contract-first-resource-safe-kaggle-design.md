@@ -17,10 +17,10 @@ Development**:
 
 1. khóa schema, invariant, model budget và artifact contract trước;
 2. kiểm tra tĩnh notebook và source resolution mà không cần GPU;
-3. chạy regression suite CPU và fake-run có dependency injection;
-4. chạy fast-dev smoke khi có local model/GPU phù hợp;
-5. dùng đúng một Kaggle `Run All` làm acceptance cuối, không dùng Kaggle để dò
-   lỗi cơ bản.
+3. chạy unit/contract test CPU phạm vi nhỏ và fake-run có dependency injection;
+4. không yêu cầu local training, local model reload hay local end-to-end smoke;
+5. người dùng chạy Kaggle `Run All`; log/artifact của từng lần chạy là bằng chứng
+   vận hành để Codex phân tích lỗi, sửa và hướng dẫn resume/chạy lại cho tới khi đạt.
 
 Regression tests vẫn được giữ làm safety net, nhưng không bắt buộc chu trình
 red-green trước mọi thay đổi. Mọi tuyên bố hoàn tất phải dựa trên bằng chứng mới
@@ -384,22 +384,24 @@ wheel/model xảy ra trước khi import/load weights.
   Scoped clause/section rule là diagnostic fallback, không primary khi head hợp
   lệ.
 
-## 11. Verification không cần Kaggle
+## 11. Kiểm tra trước khi người dùng chạy Kaggle
 
-Các bằng chứng bắt buộc trước khi upload:
+Các kiểm tra nhẹ bắt buộc trước khi bàn giao notebook:
 
 - import/compile toàn bộ module và từng code cell;
-- regression suite CPU hiện hữu;
+- unit/contract test CPU có phạm vi nhỏ, không load model lớn và không train;
 - validator data/KB/fingerprint trên dataset thật;
 - notebook contract simulation cho cả ba `RUN_MODE`;
 - fake subprocess kiểm tra phase state, OOM retry và resume mismatch;
 - archive fixture kiểm tra inventory, SHA-256, CRC và atomic publish;
 - model budget fixtures: dưới 9B pass, trên/unknown fail;
-- hai agent review độc lập trên diff và runbook.
+- review diff và runbook theo nhu cầu; agent phụ chỉ hoạt động trong thời gian review.
 
-Không tuyên bố “đã chạy được Kaggle” cho tới khi người vận hành cung cấp artifact
-từ một `Run All` thật. Nếu Kaggle chưa khả dụng, trạng thái đúng là “local
-contract verified; Kaggle acceptance pending”.
+Không thực hiện local training, checkpoint reload hoặc nghiệm thu end-to-end. Người
+dùng thực hiện `Save Version → Run All` trên Kaggle và gửi lại JSONL log, phase state
+cùng artifact liên quan. Codex theo dõi lỗi theo phase/attempt, sửa notebook hoặc mã
+nguồn rồi hướng dẫn `resume` hay chạy lại. Chỉ xác nhận thành công khi một phiên
+`Run All` thật tạo đủ artifact hợp lệ.
 
 ## 12. Pipeline tổng thể
 
@@ -466,5 +468,5 @@ Hãy tưởng tượng pipeline là một bệnh viện có nhiều cửa kiểm
   pointer duy nhất.
 - Runbook mô tả online/offline, path layout, ba mode, VRAM troubleshooting,
   resume và cách đọc log.
-- Local verification đầy đủ; Kaggle success chỉ được xác nhận bằng artifact
-  của một phiên `Run All` thật.
+- Pre-Kaggle contract checks nhẹ đã qua; Kaggle success chỉ được xác nhận bằng
+  artifact của một phiên `Run All` thật do người dùng thực hiện.
