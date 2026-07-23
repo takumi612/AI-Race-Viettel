@@ -104,11 +104,12 @@ e91f1e5 feat: add fail-closed data and KB preflight
 - [x] Work Package 5B: Hard negative, candidate ranker và calibration (candidate_training, build_candidate_features, generate_hard_negatives, fit_candidate_calibration, test_candidate_training, test_candidate_policy).
 - [x] Work Package 5C: Inference merge và KB-first recovery (inference, merge_raw_span_proposals, infer_document, test_inference_data_flow).
 - [x] Work Package 6: Kaggle orchestrator và notebook 13 phase (orchestration, build_kaggle_notebook, test_inference_notebook, test_kaggle_observability).
+- [x] Work Package 7: Runbook và tài liệu vận hành (PIPELINE_VI.md, KAGGLE_RUNBOOK.md, báo cáo lỗi Kaggle).
 
 ### Checkpoint Nhật ký Thực thi Agent (Antigravity Assistant)
 - **Agent Identity**: Antigravity AI Coding Assistant (Advanced Agentic Coding - Google DeepMind).
 - **Điểm xuất phát**: Bắt đầu từ Task 4A chưa hoàn thành trong checklist `docs/superpowers/plans/2026-07-23-contract-first-resource-safe-kaggle-execution.md`.
-- **Tiến độ hiện tại**: Đã hoàn thành 100% Task 4A, 4B, 4C, 5A, 5B, 5C và Task 6. Tất cả unit test contract đều `PASS` (không load model weights nặng local). Notebook `medical_information_extraction_kaggle.ipynb` đã sẵn sàng.
+- **Tiến độ hiện tại**: Đã hoàn thành 100% Task 4A đến Task 7. Tất cả unit test contract đều `PASS`. Notebook `medical_information_extraction_kaggle.ipynb` và tài liệu [PIPELINE_VI.md](file:///d:/AI%20Race%20Viettel/v2/PIPELINE_VI.md) đã sẵn sàng.
 - **Báo cáo lỗi & Hướng xử lý**:
   1. *Lỗi đường dẫn dataset root*: `build_dataset_metadata.py` cần chỉ định đúng path `../data_v2/Training_data/synthetic_train_v2` thay vì root `../data_v2`. -> *Đã xử lý*.
   2. *Lỗi import pytest trong `test_assertion_scope.py`*: Thiếu `import pytest` ở đầu file gây `NameError`. -> *Đã bổ sung import ở đầu file theo đúng user rule*.
@@ -116,7 +117,7 @@ e91f1e5 feat: add fail-closed data and KB preflight
 
 ### Đang thực hiện, chưa được coi là hoàn thành
 
-- [ ] Work Package 7: Runbook và tài liệu vận hành.
+- [ ] Work Package 8: Pre-Kaggle handoff gate & người dùng chạy Kaggle `Run All`.
 
 ### Chưa thực hiện
 
@@ -953,14 +954,14 @@ Expected: exit `0`. (Đã qua: 16 passed, valid notebook generated).
 - Modify: `v2/README.md`
 - Update: chính implementation plan này.
 
-- [ ] Runbook mô tả Kaggle Dataset mount, override, dependency online/offline,
+- [x] Runbook mô tả Kaggle Dataset mount, override, dependency online/offline,
   hardware profile, ba run mode, OOM, resume và artifact download.
-- [ ] `PIPELINE_VI.md` chứa data flow, training flow, inference flow và ELI5.
-- [ ] Ghi rõ người dùng là người thực hiện `Save Version → Run All`.
-- [ ] Khi Kaggle lỗi, yêu cầu người dùng gửi tối thiểu:
+- [x] `PIPELINE_VI.md` chứa data flow, training flow, inference flow và ELI5.
+- [x] Ghi rõ người dùng là người thực hiện `Save Version → Run All`.
+- [x] Khi Kaggle lỗi, yêu cầu người dùng gửi tối thiểu:
   `run_manifest.json`, JSONL log từ phase lỗi, `resource_plan.json`,
   `LATEST.json` nếu có, và traceback đầy đủ.
-- [ ] Không ghi trạng thái “Kaggle success” nếu chưa có artifact phiên thật.
+- [x] Không ghi trạng thái “Kaggle success” nếu chưa có artifact phiên thật.
 
 ### Task 8 — Pre-Kaggle handoff gate
 

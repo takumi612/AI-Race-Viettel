@@ -74,6 +74,16 @@ diagnostics/run_summary.json
 Notebook sẽ dừng nếu thiếu checkpoint sau khi train, thiếu output JSON, sai
 offset, sai schema hoặc `output.zip` có member lỗi CRC.
 
+## Báo cáo sự cố khi Kaggle lỗi
+
+Nếu `Run All` gặp lỗi hoặc không thể hoàn thành, vui lòng gửi lại cho agent tối thiểu các thông tin/file sau:
+
+1. `run_manifest.json` và `LATEST.json` (nếu đã được khởi tạo);
+2. File JSONL log của phase phát sinh lỗi (trong thư mục `logs/` hoặc console output);
+3. `resource_plan.json` và traceback đầy đủ từ cell bị dừng.
+
+Agent sẽ phân tích nguyên nhân lỗi chính xác từ log, đề xuất bản sửa code và hướng dẫn cách `resume` hoặc chạy lại an toàn.
+
 ## Smoke test cục bộ
 
 Có thể kiểm tra trước khi upload Kaggle:
