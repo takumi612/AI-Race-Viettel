@@ -4,11 +4,11 @@
   "assertion_model_name": "xlm-roberta-base",
   "batch_size": 2,
   "candidate_output_k": 1,
-  "candidate_top_k": 10,
-  "enable_regex_fallback": false,
+  "candidate_top_k": 20,
   "diagnostics_dir": "diagnostics",
   "drop_unmapped_entity_types": true,
   "embedding_model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "enable_regex_fallback": false,
   "fast_dev_run": false,
   "gradient_accumulation_steps": 8,
   "icd10_header_row": 3,
@@ -24,7 +24,7 @@
     "LAB_NAME",
     "PATIENT_INFO"
   ],
-  "learning_rate": 0.00003,
+  "learning_rate": 3e-05,
   "max_length": 512,
   "ner_epochs": 20,
   "ner_model_name": "xlm-roberta-base",
@@ -71,8 +71,8 @@
     "position"
   ],
   "thresholds": {
-    "candidate_min_score": 0.5,
     "candidate_min_margin": 0.05,
+    "candidate_min_score": 0.5,
     "dictionary_exact": 0.99,
     "dictionary_phrase": 0.94,
     "overlap_close_confidence": 0.05,

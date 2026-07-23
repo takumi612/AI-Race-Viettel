@@ -8,11 +8,18 @@ import re
 import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable, Iterator, Mapping
 
 from openpyxl import load_workbook
 
 from .text import normalize_alias
+from .kb_contract import (
+    KBContractError,
+    OrganizerCandidateOccurrence,
+    canonical_icd_id,
+    normalized_surface_matches,
+    validate_icd_record_identity,
+)
 
 
 RXNCONSO_FIELDS = [
@@ -75,8 +82,10 @@ def _cell_text(value: Any) -> str:
 
 
 def _canonical_icd10(code: str) -> tuple[str, list[str]]:
-    markers = [marker for marker in ("†", "*") if marker in code]
-    canonical = re.sub(r"[†*]", "", code).strip()
+    cleaned = code.strip()
+    canonical = canonical_icd_id(cleaned)
+    suffix = cleaned[len(canonical) :]
+    markers = list(dict.fromkeys(suffix))
     return canonical, markers
 
 
@@ -86,6 +95,9 @@ def build_icd10_dictionary(
     metadata_path: str | Path,
     sheet_name: str = "ICD10",
     header_row: int = 3,
+    *,
+    source_label: str | None = None,
+    artifact_label: str | None = None,
 ) -> dict[str, Any]:
     workbook_path = Path(workbook_path)
     workbook = load_workbook(workbook_path, read_only=True, data_only=True)
@@ -135,6 +147,7 @@ def build_icd10_dictionary(
             canonical_code,
             {
                 "candidate_id": canonical_code,
+                "canonical_id": canonical_code,
                 "code_with_dot": canonical_code,
                 "code_without_dot": expected_no_dot,
                 "name_vi": "",
@@ -142,6 +155,7 @@ def build_icd10_dictionary(
                 "aliases": [],
                 "detection_aliases": [],
                 "display_codes": [],
+                "official_display_ids": [],
                 "markers": [],
                 "source": "ICD10.xlsx",
             },
@@ -151,6 +165,7 @@ def build_icd10_dictionary(
         if name_en and not record["name_en"]:
             record["name_en"] = name_en
         record["display_codes"].append(display_code)
+        record["official_display_ids"].append(display_code)
         record["markers"].extend(markers)
         record["aliases"].extend(value for value in (canonical_code, expected_no_dot, name_en, name_vi) if value)
         record["detection_aliases"].extend(value for value in (name_en, name_vi) if value)
@@ -162,14 +177,16 @@ def build_icd10_dictionary(
         record["aliases"] = list(dict.fromkeys(record["aliases"]))
         record["detection_aliases"] = list(dict.fromkeys(record["detection_aliases"]))
         record["display_codes"] = list(dict.fromkeys(record["display_codes"]))
+        record["official_display_ids"] = list(dict.fromkeys(record["official_display_ids"]))
         record["markers"] = list(dict.fromkeys(record["markers"]))
+        validate_icd_record_identity(record)
         normalized_aliases.update(normalize_alias(alias) for alias in record["aliases"] if normalize_alias(alias))
         records.append(record)
 
     written, output_sha = write_jsonl_gz(output_path, records)
     metadata = {
-        "artifact": str(Path(output_path).as_posix()),
-        "source": str(workbook_path.as_posix()),
+        "artifact": artifact_label or str(Path(output_path).as_posix()),
+        "source": source_label or str(workbook_path.as_posix()),
         "source_sha256": sha256_file(workbook_path),
         "sheet": sheet_name,
         "header_row": header_row,
@@ -179,6 +196,9 @@ def build_icd10_dictionary(
         "duplicate_display_rows_removed": duplicate_display_rows,
         "missing_english_name_rows": missing_english,
         "marker_counts": {"dagger": marker_counts["†"], "asterisk": marker_counts["*"]},
+        "identity_pair_count": sum(len(record["official_display_ids"]) for record in records),
+        "multi_display_canonical_count": sum(len(record["official_display_ids"]) > 1 for record in records),
+        "schema_version": 2,
         "sha256": output_sha,
     }
     write_metadata(metadata_path, metadata)
@@ -203,54 +223,150 @@ def build_rxnorm_dictionary(
     sources: Iterable[str],
     tty_values: Iterable[str],
     suppress_values: Iterable[str],
+    *,
+    organizer_requirements: Mapping[
+        str, OrganizerCandidateOccurrence | Iterable[OrganizerCandidateOccurrence]
+    ]
+    | None = None,
+    dataset_pair_fingerprint: str | None = None,
+    evidence_path: str | Path | None = None,
+    evidence_metadata_path: str | Path | None = None,
+    expected_supplement_count: int | None = None,
+    source_label: str | None = None,
+    artifact_label: str | None = None,
+    evidence_label: str | None = None,
 ) -> dict[str, Any]:
     zip_path = Path(zip_path)
+    source_zip_sha256 = sha256_file(zip_path)
     languages_set = set(languages)
     sources_set = set(sources)
     tty_set = set(tty_values)
     suppress_set = set(suppress_values)
+    if organizer_requirements and not dataset_pair_fingerprint:
+        raise KBContractError("A dataset-pair fingerprint is required for organizer supplementation")
+    if organizer_requirements and evidence_path is None:
+        raise KBContractError("An evidence artifact is required for organizer supplementation")
     row_count = 0
     filtered_count = 0
     tty_counts = Counter()
     candidates: dict[str, dict[str, Any]] = {}
+    eligible_supplements: dict[str, list[tuple[int, dict[str, str]]]] = defaultdict(list)
+    member_digest = hashlib.sha256()
 
     with zipfile.ZipFile(zip_path) as archive:
         if member not in archive.namelist():
             raise ValueError(f"Missing RxNorm member: {member}")
         with archive.open(member) as raw_stream:
-            with io.TextIOWrapper(raw_stream, encoding="utf-8", errors="strict", newline="") as text_stream:
-                for row_count, line in enumerate(text_stream, start=1):
-                    record = dict(zip(RXNCONSO_FIELDS, _split_rrf_line(line, len(RXNCONSO_FIELDS))))
-                    if record["LAT"] not in languages_set:
-                        continue
-                    if record["SAB"] not in sources_set:
-                        continue
-                    if record["TTY"] not in tty_set:
-                        continue
-                    if record["SUPPRESS"] not in suppress_set:
-                        continue
-                    filtered_count += 1
-                    tty_counts[record["TTY"]] += 1
-                    candidate = candidates.setdefault(
-                        record["RXCUI"],
-                        {
-                            "candidate_id": record["RXCUI"],
-                            "canonical_name": record["STR"],
-                            "aliases": [],
-                            "detection_aliases": [],
-                            "tty": [],
-                            "sources": [],
-                            "ingredient_ids": [],
-                            "brand_names": [],
-                            "source": "RxNorm",
-                        },
-                    )
-                    candidate["aliases"].append(record["STR"])
-                    candidate["detection_aliases"].append(record["STR"])
-                    candidate["tty"].append(record["TTY"])
-                    candidate["sources"].append(record["SAB"])
-                    if record["TTY"] == "BN":
-                        candidate["brand_names"].append(record["STR"])
+            for row_count, raw_line in enumerate(raw_stream, start=1):
+                member_digest.update(raw_line)
+                line = raw_line.decode("utf-8", errors="strict")
+                record = dict(zip(RXNCONSO_FIELDS, _split_rrf_line(line, len(RXNCONSO_FIELDS))))
+                base_filters_match = (
+                    record["LAT"] in languages_set
+                    and record["SAB"] in sources_set
+                    and record["TTY"] in tty_set
+                )
+                if (
+                    organizer_requirements
+                    and record["RXCUI"] in organizer_requirements
+                    and base_filters_match
+                    and record["SUPPRESS"] in {"O", "E"}
+                ):
+                    eligible_supplements[record["RXCUI"]].append((row_count, record))
+                if not base_filters_match or record["SUPPRESS"] not in suppress_set:
+                    continue
+                filtered_count += 1
+                tty_counts[record["TTY"]] += 1
+                candidate = candidates.setdefault(
+                    record["RXCUI"],
+                    {
+                        "candidate_id": record["RXCUI"],
+                        "canonical_name": record["STR"],
+                        "aliases": [],
+                        "detection_aliases": [],
+                        "tty": [],
+                        "sources": [],
+                        "ingredient_ids": [],
+                        "brand_names": [],
+                        "source": "RxNorm",
+                    },
+                )
+                candidate["aliases"].append(record["STR"])
+                candidate["detection_aliases"].append(record["STR"])
+                candidate["tty"].append(record["TTY"])
+                candidate["sources"].append(record["SAB"])
+                if record["TTY"] == "BN":
+                    candidate["brand_names"].append(record["STR"])
+
+    requirement_ids = set(organizer_requirements or {})
+    missing_ids = requirement_ids - set(candidates)
+    supplemental_evidence: list[dict[str, Any]] = []
+    supplement_tty_counts: Counter[str] = Counter()
+    supplement_suppress_counts: Counter[str] = Counter()
+    unexpected_eligible = set(eligible_supplements) - missing_ids
+    if unexpected_eligible:
+        # O/E rows for a normally admitted ID are irrelevant and must never be selected.
+        for candidate_id in unexpected_eligible:
+            eligible_supplements.pop(candidate_id, None)
+    for candidate_id in sorted(missing_ids, key=lambda value: (len(value), value)):
+        matches = eligible_supplements.get(candidate_id, [])
+        if len(matches) != 1:
+            raise KBContractError(
+                f"Expected exactly one eligible O/E row for organizer RxCUI {candidate_id}, found {len(matches)}"
+            )
+        raw_occurrences = organizer_requirements[candidate_id]  # type: ignore[index]
+        if isinstance(raw_occurrences, OrganizerCandidateOccurrence):
+            occurrence_rows = (raw_occurrences,)
+        else:
+            occurrence_rows = tuple(raw_occurrences)
+        if len(occurrence_rows) != 1:
+            raise KBContractError(
+                f"Expected exactly one organizer occurrence for supplemental RxCUI {candidate_id}, "
+                f"found {len(occurrence_rows)}"
+            )
+        occurrence = occurrence_rows[0]
+        member_line, record = matches[0]
+        if not normalized_surface_matches(occurrence.mention_text, record["STR"]):
+            raise KBContractError(
+                f"Organizer surface does not match authoritative STR for RxCUI {candidate_id}"
+            )
+        candidate = {
+            "candidate_id": candidate_id,
+            "canonical_name": record["STR"],
+            "aliases": [record["STR"]],
+            "detection_aliases": [],
+            "tty": [record["TTY"]],
+            "sources": [record["SAB"]],
+            "ingredient_ids": [],
+            "brand_names": [record["STR"]] if record["TTY"] == "BN" else [],
+            "source": "RxNorm",
+            "suppress_status": record["SUPPRESS"],
+        }
+        candidates[candidate_id] = candidate
+        supplement_tty_counts[record["TTY"]] += 1
+        supplement_suppress_counts[record["SUPPRESS"]] += 1
+        supplemental_evidence.append(
+            {
+                "dataset_pair_fingerprint": dataset_pair_fingerprint,
+                "document_id": occurrence.document_id,
+                "entity_index": occurrence.entity_index,
+                "candidate_id": candidate_id,
+                "mention_sha256": occurrence.mention_sha256,
+                "source_zip_sha256": source_zip_sha256,
+                "member": member,
+                "member_sha256": member_digest.hexdigest(),
+                "member_line": member_line,
+                **{field: record[field] for field in ("RXCUI", "RXAUI", "LAT", "SAB", "TTY", "SUPPRESS", "CODE", "STR")},
+                "selection_reason": "organizer_required_suppressed_term",
+            }
+        )
+    if set(eligible_supplements) != missing_ids:
+        unresolved = sorted(missing_ids - set(eligible_supplements), key=lambda value: (len(value), value))
+        raise KBContractError(f"Unresolved organizer RxNorm IDs: {unresolved[:10]}")
+    if expected_supplement_count is not None and len(supplemental_evidence) != expected_supplement_count:
+        raise KBContractError(
+            f"Expected {expected_supplement_count} organizer supplements, found {len(supplemental_evidence)}"
+        )
 
     records: list[dict[str, Any]] = []
     normalized_aliases: set[str] = set()
@@ -265,11 +381,33 @@ def build_rxnorm_dictionary(
         records.append(candidate)
 
     written, output_sha = write_jsonl_gz(output_path, records)
+    evidence_sha: str | None = None
+    if evidence_path is not None:
+        supplemental_evidence.sort(key=lambda row: (len(str(row["candidate_id"])), str(row["candidate_id"])))
+        evidence_count, evidence_sha = write_jsonl_gz(evidence_path, supplemental_evidence)
+        if evidence_count != len(supplemental_evidence):
+            raise KBContractError("Supplement evidence write count mismatch")
+        if evidence_metadata_path is not None:
+            write_metadata(
+                evidence_metadata_path,
+                {
+                    "artifact": evidence_label or str(Path(evidence_path).as_posix()),
+                    "candidate_count": evidence_count,
+                    "dataset_pair_fingerprint": dataset_pair_fingerprint,
+                    "member": member,
+                    "member_sha256": member_digest.hexdigest(),
+                    "schema_version": 1,
+                    "sha256": evidence_sha,
+                    "source": source_label or str(zip_path.as_posix()),
+                    "source_sha256": source_zip_sha256,
+                },
+            )
     metadata = {
-        "artifact": str(Path(output_path).as_posix()),
-        "source": str(zip_path.as_posix()),
-        "source_sha256": sha256_file(zip_path),
+        "artifact": artifact_label or str(Path(output_path).as_posix()),
+        "source": source_label or str(zip_path.as_posix()),
+        "source_sha256": source_zip_sha256,
         "member": member,
+        "member_sha256": member_digest.hexdigest(),
         "member_rows_scanned": row_count,
         "filtered_rows": filtered_count,
         "candidate_count": written,
@@ -281,6 +419,14 @@ def build_rxnorm_dictionary(
             "SUPPRESS": sorted(suppress_set),
         },
         "tty_counts": dict(sorted(tty_counts.items())),
+        "normal_candidate_count": written - len(supplemental_evidence),
+        "supplement_candidate_count": len(supplemental_evidence),
+        "supplement_tty_counts": dict(sorted(supplement_tty_counts.items())),
+        "supplement_suppress_counts": dict(sorted(supplement_suppress_counts.items())),
+        "supplement_evidence_artifact": evidence_label if evidence_sha else None,
+        "supplement_evidence_sha256": evidence_sha,
+        "dataset_pair_fingerprint": dataset_pair_fingerprint,
+        "schema_version": 2,
         "sha256": output_sha,
     }
     write_metadata(metadata_path, metadata)

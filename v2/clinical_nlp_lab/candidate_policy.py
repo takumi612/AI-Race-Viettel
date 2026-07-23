@@ -31,4 +31,14 @@ def apply_candidate_policy(
         second_score = float(candidates[1].get("score", 0.0))
         if top_score - second_score < policy.min_margin:
             return []
-    return [str(item["candidate_id"]) for item in candidates[: policy.output_k]]
+    selected: list[str] = []
+    for item in candidates[: policy.output_k]:
+        output_id = str(item["candidate_id"])
+        official_display_id = item.get("official_display_id")
+        canonical_id = item.get("canonical_id")
+        if official_display_id is not None and output_id != str(official_display_id):
+            raise ValueError("candidate_id must retain the selected official_display_id")
+        if canonical_id is not None and not str(canonical_id):
+            raise ValueError("canonical_id must be non-empty when supplied")
+        selected.append(output_id)
+    return selected

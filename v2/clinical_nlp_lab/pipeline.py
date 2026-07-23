@@ -12,6 +12,7 @@ from .candidate_policy import CandidatePolicy, apply_candidate_policy
 from .config import load_config
 from .data import load_input_documents, natural_document_key
 from .kb import load_candidate_dictionary
+from .kb_contract import canonical_icd_id
 from .linking import parse_medication_attributes
 from .retrieval import HybridCandidateIndex, HybridEntityLinker, create_embedding_model
 from .ner import DictionaryRuleEntityDetector, TransformerNERDetector, refine_boundaries, resolve_overlaps
@@ -37,8 +38,9 @@ def enrich_records_from_train_documents(
                 continue
             for code in entity.candidates:
                 code_str = str(code).strip()
-                if code_str in icd10_map:
-                    aliases = icd10_map[code_str].setdefault("aliases", [])
+                icd_lookup = canonical_icd_id(code_str)
+                if icd_lookup in icd10_map:
+                    aliases = icd10_map[icd_lookup].setdefault("aliases", [])
                     if text not in aliases:
                         aliases.append(text)
                         icd10_added += 1

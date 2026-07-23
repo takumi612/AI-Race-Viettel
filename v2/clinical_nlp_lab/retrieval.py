@@ -24,6 +24,31 @@ except ImportError:
 
 from .text import normalize_alias
 from .linking import parse_medication_attributes
+from .kb_contract import KBContractError, candidate_identity, official_output_id
+
+
+def _ranked_candidate_payload(
+    record: dict[str, Any],
+    *,
+    score: float,
+    raw_score: float,
+    method: str,
+    requested_display_id: str | None = None,
+    canonical_id: str | None = None,
+) -> dict[str, Any]:
+    identity_record = record
+    if not record.get("canonical_id") and not record.get("candidate_id") and canonical_id:
+        identity_record = {**record, "candidate_id": canonical_id, "canonical_id": canonical_id}
+    identity = official_output_id(identity_record, requested_display_id=requested_display_id)
+    return {
+        "candidate_id": identity.official_display_id,
+        "canonical_id": identity.canonical_id,
+        "official_display_id": identity.official_display_id,
+        "score": score,
+        "raw_score": raw_score,
+        "method": method,
+        "name": record.get("canonical_name") or record.get("name_vi") or record.get("name_en") or "",
+    }
 
 
 def create_embedding_model(model_name: str):
@@ -172,13 +197,13 @@ class HybridCandidateIndex:
         max_score = ranked[0][1] if ranked else 0.0
 
         return [
-            {
-                "candidate_id": candidate_id,
-                "score": round(score / max_score, 6) if max_score else 0.0,
-                "raw_score": round(score, 6),
-                "method": "hybrid_rrf",
-                "name": self.records[candidate_id].get("canonical_name") or self.records[candidate_id].get("name_vi") or "",
-            }
+            _ranked_candidate_payload(
+                self.records[candidate_id],
+                score=round(score / max_score, 6) if max_score else 0.0,
+                raw_score=round(score, 6),
+                method="hybrid_rrf",
+                canonical_id=candidate_id,
+            )
             for candidate_id, score in ranked
         ]
 
@@ -204,6 +229,9 @@ class _LegacyHybridEntityLinker:
             return [], []
 
         ranked = index.retrieve(query, top_k=self.top_k)
+        for item in ranked:
+            item.setdefault("canonical_id", str(item.get("candidate_id", "")))
+            item.setdefault("official_display_id", str(item.get("candidate_id", "")))
         candidate_ids = [item["candidate_id"] for item in ranked]
         
         return candidate_ids, ranked
@@ -237,23 +265,33 @@ class HybridEntityLinker:
             return [], []
 
         ranked = index.retrieve(query, top_k=self.top_k)
+        for item in ranked:
+            item.setdefault("canonical_id", str(item.get("candidate_id", "")))
+            item.setdefault("official_display_id", str(item.get("candidate_id", "")))
         exact_items: list[dict[str, Any]] = []
-        for candidate_id in existing_candidates or ():
-            candidate_id = str(candidate_id)
-            if candidate_id not in index.records:
+        ontology = "icd10" if entity_type == "DISEASE" else "rxnorm"
+        for requested_id in existing_candidates or ():
+            try:
+                identity = candidate_identity(ontology, str(requested_id))
+            except KBContractError:
                 continue
-            record = index.records[candidate_id]
-            exact_items.append(
-                {
-                    "candidate_id": candidate_id,
-                    "score": 1.0,
-                    "raw_score": 1.0,
-                    "method": "detector_exact_phrase",
-                    "name": record.get("canonical_name") or record.get("name_vi") or record.get("name_en") or "",
-                }
-            )
-        existing_ids = {item["candidate_id"] for item in exact_items}
-        ranked = (exact_items + [item for item in ranked if item["candidate_id"] not in existing_ids])[: self.top_k]
+            if identity.canonical_id not in index.records:
+                continue
+            record = index.records[identity.canonical_id]
+            try:
+                exact_items.append(
+                    _ranked_candidate_payload(
+                        record,
+                        score=1.0,
+                        raw_score=1.0,
+                        method="detector_exact_phrase",
+                        requested_display_id=identity.official_display_id,
+                    )
+                )
+            except KBContractError:
+                continue
+        existing_ids = {item["canonical_id"] for item in exact_items}
+        ranked = (exact_items + [item for item in ranked if item["canonical_id"] not in existing_ids])[: self.top_k]
         return [item["candidate_id"] for item in ranked], ranked
 
 
@@ -299,13 +337,15 @@ class HybridCandidateIndex(_LegacyHybridCandidateIndex):
             if candidate_id in seen:
                 continue
             seen.add(candidate_id)
-            output.append({
-                "candidate_id": candidate_id,
-                "score": round(1.0 / (rank + 1), 6),
-                "raw_score": round(1.0 / (rank + 1), 6),
-                "method": "lexical_fallback",
-                "name": self.records[candidate_id].get("canonical_name") or self.records[candidate_id].get("name_vi") or "",
-            })
+            output.append(
+                _ranked_candidate_payload(
+                    self.records[candidate_id],
+                    score=round(1.0 / (rank + 1), 6),
+                    raw_score=round(1.0 / (rank + 1), 6),
+                    method="lexical_fallback",
+                    canonical_id=candidate_id,
+                )
+            )
             if len(output) >= top_k:
                 break
         return output

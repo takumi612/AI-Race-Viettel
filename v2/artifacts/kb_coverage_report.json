@@ -1,0 +1,41 @@
+{
+  "artifact_hashes": {
+    "icd10": "c56130113b7a33243ce6ee5d705a4b8868c196b8dbc8a7f1bcf2c5e68c7d3e4b",
+    "relations": "d971cf2cfb80683c298cd9e6856e993dcae8f42e75905a8802ab42e9aea3450e",
+    "rxnorm": "061a88ed38367c9aa212976e9cdf2068ff81d03834ae7966c52ddeea573cdd88"
+  },
+  "builder_version": "2.0.0",
+  "config_sha256": "7c47f458c6eda6eff1290f3581aa50dd9eeec1531cff386aa2fe43218d9e77d0",
+  "contract_version": "1.0.0",
+  "coverage": {
+    "abstentions": 1373,
+    "counts_by_ontology": {
+      "icd10": 1454,
+      "rxnorm": 785
+    },
+    "coverage_rate": 1.0,
+    "covered_by_ontology": {
+      "icd10": 1454,
+      "rxnorm": 785
+    },
+    "covered_occurrences": 2239,
+    "missing_occurrence_count": 0,
+    "status": "PASS",
+    "total_non_empty_occurrences": 2239,
+    "unresolved": []
+  },
+  "dataset_pair_fingerprint": "65a01d7d658e1e79c5fb50494e38634469bb808313f3f5e0aea72ec11cab6c5d",
+  "evidence_sha256": "92f14e8cc3233f160a46e885c7a9b86f655fd50e653763a73ac389af86e83617",
+  "kb_build_report_sha256": "6485b7bb7bd97cf0910e8fb2e1fd06f83542b8e18afe766c5ce0fb922d650b14",
+  "linking_train_eligible_bypass_allowed": false,
+  "manifest_sha256": "7c29f552557db967e4ab531388bfebad62ed18e56597f0b2326f2c16356eeae2",
+  "schema_id": "clinical_nlp.kb_coverage",
+  "schema_version": 1,
+  "source_hashes": {
+    "icd10_workbook": "4737e36d65698de987b718485c4f2c7dab8c8b71fdd263854798c27ee89e528e",
+    "rxnorm_conso_member": "093e26be3a173770aa6d44ab10fe7b3e8c02fce88a0dc94ca7816fab1e3ffece",
+    "rxnorm_zip": "53523ee9f1fcd7ee426698edf566aedebe548a6ec8cc372c41271fc5b28e784c"
+  },
+  "status": "PASS",
+  "unresolved": []
+}

@@ -1,17 +1,20 @@
 {
-  "artifact": "D:/2 Code/AI_race/artifacts/icd10/icd10_dictionary.jsonl.gz",
+  "artifact": "artifacts/icd10/icd10_dictionary.jsonl.gz",
   "candidate_count": 12137,
   "duplicate_display_rows_removed": 1,
   "header_row": 3,
+  "identity_pair_count": 12218,
   "marker_counts": {
     "asterisk": 776,
     "dagger": 82
   },
   "missing_english_name_rows": 1,
+  "multi_display_canonical_count": 81,
   "normalized_alias_count": 46121,
   "raw_row_count": 12219,
-  "sha256": "50ff6a412503352f7c5648e8c47031f943fa9261943f36d856c64810bd868064",
+  "schema_version": 2,
+  "sha256": "c56130113b7a33243ce6ee5d705a4b8868c196b8dbc8a7f1bcf2c5e68c7d3e4b",
   "sheet": "ICD10",
-  "source": "D:/2 Code/AI_race/ICD10.xlsx",
+  "source": "data/kb/ICD10.xlsx",
   "source_sha256": "4737e36d65698de987b718485c4f2c7dab8c8b71fdd263854798c27ee89e528e"
 }

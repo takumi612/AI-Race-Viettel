@@ -1,6 +1,7 @@
 {
-  "artifact": "D:/2 Code/AI_race/artifacts/rxnorm/rxnorm_dictionary.jsonl.gz",
-  "candidate_count": 56053,
+  "artifact": "artifacts/rxnorm/rxnorm_dictionary.jsonl.gz",
+  "candidate_count": 56311,
+  "dataset_pair_fingerprint": "65a01d7d658e1e79c5fb50494e38634469bb808313f3f5e0aea72ec11cab6c5d",
   "filtered_rows": 56053,
   "filters": {
     "LAT": [
@@ -27,10 +28,25 @@
   },
   "member": "rrf/RXNCONSO.RRF",
   "member_rows_scanned": 1202603,
-  "normalized_alias_count": 56013,
-  "sha256": "974774e29c397e865d17d3bfb22f8ddf1efa6dd2fe31bcac4141cef6095b2497",
-  "source": "D:/2 Code/AI_race/RxNorm_full_07062026.zip",
+  "member_sha256": "093e26be3a173770aa6d44ab10fe7b3e8c02fce88a0dc94ca7816fab1e3ffece",
+  "normal_candidate_count": 56053,
+  "normalized_alias_count": 56271,
+  "schema_version": 2,
+  "sha256": "061a88ed38367c9aa212976e9cdf2068ff81d03834ae7966c52ddeea573cdd88",
+  "source": "data/kb/RxNorm_full_07062026.zip",
   "source_sha256": "53523ee9f1fcd7ee426698edf566aedebe548a6ec8cc372c41271fc5b28e784c",
+  "supplement_candidate_count": 258,
+  "supplement_evidence_artifact": "artifacts/rxnorm/organizer_supplement_evidence.jsonl.gz",
+  "supplement_evidence_sha256": "92f14e8cc3233f160a46e885c7a9b86f655fd50e653763a73ac389af86e83617",
+  "supplement_suppress_counts": {
+    "E": 1,
+    "O": 257
+  },
+  "supplement_tty_counts": {
+    "BN": 134,
+    "SBD": 40,
+    "SCD": 84
+  },
   "tty_counts": {
     "BN": 5110,
     "BPCK": 740,

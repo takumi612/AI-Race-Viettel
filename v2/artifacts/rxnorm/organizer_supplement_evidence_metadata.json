@@ -1,0 +1,11 @@
+{
+  "artifact": "artifacts/rxnorm/organizer_supplement_evidence.jsonl.gz",
+  "candidate_count": 258,
+  "dataset_pair_fingerprint": "65a01d7d658e1e79c5fb50494e38634469bb808313f3f5e0aea72ec11cab6c5d",
+  "member": "rrf/RXNCONSO.RRF",
+  "member_sha256": "093e26be3a173770aa6d44ab10fe7b3e8c02fce88a0dc94ca7816fab1e3ffece",
+  "schema_version": 1,
+  "sha256": "92f14e8cc3233f160a46e885c7a9b86f655fd50e653763a73ac389af86e83617",
+  "source": "data/kb/RxNorm_full_07062026.zip",
+  "source_sha256": "53523ee9f1fcd7ee426698edf566aedebe548a6ec8cc372c41271fc5b28e784c"
+}
