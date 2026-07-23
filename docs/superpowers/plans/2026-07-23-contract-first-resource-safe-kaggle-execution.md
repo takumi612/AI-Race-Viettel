@@ -99,10 +99,11 @@ e91f1e5 feat: add fail-closed data and KB preflight
 
 - [x] Work Package 4A: record boundary, near-duplicate metadata, fixed split và OOF (2.200 document, 3.204 record, split artifacts deterministic).
 - [x] Work Package 4B: Data-to-tensor và owner-window dataset (examples, collation, test_owner_window_examples, test_training_collator).
+- [x] Work Package 4C: Source-aware sampler, replay và curriculum state machine (sampling, curriculum, test_source_aware_sampler, test_curriculum_state).
 
 ### Đang thực hiện, chưa được coi là hoàn thành
 
-- [ ] Work Package 4C: Source-aware sampler, replay và curriculum state machine.
+- [ ] Work Package 5A: Final encoder binding và assertion head.
 
 ### Chưa thực hiện
 
@@ -748,21 +749,21 @@ def plan_curriculum(
 ) -> tuple[StageSpec, ...]: ...
 ```
 
-- [ ] Sampler test phải đo exposure theo chunk và unique document, không chỉ số
+- [x] Sampler test phải đo exposure theo chunk và unique document, không chỉ số
   phần tử list.
-- [ ] Replay test phải deterministic và ưu tiên long-tail/rare genre/assertion/
+- [x] Replay test phải deterministic và ưu tiên long-tail/rare genre/assertion/
   unseen surface/boundary khó theo score đã version.
-- [ ] State-machine test phải chặn Stage 2 nếu parent Stage 1 hash thiếu hoặc lệch.
-- [ ] Resume test phải reject dataset/KB/tokenizer/config fingerprint stale.
-- [ ] Fake trainer subprocess phải phát start/end/error event cho từng attempt và
+- [x] State-machine test phải chặn Stage 2 nếu parent Stage 1 hash thiếu hoặc lệch.
+- [x] Resume test phải reject dataset/KB/tokenizer/config fingerprint stale.
+- [x] Fake trainer subprocess phải phát start/end/error event cho từng attempt và
   mô phỏng đúng một OOM retry.
-- [ ] Chạy:
+- [x] Chạy:
 
 ```powershell
 python -m pytest tests/test_source_aware_sampler.py tests/test_curriculum_state.py tests/test_runtime_control.py -q -p no:cacheprovider
 ```
 
-Expected: exit `0`; không gọi GPU/model download.
+Expected: exit `0`; không gọi GPU/model download. (Đã qua: 152 passed).
 
 ### Task 5A — Final encoder binding và assertion head
 
