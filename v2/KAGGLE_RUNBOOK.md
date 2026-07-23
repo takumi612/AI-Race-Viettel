@@ -2,6 +2,8 @@
 
 Notebook canonical: `medical_information_extraction_kaggle.ipynb`.
 
+Tài liệu giải thích cho người mới: `KAGGLE_PIPELINE_ELI5_VI.md`.
+
 Notebook chỉ là client gọi API của `clinical_nlp_lab.orchestration`; không chứa
 bản sao business logic train hoặc inference. Local chỉ chạy contract test trên
 CPU. Phiên `Save Version → Run All` thật được thực hiện trên Kaggle.
