@@ -5,8 +5,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
+WORKSPACE_ROOT = ROOT.parent
 NOTEBOOK = ROOT / "medical_information_extraction_inference_kaggle.ipynb"
 GENERATOR = ROOT / "tools" / "build_kaggle_inference_notebook.py"
+ROOT_NOTEBOOK = WORKSPACE_ROOT / "train-ai-race-v2-32-8-inference-only.ipynb"
+TRAINING_NOTEBOOK = WORKSPACE_ROOT / "train-ai-race-v2-32-8.ipynb"
 
 
 def _load_notebook():
@@ -105,6 +108,30 @@ def test_generated_notebook_is_exactly_current_generator_output():
     spec.loader.exec_module(module)
     expected = json.dumps(module.build_notebook(), ensure_ascii=False, indent=1) + "\n"
     assert NOTEBOOK.read_text(encoding="utf-8") == expected
+
+
+def test_root_inference_notebook_is_generated_from_the_canonical_builder():
+    notebook = json.loads(ROOT_NOTEBOOK.read_text(encoding="utf-8"))
+    spec = importlib.util.spec_from_file_location("inference_builder_root", GENERATOR)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert notebook == module.build_notebook()
+
+
+def test_root_inference_notebook_is_vietnamese_and_never_trains():
+    source = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in json.loads(ROOT_NOTEBOOK.read_text(encoding="utf-8"))["cells"]
+    )
+    for phrase in ("suy luận", "dataset kết quả", "Run All", "output.zip"):
+        assert phrase in source
+    for forbidden in ("train_ner_subprocess.py", "Trainer(", ".train()"):
+        assert forbidden not in source
+
+
+def test_training_notebook_remains_present():
+    assert TRAINING_NOTEBOOK.is_file()
 
 
 def test_notebook_contains_executable_guards_for_unsafe_or_ambiguous_inputs():
