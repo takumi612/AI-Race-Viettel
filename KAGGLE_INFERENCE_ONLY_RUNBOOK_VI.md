@@ -91,15 +91,14 @@ Trong **Settings**:
   Qwen reranker.
 - Chọn **Run All**, không chạy bắt đầu từ cell giữa notebook.
 
-Notebook pin source code ở commit đã smoke-test:
+Notebook clone source code trực tiếp từ nhánh đã push:
 
 ```text
-f2a699ee138f35311994da30b055739153e6dd2d
+codex/kaggle-end-to-end-pipeline
 ```
 
-Commit này là `main` mới nhất tại thời điểm kiểm tra ngày 24/07/2026. Việc pin
-commit tránh cho một thay đổi GitHub trong tương lai làm lệch API so với
-checkpoint/config hiện tại.
+Notebook không dùng mã commit pin. Vì vậy cần bảo đảm nhánh này đã được push
+lên GitHub trước khi chạy Kaggle.
 
 ## 5. Chỉ định đường dẫn khi notebook thấy nhiều dataset
 
@@ -136,7 +135,7 @@ Trong log, notebook phải in một dictionary tương tự:
 ```text
 {
   "config_compatibility": "validated",
-  "source_commit": "f2a699ee138f35311994da30b055739153e6dd2d",
+  "source_branch": "codex/kaggle-end-to-end-pipeline",
   "model_type": "xlm-roberta",
   "model_transformers_version": "5.14.1",
   "label_count": 11
@@ -171,7 +170,7 @@ Mở `run_manifest.json` và xác nhận tối thiểu:
 {
   "training_skipped": true,
   "config_compatibility": "validated",
-  "source_commit": "f2a699ee138f35311994da30b055739153e6dd2d"
+  "source_branch": "codex/kaggle-end-to-end-pipeline"
 }
 ```
 
@@ -183,8 +182,8 @@ file mới tại `/kaggle/working/output.zip`.
 
 ## 8. Trạng thái tương thích đã kiểm tra
 
-Các artifact hiện tại đã được kiểm tra local bằng đúng code của commit GitHub
-được pin:
+Các artifact hiện tại đã được kiểm tra local bằng code của nhánh
+`codex/kaggle-end-to-end-pipeline`:
 
 - `config.json` được nạp và merge đúng;
 - knowledge base đọc được 12.137 bản ghi ICD-10 và 56.053 bản ghi RxNorm;

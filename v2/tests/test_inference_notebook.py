@@ -185,9 +185,10 @@ def test_inference_notebook_exposes_qwen_toggle():
 def test_inference_notebook_clones_code_and_uses_data_only_results_bundle():
     source = _code_source()
     assert 'GITHUB_REPO_URL = "https://github.com/takumi612/AI-Race-Viettel.git"' in source
-    assert 'GITHUB_COMMIT = "f2a699ee138f35311994da30b055739153e6dd2d"' in source
-    assert '"git", "clone", GITHUB_REPO_URL, str(clone_dir)' in source
-    assert '"git", "-C", str(clone_dir), "checkout", "--detach", GITHUB_COMMIT' in source
+    assert 'GITHUB_BRANCH = "codex/kaggle-end-to-end-pipeline"' in source
+    assert '"git", "clone", "--depth", "1", "--branch", GITHUB_BRANCH' in source
+    assert "GITHUB_COMMIT" not in source
+    assert '"checkout", "--detach"' not in source
     assert '"config.json"' in source
     assert '"artifacts/"' in source
     assert '"AI-Race-Viettel/v2/clinical_nlp_lab/"' not in source
@@ -201,7 +202,7 @@ def test_inference_notebook_preflights_saved_config_and_model_metadata():
     assert 'MODEL_CONFIG.get("model_type") != "xlm-roberta"' in source
     assert "MODEL_LABELS" in source
     assert '\"config_compatibility\": \"validated\"' in source
-    assert '\"source_commit\": GITHUB_COMMIT' in source
+    assert '\"source_branch\": GITHUB_BRANCH' in source
 
 
 def test_results_archive_extracts_only_inference_runtime_members():
@@ -305,6 +306,6 @@ def test_vietnamese_runbook_covers_the_complete_kaggle_workflow():
         "output.zip",
         "RESULTS_ZIP_OVERRIDE",
         "INPUT_SOURCE_OVERRIDE",
-        "f2a699ee138f35311994da30b055739153e6dd2d",
+        "codex/kaggle-end-to-end-pipeline",
     ):
         assert phrase in text

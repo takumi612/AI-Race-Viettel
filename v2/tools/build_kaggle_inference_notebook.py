@@ -52,8 +52,7 @@ import zipfile
 KAGGLE_INPUT_ROOT = Path("/kaggle/input")
 KAGGLE_WORKING_ROOT = Path("/kaggle/working")
 GITHUB_REPO_URL = "https://github.com/takumi612/AI-Race-Viettel.git"
-GITHUB_BRANCH = "main"
-GITHUB_COMMIT = "f2a699ee138f35311994da30b055739153e6dd2d"
+GITHUB_BRANCH = "codex/kaggle-end-to-end-pipeline"
 PROJECT_ROOT_OVERRIDE = ""
 RESULTS_ZIP_OVERRIDE = ""
 INPUT_SOURCE_OVERRIDE = ""
@@ -108,11 +107,10 @@ if PROJECT_ROOT is None:
         raise RuntimeError(f"Clone destination exists but is not a valid project: {clone_dir}")
     if not clone_dir.exists():
         subprocess.run(
-            ["git", "clone", GITHUB_REPO_URL, str(clone_dir)],
-            check=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(clone_dir), "checkout", "--detach", GITHUB_COMMIT],
+            [
+                "git", "clone", "--depth", "1", "--branch", GITHUB_BRANCH,
+                GITHUB_REPO_URL, str(clone_dir),
+            ],
             check=True,
         )
     PROJECT_ROOT = (clone_dir / "v2").resolve()
@@ -319,7 +317,7 @@ if MODEL_LABELS != required_model_labels:
 print(
     {
         "config_compatibility": "validated",
-        "source_commit": GITHUB_COMMIT,
+        "source_branch": GITHUB_BRANCH,
         "model_type": MODEL_CONFIG["model_type"],
         "model_transformers_version": MODEL_CONFIG.get("transformers_version"),
         "label_count": len(MODEL_LABELS),
@@ -461,7 +459,7 @@ with zipfile.ZipFile(OUTPUT_ZIP) as archive:
 RUN_MANIFEST = {
     "training_skipped": True,
     "config_compatibility": "validated",
-    "source_commit": GITHUB_COMMIT,
+    "source_branch": GITHUB_BRANCH,
     "enable_qwen_reranker": ENABLE_QWEN_RERANKER,
     "qwen_model_name": QWEN_MODEL_NAME if ENABLE_QWEN_RERANKER else None,
     "checkpoint_source": str(NER_MODEL_DIR),
