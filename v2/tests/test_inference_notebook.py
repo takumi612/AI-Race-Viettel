@@ -11,6 +11,7 @@ NOTEBOOK = ROOT / "medical_information_extraction_inference_kaggle.ipynb"
 GENERATOR = ROOT / "tools" / "build_kaggle_inference_notebook.py"
 ROOT_NOTEBOOK = WORKSPACE_ROOT / "train-ai-race-v2-32-8-inference-only.ipynb"
 TRAINING_NOTEBOOK = WORKSPACE_ROOT / "train-ai-race-v2-32-8.ipynb"
+ROOT_RUNBOOK = WORKSPACE_ROOT / "KAGGLE_INFERENCE_ONLY_RUNBOOK_VI.md"
 
 
 def _load_notebook():
@@ -286,3 +287,24 @@ def test_inference_runbook_covers_complete_kaggle_workflow():
         assert phrase in text
     assert "artifacts/" in text
     assert "GitHub" in text
+
+
+def test_vietnamese_runbook_covers_the_complete_kaggle_workflow():
+    text = ROOT_RUNBOOK.read_text(encoding="utf-8")
+    for phrase in (
+        "results/artifacts",
+        "results/training_artifacts/ner_model",
+        "results.zip",
+        "input.zip",
+        "Add Input",
+        "GPU",
+        "Internet",
+        "Run All",
+        "training_skipped",
+        "config_compatibility",
+        "output.zip",
+        "RESULTS_ZIP_OVERRIDE",
+        "INPUT_SOURCE_OVERRIDE",
+        "f2a699ee138f35311994da30b055739153e6dd2d",
+    ):
+        assert phrase in text
