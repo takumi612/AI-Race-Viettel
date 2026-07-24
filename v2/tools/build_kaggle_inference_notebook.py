@@ -26,15 +26,17 @@ def build_notebook() -> dict[str, Any]:
     """Build the Kaggle notebook that performs inference from a supplied checkpoint."""
     cells: list[dict[str, Any]] = [
         markdown_cell(
-            """# Clinical NLP inference on Kaggle
+            """# Suy luận Clinical NLP trên Kaggle
 
-This notebook uses the packaged NER checkpoint in `results.zip` (or Kaggle's
-auto-extracted `results/` directory) to create a submission. It intentionally
-performs no model fitting. Attach the checkpoint Dataset and an inference-input
-Dataset, then enable a Kaggle GPU before Run All.
+Notebook này nạp checkpoint NER đã train từ `results.zip` hoặc dataset kết quả
+đã được Kaggle tự giải nén để tạo bài nộp mới. Notebook không huấn luyện hoặc
+fine-tune mô hình.
+
+Trước khi chọn **Run All**, hãy attach dataset kết quả, dataset input mới, bật
+GPU và bật Internet trong Kaggle.
 """
         ),
-        markdown_cell("## 1. Runtime configuration"),
+        markdown_cell("## 1. Cấu hình runtime và tìm dataset kết quả"),
         code_cell(
             '''from pathlib import Path
 import importlib
@@ -51,12 +53,13 @@ KAGGLE_INPUT_ROOT = Path("/kaggle/input")
 KAGGLE_WORKING_ROOT = Path("/kaggle/working")
 GITHUB_REPO_URL = "https://github.com/takumi612/AI-Race-Viettel.git"
 GITHUB_BRANCH = "main"
+GITHUB_COMMIT = "f2a699ee138f35311994da30b055739153e6dd2d"
 PROJECT_ROOT_OVERRIDE = ""
 RESULTS_ZIP_OVERRIDE = ""
 INPUT_SOURCE_OVERRIDE = ""
 # Kaggle ships a CUDA-compatible torch/transformers stack. Installing the
 # unpinned requirements file can replace it with incompatible versions.
-INSTALL_MISSING_DEPENDENCIES = False
+INSTALL_MISSING_DEPENDENCIES = True
 ENABLE_QWEN_RERANKER = True
 INSTALL_VLLM = ENABLE_QWEN_RERANKER
 QWEN_MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct-AWQ"
@@ -105,7 +108,11 @@ if PROJECT_ROOT is None:
         raise RuntimeError(f"Clone destination exists but is not a valid project: {clone_dir}")
     if not clone_dir.exists():
         subprocess.run(
-            ["git", "clone", "--depth", "1", "--branch", GITHUB_BRANCH, GITHUB_REPO_URL, str(clone_dir)],
+            ["git", "clone", GITHUB_REPO_URL, str(clone_dir)],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(clone_dir), "checkout", "--detach", GITHUB_COMMIT],
             check=True,
         )
     PROJECT_ROOT = (clone_dir / "v2").resolve()
@@ -114,20 +121,18 @@ if not _is_project(PROJECT_ROOT):
 sys.path.insert(0, str(PROJECT_ROOT))
 log_gpu_state("notebook_bootstrap")'''
         ),
-        markdown_cell("## 2. Validate and safely unpack the checkpoint bundle"),
+        markdown_cell("## 2. Khôi phục checkpoint và artifact suy luận"),
         code_cell(
             '''REQUIRED_RESULTS_MEMBERS = {
     "training_artifacts/ner_model/model.safetensors",
     "training_artifacts/ner_model/config.json",
     "training_artifacts/ner_model/tokenizer.json",
-    "artifacts/config.json",
 }
-REQUIRED_RESULTS_PREFIXES = {
-    "artifacts/",
-}
+ARTIFACT_PREFIX_CANDIDATES = ("artifacts/", "AI-Race-Viettel/v2/artifacts/")
 EXTRACT_PREFIXES = (
-    "artifacts/",
     "training_artifacts/ner_model/",
+    "artifacts/",
+    "AI-Race-Viettel/v2/artifacts/",
 )
 
 def _safe_archive_member(name: str) -> Path:
@@ -142,11 +147,18 @@ if RESULTS_ZIP_OVERRIDE.strip():
 else:
     results_candidates.extend(KAGGLE_INPUT_ROOT.rglob("results.zip"))
 RESULTS_ZIPS = [path.resolve() for path in results_candidates if path.is_file()]
+def _artifact_directory(source_root: Path) -> Path | None:
+    candidates = (
+        source_root / "artifacts",
+        source_root / "AI-Race-Viettel" / "v2" / "artifacts",
+    )
+    return next((path for path in candidates if (path / "config.json").is_file()), None)
+
 def _is_results_directory(path: Path) -> bool:
     return (
         path.is_dir()
         and (path / "training_artifacts" / "ner_model").is_dir()
-        and (path / "artifacts").is_dir()
+        and _artifact_directory(path) is not None
     )
 
 results_dirs = []
@@ -155,8 +167,13 @@ if RESULTS_ZIP_OVERRIDE.strip():
     if override.is_dir():
         results_dirs.append(override)
 else:
-    results_dirs.extend(path for path in KAGGLE_INPUT_ROOT.rglob("results") if _is_results_directory(path))
+    results_dirs.extend(
+        path.parent
+        for path in KAGGLE_INPUT_ROOT.rglob("training_artifacts")
+        if _is_results_directory(path.parent)
+    )
 RESULTS_DIRS = [path.resolve() for path in results_dirs if _is_results_directory(path)]
+RESULTS_DIRS = sorted(set(RESULTS_DIRS))
 if len(RESULTS_ZIPS) + len(RESULTS_DIRS) != 1:
     raise FileNotFoundError(
         "Expected exactly one results.zip or extracted results directory, "
@@ -169,37 +186,46 @@ def _copy_directory_bundle(source_root: Path) -> None:
         "training_artifacts/ner_model/model.safetensors",
         "training_artifacts/ner_model/config.json",
         "training_artifacts/ner_model/tokenizer.json",
-        "artifacts/config.json",
     }
     missing_files = [name for name in required_files if not (source_root / name).is_file()]
-    missing_dirs = [prefix for prefix in REQUIRED_RESULTS_PREFIXES if not (source_root / prefix.rstrip("/")).is_dir()]
-    if missing_files or missing_dirs:
+    artifact_source = _artifact_directory(source_root)
+    if missing_files or artifact_source is None:
         raise ValueError(
             "Extracted results directory is missing checkpoint/artifact members: "
-            f"files={sorted(missing_files)}, directories={missing_dirs}"
+            f"files={sorted(missing_files)}, artifact_directory={artifact_source}"
         )
-    for relative in ("artifacts", "training_artifacts/ner_model"):
-        shutil.copytree(source_root / relative, KAGGLE_WORKING_ROOT / relative, dirs_exist_ok=True)
+    shutil.copytree(artifact_source, KAGGLE_WORKING_ROOT / "artifacts", dirs_exist_ok=True)
+    shutil.copytree(
+        source_root / "training_artifacts" / "ner_model",
+        KAGGLE_WORKING_ROOT / "training_artifacts" / "ner_model",
+        dirs_exist_ok=True,
+    )
 
 if RESULTS_SOURCE.is_file():
     with zipfile.ZipFile(RESULTS_SOURCE) as archive:
         member_names = archive.namelist()
         safe_members = {_safe_archive_member(name).as_posix() for name in member_names}
         missing_members = REQUIRED_RESULTS_MEMBERS - safe_members
-        missing_prefixes = [
-            prefix for prefix in REQUIRED_RESULTS_PREFIXES
-            if not any(name.startswith(prefix) for name in safe_members)
+        artifact_prefixes = [
+            prefix
+            for prefix in ARTIFACT_PREFIX_CANDIDATES
+            if f"{prefix}config.json" in safe_members
         ]
-        if missing_members or missing_prefixes:
+        if missing_members or len(artifact_prefixes) != 1:
             raise ValueError(
                 f"results.zip is missing checkpoint/artifact members: "
-                f"files={sorted(missing_members)}, prefixes={missing_prefixes}"
+                f"files={sorted(missing_members)}, artifact_prefixes={artifact_prefixes}"
             )
+        RESULTS_ARTIFACT_PREFIX = artifact_prefixes[0]
         for member_name in member_names:
             member = _safe_archive_member(member_name)
-            if not any(member_name.startswith(prefix) for prefix in EXTRACT_PREFIXES):
+            if member_name.startswith(RESULTS_ARTIFACT_PREFIX):
+                artifact_relative = member.relative_to(Path(RESULTS_ARTIFACT_PREFIX))
+                destination = (KAGGLE_WORKING_ROOT / "artifacts" / artifact_relative).resolve()
+            elif member_name.startswith("training_artifacts/ner_model/"):
+                destination = (KAGGLE_WORKING_ROOT / member).resolve()
+            else:
                 continue
-            destination = (KAGGLE_WORKING_ROOT / member).resolve()
             if KAGGLE_WORKING_ROOT.resolve() not in destination.parents and destination != KAGGLE_WORKING_ROOT.resolve():
                 raise ValueError(f"Archive member escapes working directory: {member_name!r}")
             if member_name.endswith("/"):
@@ -243,9 +269,65 @@ if missing_kb:
     )
 if not all((NER_MODEL_DIR / name).is_file() for name in ("model.safetensors", "config.json", "tokenizer.json")):
     raise FileNotFoundError(f"NER checkpoint could not be resolved at {NER_MODEL_DIR}")
+
+from clinical_nlp_lab.config import load_config
+
+REQUIRED_ARTIFACT_FILES = (
+    "config.json",
+    "entity_type_mapping.json",
+    "assertion_mapping.json",
+    "relation_mapping.json",
+)
+missing_artifact_files = [
+    name for name in REQUIRED_ARTIFACT_FILES if not (ARTIFACT_DIR / name).is_file()
+]
+if missing_artifact_files:
+    raise FileNotFoundError(f"Artifact metadata is incomplete: {missing_artifact_files}")
+
+RUNTIME_CONFIG = load_config(ARTIFACT_DIR / "config.json")
+REQUIRED_CONFIG_KEYS = {
+    "max_length",
+    "stride",
+    "embedding_model_name",
+    "candidate_top_k",
+    "candidate_output_k",
+    "thresholds",
+}
+missing_config_keys = sorted(REQUIRED_CONFIG_KEYS - set(RUNTIME_CONFIG))
+if missing_config_keys:
+    raise ValueError(f"Saved artifact config is incompatible: missing {missing_config_keys}")
+if not isinstance(RUNTIME_CONFIG["thresholds"], dict):
+    raise TypeError("Saved artifact config thresholds must be a dictionary")
+
+MODEL_CONFIG = json.loads((NER_MODEL_DIR / "config.json").read_text(encoding="utf-8"))
+if MODEL_CONFIG.get("model_type") != "xlm-roberta":
+    raise ValueError(f"Unsupported checkpoint model type: {MODEL_CONFIG.get('model_type')!r}")
+MODEL_LABELS = set(MODEL_CONFIG.get("label2id", {}))
+required_model_labels = {
+    "O",
+    "B-DISEASE", "I-DISEASE",
+    "B-DRUG", "I-DRUG",
+    "B-LAB_NAME", "I-LAB_NAME",
+    "B-LAB_RESULT", "I-LAB_RESULT",
+    "B-SYMPTOM", "I-SYMPTOM",
+}
+if MODEL_LABELS != required_model_labels:
+    raise ValueError(
+        "Checkpoint label schema is incompatible: "
+        f"expected={sorted(required_model_labels)}, actual={sorted(MODEL_LABELS)}"
+    )
+print(
+    {
+        "config_compatibility": "validated",
+        "source_commit": GITHUB_COMMIT,
+        "model_type": MODEL_CONFIG["model_type"],
+        "model_transformers_version": MODEL_CONFIG.get("transformers_version"),
+        "label_count": len(MODEL_LABELS),
+    }
+)
 '''
         ),
-        markdown_cell("## 3. Discover inference documents"),
+        markdown_cell("## 3. Tìm dữ liệu input mới"),
         code_cell(
             '''EXCLUDED_INPUT_PARTS = {
     "train", "training", "synthetic_train_v1", "archive", "diagnostics",
@@ -284,7 +366,7 @@ if len(valid_inputs) != 1:
 INPUT_SOURCE, discovered_document_count = valid_inputs[0]
 print(f"Input source: {INPUT_SOURCE} ({discovered_document_count} text documents)")'''
         ),
-        markdown_cell("## 4. Install inference dependencies and check the accelerator"),
+        markdown_cell("## 4. Cài dependency suy luận và kiểm tra GPU"),
         code_cell(
             '''required_imports = {
     "torch": "torch",
@@ -324,7 +406,7 @@ if REQUIRE_GPU and not torch.cuda.is_available():
 print(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'not available'}")
 log_gpu_state("dependencies_ready")'''
         ),
-        markdown_cell("## 5. Run inference from the packaged checkpoint"),
+        markdown_cell("## 5. Chạy suy luận từ checkpoint đã đóng gói"),
         code_cell(
             '''from clinical_nlp_lab.data import load_input_documents
 from clinical_nlp_lab.pipeline import run_inference
@@ -354,7 +436,7 @@ INFERENCE_SUMMARY = run_inference(
 log_gpu_state("after_run_inference")
 print(INFERENCE_SUMMARY)'''
         ),
-        markdown_cell("## 6. Validate the submission and write the inference manifest"),
+        markdown_cell("## 6. Kiểm tra bài nộp và ghi manifest"),
         code_cell(
             '''from clinical_nlp_lab.schema import validate_submission_payload, write_json
 
@@ -378,6 +460,8 @@ with zipfile.ZipFile(OUTPUT_ZIP) as archive:
 
 RUN_MANIFEST = {
     "training_skipped": True,
+    "config_compatibility": "validated",
+    "source_commit": GITHUB_COMMIT,
     "enable_qwen_reranker": ENABLE_QWEN_RERANKER,
     "qwen_model_name": QWEN_MODEL_NAME if ENABLE_QWEN_RERANKER else None,
     "checkpoint_source": str(NER_MODEL_DIR),
@@ -391,9 +475,9 @@ write_json(KAGGLE_WORKING_ROOT / "run_manifest.json", RUN_MANIFEST)
 print(RUN_MANIFEST)'''
         ),
         markdown_cell(
-            """## 7. Download the result
+            """## 7. Tải kết quả
 
-After **Save Version → Save & Run All**, download these Kaggle outputs:
+Sau khi chọn **Save Version → Save & Run All**, tải các output Kaggle sau:
 
 - `/kaggle/working/output.zip`
 - `/kaggle/working/diagnostics/`
