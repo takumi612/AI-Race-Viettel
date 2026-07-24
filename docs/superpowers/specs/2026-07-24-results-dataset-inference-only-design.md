@@ -1,114 +1,97 @@
-# Kaggle Results-Dataset Inference-Only Notebook Design
+# Thiết kế notebook Kaggle chỉ suy luận từ dataset kết quả
 
-## Goal
+## Mục tiêu
 
-Create a new Kaggle notebook that loads the trained clinical NER checkpoint
-and runtime artifacts from an attached results dataset, processes a separate
-inference-input dataset, and writes a fresh submission archive without
-performing any training.
+Tạo một notebook Kaggle mới bằng tiếng Việt, nạp checkpoint NER và các
+artifact runtime từ dataset kết quả đã attach, xử lý một dataset input riêng,
+sau đó tạo file nộp bài mới mà không thực hiện bất kỳ bước huấn luyện nào.
 
-The existing training notebook
-`train-ai-race-v2-32-8.ipynb` remains unchanged.
+Notebook train hiện tại `train-ai-race-v2-32-8.ipynb` phải được giữ nguyên.
 
-## Deliverable
+## Sản phẩm bàn giao
 
 - `train-ai-race-v2-32-8-inference-only.ipynb`
+- `KAGGLE_INFERENCE_ONLY_RUNBOOK_VI.md`
 
-The notebook must be self-contained from a Kaggle user's perspective:
+Notebook và runbook đều dùng tiếng Việt cho nội dung hướng dẫn người dùng.
+Tên biến, API Python, đường dẫn và thông báo kỹ thuật có thể giữ tiếng Anh khi
+điều đó giúp khớp với thư viện hoặc log Kaggle.
 
-1. Attach the results dataset.
-2. Attach the new inference-input dataset.
-3. Enable a GPU accelerator.
-4. Import the notebook and run all cells.
-5. Download `/kaggle/working/output.zip`.
+Quy trình sử dụng cuối cùng:
 
-## Kaggle Inputs
+1. Attach dataset kết quả.
+2. Attach dataset input mới.
+3. Bật GPU và Internet trong Kaggle.
+4. Import notebook rồi chọn **Run All**.
+5. Tải `/kaggle/working/output.zip`.
 
-### Results dataset
+## Dataset kết quả trên Kaggle
 
-Kaggle may expose the uploaded results archive in either of these forms:
+Kaggle có thể cung cấp dữ liệu theo một trong hai dạng:
 
-1. An already-extracted directory containing:
+1. Thư mục đã giải nén, có:
    - `training_artifacts/ner_model/`
    - `AI-Race-Viettel/v2/clinical_nlp_lab/`
    - `AI-Race-Viettel/v2/artifacts/`
-2. A `results.zip` file containing the same paths.
+2. File `results.zip` chứa các đường dẫn trên.
 
-The notebook searches attached datasets under `/kaggle/input`, prefers a
-complete already-extracted result tree, and otherwise extracts only the
-required paths from `results.zip` into `/kaggle/working`.
+Notebook ưu tiên cây thư mục đã giải nén hoàn chỉnh. Nếu chỉ có
+`results.zip`, notebook chỉ giải nén checkpoint, mã runtime và knowledge base
+cần thiết vào `/kaggle/working/inference_runtime`.
 
-A valid checkpoint requires at least:
+Checkpoint hợp lệ tối thiểu phải có:
 
 - `model.safetensors`
 - `config.json`
-- tokenizer files loadable by Hugging Face Transformers
+- các file tokenizer mà Hugging Face Transformers có thể nạp
 
-The runtime also requires the bundled `clinical_nlp_lab` package and its
-ICD-10/RxNorm artifacts.
+Runtime còn cần package `clinical_nlp_lab` và artifact ICD-10/RxNorm đi kèm.
 
-### Inference-input dataset
+## Dataset input mới
 
-The notebook accepts either:
+Notebook hỗ trợ cả:
 
-1. An already-extracted `input/` directory containing one or more
-   `<document-id>.txt` files.
-2. An `input.zip` archive containing that input directory or the text files.
+1. Thư mục `input/` đã giải nén, chứa ít nhất một file
+   `<document-id>.txt`.
+2. File `input.zip` chứa thư mục `input/` hoặc các file `.txt`.
 
-Automatic discovery excludes paths belonging to the results dataset,
-training data, historical outputs, diagnostics, checkpoint directories, and
-the notebook working directory. Explicit override variables remain available
-near the top of the notebook when Kaggle contains multiple valid candidates.
+Cơ chế tự tìm kiếm phải loại trừ dataset kết quả, dữ liệu train, output cũ,
+diagnostics, checkpoint và thư mục làm việc. Hai biến override ở đầu notebook
+cho phép chỉ định đường dẫn chính xác khi Kaggle có nhiều ứng viên.
 
-No annotation or ground-truth dataset is required.
+Không cần attach annotation hoặc ground truth.
 
-## Alternatives Considered
+## Phương án được chọn
 
-### Fixed Kaggle dataset paths
+Notebook dùng cơ chế **tự phát hiện hai dạng dữ liệu**: ưu tiên thư mục Kaggle
+đã giải nén nhưng vẫn hỗ trợ ZIP dự phòng. Cách này bền vững hơn hard-code tên
+dataset và không phụ thuộc vào việc Kaggle có tự giải nén archive hay không.
 
-Hard-code the two Kaggle dataset slugs and their internal directories.
-This is simple but breaks whenever either dataset is renamed or its layout
-changes.
+## Luồng chạy
 
-### Extracted-directories only
-
-Assume Kaggle always expands uploaded archives. This avoids extraction code
-but makes the notebook fail when a dataset contains `results.zip` or
-`input.zip` as an ordinary file.
-
-### Dual-layout automatic discovery
-
-Support both extracted directories and ZIP files, preferring the extracted
-form. This adds a small discovery layer but gives the most reliable
-upload-and-run workflow. This is the selected approach.
-
-## Runtime Flow
-
-1. Initialize deterministic settings, logging, Kaggle paths, and optional
-   source overrides.
-2. Discover and validate exactly one results source.
-3. Reuse its extracted tree or selectively extract the model, code, and
-   knowledge-base artifacts into `/kaggle/working/inference_runtime`.
-4. Add the bundled runtime package to `sys.path`.
-5. Discover and validate exactly one inference-input source.
-6. Reuse its `input/` directory or extract `input.zip` into a separate
-   working directory.
-7. Install only missing inference-time dependencies.
-8. Load the saved NER checkpoint and bundled retrieval/linking artifacts.
-9. Run the existing hybrid inference pipeline for every input document.
-10. Validate each output JSON and write a new
+1. Khởi tạo cấu hình, logging, đường dẫn Kaggle và biến override.
+2. Tìm và xác thực đúng một nguồn kết quả.
+3. Dùng trực tiếp cây đã giải nén hoặc chỉ giải nén các thành phần runtime cần
+   thiết.
+4. Đưa package runtime vào `sys.path`.
+5. Tìm và xác thực đúng một nguồn input mới.
+6. Dùng trực tiếp thư mục `input/` hoặc giải nén `input.zip` vào thư mục làm
+   việc tách biệt.
+7. Chỉ cài các dependency inference còn thiếu.
+8. Nạp checkpoint NER đã train và các artifact retrieval/linking.
+9. Chạy pipeline suy luận cho từng văn bản.
+10. Xác thực JSON đầu ra và tạo
     `/kaggle/working/output.zip`.
-11. Write a run manifest recording the selected sources, checkpoint,
-    document count, output count, and `training_skipped: true`.
+11. Ghi manifest gồm nguồn dữ liệu, checkpoint, số input, số output và
+    `training_skipped: true`.
 
-The notebook must not import or invoke a Trainer, call `.train()`, launch
-`train_ner_subprocess.py`, create train/validation splits, or package a new
-checkpoint.
+Notebook không được gọi `Trainer`, `.train()`,
+`train_ner_subprocess.py`, không chia train/validation và không đóng gói
+checkpoint mới.
 
-## Output Contract
+## Quy ước output
 
-The final archive contains exactly one JSON prediction for each discovered
-input text:
+Archive cuối cùng có đúng một JSON cho mỗi file input:
 
 ```text
 output.zip
@@ -117,43 +100,57 @@ output.zip
     └── <document-id-2>.json
 ```
 
-The notebook does not copy the historical `output.zip` or `output/` directory
-from the results dataset. It always creates new predictions for the newly
-attached input dataset.
+Notebook không sao chép `output.zip` hoặc thư mục `output/` lịch sử từ
+dataset kết quả. Mỗi lần chạy luôn tạo dự đoán mới cho dataset input vừa
+attach.
 
-## Error Handling
+## Nội dung runbook
 
-The notebook stops early with an actionable message when:
+`KAGGLE_INFERENCE_ONLY_RUNBOOK_VI.md` phải hướng dẫn bằng tiếng Việt:
 
-- no complete results source is found;
-- multiple results sources remain after applying the override;
-- the model checkpoint, tokenizer, runtime package, or knowledge base is
-  incomplete;
-- no valid input source is found;
-- multiple input sources remain after applying the override;
-- the selected input is inside results, training, diagnostics, checkpoint,
-  output, or working directories;
-- input document identifiers collide;
-- prediction JSON violates the competition schema;
-- output file names or counts do not match the input documents.
+1. Cách tạo/upload dataset chứa `results.zip` hoặc cây đã giải nén.
+2. Cách tạo/upload dataset chứa `input.zip` hoặc `input/*.txt`.
+3. Cách import notebook và attach cả hai dataset bằng **Add Input**.
+4. Cách bật GPU, bật Internet và chọn **Run All**.
+5. Cách kiểm tra `run_manifest.json` có
+   `"training_skipped": true`.
+6. Cách lưu version và tải `output.zip`.
+7. Cách dùng biến override khi có nhiều dataset.
+8. Cách xử lý lỗi thiếu checkpoint, không tìm thấy input, thiếu dependency,
+   CUDA OOM, sai schema và nhầm output cũ.
 
-ZIP extraction rejects absolute paths and parent traversal entries and
-extracts only expected prefixes.
+## Xử lý lỗi và an toàn
 
-## Verification
+Notebook dừng sớm với thông báo rõ ràng khi:
 
-Local verification must confirm:
+- không tìm thấy nguồn kết quả hoàn chỉnh;
+- có nhiều nguồn kết quả nhưng chưa dùng override;
+- thiếu model, tokenizer, runtime package hoặc knowledge base;
+- không tìm thấy input hợp lệ;
+- có nhiều nguồn input nhưng chưa dùng override;
+- input trỏ vào results, train, diagnostics, checkpoint, output hoặc working;
+- document ID trùng nhau;
+- prediction JSON sai schema;
+- tên hoặc số lượng output không khớp input.
 
-- the generated notebook is valid notebook JSON;
-- all Python code cells compile;
-- saved cell outputs and execution counts are cleared;
-- no code cell invokes training or checkpoint packaging;
-- both extracted-directory and ZIP discovery paths are represented;
-- model, runtime, knowledge-base, input, and output validation are present;
-- output ZIP layout and one-output-per-input checks are present;
-- the original training notebook is unchanged.
+Giải nén ZIP phải từ chối đường dẫn tuyệt đối và thành phần `..`, đồng thời
+chỉ giải nén các prefix dự kiến.
 
-A lightweight smoke test should use a tiny fake directory/archive fixture for
-discovery and extraction logic. Full model inference is validated on Kaggle
-because the real checkpoint is approximately 1.1 GB and requires the target
-GPU/runtime stack.
+## Kiểm thử và xác minh
+
+Xác minh local phải kiểm tra:
+
+- notebook là JSON notebook hợp lệ;
+- mọi code cell đều compile;
+- output và execution count trong notebook đã được xóa;
+- không code cell nào gọi train hoặc đóng gói checkpoint;
+- có cả nhánh thư mục đã giải nén và nhánh ZIP;
+- có kiểm tra model, runtime, knowledge base, input và output;
+- có kiểm tra cấu trúc ZIP và một-output-cho-mỗi-input;
+- nội dung hiển thị của notebook và runbook là tiếng Việt;
+- runbook bao phủ đầy đủ quy trình Kaggle;
+- notebook train gốc không thay đổi.
+
+Smoke test dùng fixture thư mục/ZIP nhỏ cho logic discovery và extraction.
+Inference đầy đủ được kiểm chứng trên Kaggle vì checkpoint thật khoảng
+1,1 GB và cần GPU/runtime mục tiêu.
