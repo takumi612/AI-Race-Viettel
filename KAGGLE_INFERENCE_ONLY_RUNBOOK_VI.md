@@ -163,7 +163,8 @@ Trong log, notebook phải in một dictionary tương tự:
 - kiểm tra knowledge base ICD-10/RxNorm.
 
 Sau đó notebook sẽ tìm input, kiểm tra CPU/GPU, cài dependency còn thiếu mà
-không thay `torch`/`transformers`, load checkpoint và chạy inference.
+không thay `torch` của Kaggle, tạo một runtime Transformers cô lập tại
+`/kaggle/working/python_runtime`, load checkpoint và chạy inference.
 
 ## 7. Lấy kết quả
 
@@ -244,13 +245,25 @@ Kiểm tra `icd10_dictionary.jsonl`/`.jsonl.gz` và
 ### Thiếu `bm25s`, `faiss`, `sentence-transformers` hoặc `vllm`
 
 Bật Internet, restart session và chạy lại từ cell đầu. Notebook mặc định cài
-các dependency inference còn thiếu bằng `pip --no-deps`, tránh ghi đè bộ
-`torch`/`transformers` do Kaggle cung cấp.
+các dependency inference bằng `pip --target ... --no-deps` vào
+`/kaggle/working/python_runtime`. Runtime này pin đúng stack đã dùng để tạo
+checkpoint:
+
+```text
+transformers==5.14.1
+tokenizers==0.22.2
+huggingface-hub==1.23.0
+safetensors==0.8.0
+regex==2026.7.10
+```
+
+Notebook không ghi đè `torch` hoặc thư mục package hệ thống của Kaggle.
 
 Nếu log có `Offending backend: keras_nlp` hoặc
 `No module named transformers.tokenization_utils_tokenizers`, session đã bị
 một lần cài pip cũ làm hỏng. Chọn **Restart Session** rồi chạy lại notebook
-mới từ cell đầu; không chạy tiếp cell 5 trong session đó.
+mới từ cell đầu; không chạy tiếp cell 5 hoặc cell 6 trong session đó. Bản mới
+sẽ ưu tiên runtime cô lập thay vì import `transformers` lỗi từ image Kaggle.
 
 ### CUDA Out Of Memory
 

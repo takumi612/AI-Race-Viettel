@@ -275,9 +275,17 @@ def test_inference_notebook_checks_all_direct_bundled_requirements():
     assert '"sentencepiece": "sentencepiece"' in source
     assert '"safetensors": "safetensors"' in source
     assert '"--no-deps"' in source
+    assert '"--target", str(TRANSFORMERS_RUNTIME_DIR)' in source
     assert '"-r", str(requirements)' not in source
     assert "CORE_STACK_CHECK" in source
     assert "AutoModelForTokenClassification, AutoTokenizer" in source
+    assert 'TRANSFORMERS_RUNTIME_DIR = KAGGLE_WORKING_ROOT / "python_runtime"' in source
+    assert '"transformers==5.14.1"' in source
+    assert '"tokenizers==0.22.2"' in source
+    assert '"huggingface-hub==1.23.0"' in source
+    assert '"safetensors==0.8.0"' in source
+    assert '"regex==2026.7.10"' in source
+    assert 'name == "transformers" or name.startswith("transformers.")' in source
 
 
 def test_inference_runbook_covers_complete_kaggle_workflow():

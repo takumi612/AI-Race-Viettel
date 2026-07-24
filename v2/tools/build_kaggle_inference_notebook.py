@@ -367,11 +367,9 @@ print(f"Input source: {INPUT_SOURCE} ({discovered_document_count} text documents
         ),
         markdown_cell("## 4. Cài dependency suy luận và kiểm tra GPU"),
         code_cell(
-            '''CORE_IMPORTS = {
-    "torch": "torch",
-    "transformers": "transformers",
-}
+            '''CORE_IMPORTS = {"torch": "torch"}
 OPTIONAL_IMPORTS = {
+    "transformers": "transformers",
     "accelerate": "accelerate",
     "sentencepiece": "sentencepiece",
     "safetensors": "safetensors",
@@ -388,6 +386,57 @@ if missing_core:
     raise RuntimeError(
         f"Kaggle core runtime is missing {missing_core}. Start a fresh Kaggle session."
     )
+
+TRANSFORMERS_RUNTIME_DIR = KAGGLE_WORKING_ROOT / "python_runtime"
+TRANSFORMERS_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+PINNED_TRANSFORMERS_STACK = (
+    "transformers==5.14.1",
+    "tokenizers==0.22.2",
+    "huggingface-hub==1.23.0",
+    "safetensors==0.8.0",
+    "regex==2026.7.10",
+)
+RUNTIME_OPTIONAL_PACKAGES = (
+    "accelerate",
+    "sentencepiece",
+    "bm25s",
+    "faiss-cpu",
+    "sentence-transformers",
+)
+subprocess.run(
+    [
+        sys.executable, "-m", "pip", "install", "-q", "--upgrade",
+        "--target", str(TRANSFORMERS_RUNTIME_DIR), "--no-deps",
+        *PINNED_TRANSFORMERS_STACK,
+    ],
+    check=True,
+)
+if INSTALL_MISSING_DEPENDENCIES:
+    subprocess.run(
+        [
+            sys.executable, "-m", "pip", "install", "-q", "--upgrade",
+            "--target", str(TRANSFORMERS_RUNTIME_DIR), "--no-deps",
+            *RUNTIME_OPTIONAL_PACKAGES,
+        ],
+        check=True,
+    )
+
+runtime_path = str(TRANSFORMERS_RUNTIME_DIR)
+if runtime_path in sys.path:
+    sys.path.remove(runtime_path)
+sys.path.insert(0, runtime_path)
+os.environ["PYTHONPATH"] = runtime_path + os.pathsep + os.environ.get("PYTHONPATH", "")
+for name in list(sys.modules):
+    if (
+        name == "transformers" or name.startswith("transformers.")
+        or name == "tokenizers" or name.startswith("tokenizers.")
+        or name == "huggingface_hub" or name.startswith("huggingface_hub.")
+        or name == "safetensors" or name.startswith("safetensors.")
+        or name == "regex" or name.startswith("regex.")
+        or name == "sentence_transformers" or name.startswith("sentence_transformers.")
+    ):
+        del sys.modules[name]
+importlib.invalidate_caches()
 
 CORE_STACK_CHECK = (
     "import torch; "
@@ -408,25 +457,16 @@ def _validate_subprocess_imports(label: str, statement: str) -> None:
         )
 
 _validate_subprocess_imports("Kaggle torch/transformers stack", CORE_STACK_CHECK)
-
-missing_optional = [
-    package for package, module in OPTIONAL_IMPORTS.items()
-    if importlib.util.find_spec(module) is None
-]
-if missing_optional and INSTALL_MISSING_DEPENDENCIES:
-    # Kaggle owns the CUDA torch/transformers stack. --no-deps prevents pip
-    # from replacing it while adding retrieval-only packages.
+if INSTALL_VLLM and importlib.util.find_spec("vllm") is None:
+    # Do not let vLLM overwrite Kaggle's torch/transformers packages.
     subprocess.run(
         [
-            sys.executable, "-m", "pip", "install", "-q", "--no-deps",
-            *missing_optional,
+            sys.executable, "-m", "pip", "install", "-q", "--upgrade",
+            "--target", str(TRANSFORMERS_RUNTIME_DIR), "--no-deps",
+            "vllm==0.25.1",
         ],
         check=True,
     )
-    importlib.invalidate_caches()
-if INSTALL_VLLM and importlib.util.find_spec("vllm") is None:
-    # Do not let vLLM overwrite Kaggle's torch/transformers packages.
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--no-deps", "vllm==0.25.1"], check=True)
 
 missing_after = [package for package, module in required_imports.items() if importlib.util.find_spec(module) is None]
 if missing_after:
