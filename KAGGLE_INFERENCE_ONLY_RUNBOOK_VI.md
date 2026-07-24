@@ -86,10 +86,21 @@ diagnostics hoặc output cũ trong dataset input.
 
 Trong **Settings**:
 
-- **Accelerator:** bật GPU; khuyến nghị **T4 x2**.
-- **Internet:** bật **ON** để clone code, cài dependency còn thiếu và tải
-  Qwen reranker.
+- **Accelerator:** có thể để **None** để chạy CPU.
+- **Internet:** bật **ON** để clone code và cài dependency retrieval còn
+  thiếu.
 - Chọn **Run All**, không chạy bắt đầu từ cell giữa notebook.
+
+Notebook mặc định chạy CPU và không tải Qwen:
+
+```python
+ENABLE_QWEN_RERANKER = False
+INSTALL_VLLM = ENABLE_QWEN_RERANKER
+REQUIRE_GPU = False
+```
+
+Log `CUDA unavailable; CPU mode enabled` là thông báo bình thường, không phải
+lỗi.
 
 Notebook clone source code trực tiếp từ nhánh đã push:
 
@@ -151,8 +162,8 @@ Trong log, notebook phải in một dictionary tương tự:
 - kiểm tra đủ 11 nhãn BIO;
 - kiểm tra knowledge base ICD-10/RxNorm.
 
-Sau đó notebook sẽ tìm input, kiểm tra GPU, cài dependency còn thiếu, load
-checkpoint và chạy inference.
+Sau đó notebook sẽ tìm input, kiểm tra CPU/GPU, cài dependency còn thiếu mà
+không thay `torch`/`transformers`, load checkpoint và chạy inference.
 
 ## 7. Lấy kết quả
 
@@ -233,9 +244,22 @@ Kiểm tra `icd10_dictionary.jsonl`/`.jsonl.gz` và
 ### Thiếu `bm25s`, `faiss`, `sentence-transformers` hoặc `vllm`
 
 Bật Internet, restart session và chạy lại từ cell đầu. Notebook mặc định cài
-các dependency inference còn thiếu.
+các dependency inference còn thiếu bằng `pip --no-deps`, tránh ghi đè bộ
+`torch`/`transformers` do Kaggle cung cấp.
+
+Nếu log có `Offending backend: keras_nlp` hoặc
+`No module named transformers.tokenization_utils_tokenizers`, session đã bị
+một lần cài pip cũ làm hỏng. Chọn **Restart Session** rồi chạy lại notebook
+mới từ cell đầu; không chạy tiếp cell 5 trong session đó.
 
 ### CUDA Out Of Memory
+
+Lỗi này chỉ áp dụng khi bạn chủ động bật GPU/Qwen:
+
+```python
+ENABLE_QWEN_RERANKER = True
+REQUIRE_GPU = True
+```
 
 Thử giảm:
 

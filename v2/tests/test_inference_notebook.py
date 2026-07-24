@@ -176,7 +176,10 @@ def test_inference_notebook_validates_normalized_knowledge_base_files():
 
 def test_inference_notebook_exposes_qwen_toggle():
     source = _code_source()
-    assert "ENABLE_QWEN_RERANKER" in source
+    assert "ENABLE_QWEN_RERANKER = False" in source
+    assert "INSTALL_VLLM = ENABLE_QWEN_RERANKER" in source
+    assert "REQUIRE_GPU = False" in source
+    assert "CPU mode enabled" in source
     assert "enable_qwen_reranker=ENABLE_QWEN_RERANKER" in source
     assert "QWEN_GPU_MEMORY_UTILIZATION = 0.50" in source
     assert "qwen_gpu_memory_utilization=QWEN_GPU_MEMORY_UTILIZATION" in source
@@ -271,6 +274,10 @@ def test_inference_notebook_checks_all_direct_bundled_requirements():
     source = _code_source()
     assert '"sentencepiece": "sentencepiece"' in source
     assert '"safetensors": "safetensors"' in source
+    assert '"--no-deps"' in source
+    assert '"-r", str(requirements)' not in source
+    assert "CORE_STACK_CHECK" in source
+    assert "AutoModelForTokenClassification, AutoTokenizer" in source
 
 
 def test_inference_runbook_covers_complete_kaggle_workflow():

@@ -59,13 +59,13 @@ INPUT_SOURCE_OVERRIDE = ""
 # Kaggle ships a CUDA-compatible torch/transformers stack. Installing the
 # unpinned requirements file can replace it with incompatible versions.
 INSTALL_MISSING_DEPENDENCIES = True
-ENABLE_QWEN_RERANKER = True
+ENABLE_QWEN_RERANKER = False
 INSTALL_VLLM = ENABLE_QWEN_RERANKER
 QWEN_MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct-AWQ"
 QWEN_GPU_MEMORY_UTILIZATION = 0.50
 QWEN_MAX_MODEL_LEN = 4096
 QWEN_BATCH_SIZE = 64
-REQUIRE_GPU = True
+REQUIRE_GPU = False
 
 if not KAGGLE_INPUT_ROOT.is_dir():
     raise RuntimeError("This notebook must run in a Kaggle environment.")
@@ -79,7 +79,8 @@ def log_gpu_state(stage: str) -> None:
     try:
         import torch
         if not torch.cuda.is_available():
-            print(f"[GPU] {stage}: CUDA unavailable")
+            device_policy = "GPU required" if REQUIRE_GPU else "CPU mode enabled"
+            print(f"[DEVICE] {stage}: CUDA unavailable; {device_policy}")
             return
         free, total = torch.cuda.mem_get_info()
         gib = 1024 ** 3
@@ -366,9 +367,11 @@ print(f"Input source: {INPUT_SOURCE} ({discovered_document_count} text documents
         ),
         markdown_cell("## 4. Cài dependency suy luận và kiểm tra GPU"),
         code_cell(
-            '''required_imports = {
+            '''CORE_IMPORTS = {
     "torch": "torch",
     "transformers": "transformers",
+}
+OPTIONAL_IMPORTS = {
     "accelerate": "accelerate",
     "sentencepiece": "sentencepiece",
     "safetensors": "safetensors",
@@ -376,19 +379,50 @@ print(f"Input source: {INPUT_SOURCE} ({discovered_document_count} text documents
     "faiss-cpu": "faiss",
     "sentence-transformers": "sentence_transformers",
 }
-missing = [package for package, module in required_imports.items() if importlib.util.find_spec(module) is None]
-try:
-    import torch
-    import transformers
-except Exception as exc:
+required_imports = {**CORE_IMPORTS, **OPTIONAL_IMPORTS}
+missing_core = [
+    package for package, module in CORE_IMPORTS.items()
+    if importlib.util.find_spec(module) is None
+]
+if missing_core:
     raise RuntimeError(
-        "Kaggle's preinstalled torch/transformers stack is incompatible. "
-        "Restart the Kaggle session and run this notebook from the first cell; "
-        "do not enable INSTALL_MISSING_DEPENDENCIES."
-    ) from exc
-if missing and INSTALL_MISSING_DEPENDENCIES:
-    requirements = PROJECT_ROOT / "requirements-kaggle.txt"
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(requirements)], check=True)
+        f"Kaggle core runtime is missing {missing_core}. Start a fresh Kaggle session."
+    )
+
+CORE_STACK_CHECK = (
+    "import torch; "
+    "from transformers import AutoModelForTokenClassification, AutoTokenizer"
+)
+
+def _validate_subprocess_imports(label: str, statement: str) -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", statement],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        details = (result.stderr or result.stdout)[-3000:]
+        raise RuntimeError(
+            f"{label} is incompatible. Restart the Kaggle session and Run All "
+            f"from the first cell. Details: {details}"
+        )
+
+_validate_subprocess_imports("Kaggle torch/transformers stack", CORE_STACK_CHECK)
+
+missing_optional = [
+    package for package, module in OPTIONAL_IMPORTS.items()
+    if importlib.util.find_spec(module) is None
+]
+if missing_optional and INSTALL_MISSING_DEPENDENCIES:
+    # Kaggle owns the CUDA torch/transformers stack. --no-deps prevents pip
+    # from replacing it while adding retrieval-only packages.
+    subprocess.run(
+        [
+            sys.executable, "-m", "pip", "install", "-q", "--no-deps",
+            *missing_optional,
+        ],
+        check=True,
+    )
     importlib.invalidate_caches()
 if INSTALL_VLLM and importlib.util.find_spec("vllm") is None:
     # Do not let vLLM overwrite Kaggle's torch/transformers packages.
@@ -397,6 +431,12 @@ if INSTALL_VLLM and importlib.util.find_spec("vllm") is None:
 missing_after = [package for package, module in required_imports.items() if importlib.util.find_spec(module) is None]
 if missing_after:
     raise RuntimeError(f"Missing inference dependencies: {missing_after}")
+
+OPTIONAL_STACK_CHECK = (
+    "import accelerate, sentencepiece, safetensors, bm25s, faiss, sentence_transformers"
+)
+_validate_subprocess_imports("Inference dependency stack", OPTIONAL_STACK_CHECK)
+_validate_subprocess_imports("Kaggle torch/transformers stack after bootstrap", CORE_STACK_CHECK)
 
 import torch
 if REQUIRE_GPU and not torch.cuda.is_available():
