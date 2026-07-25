@@ -116,7 +116,7 @@ class AssertionRuntimePredictor:
         return results
 
 
-def load_final_model_bundle(checkpoint: str | Path, head_dir: str | Path, icd10_records: Iterable[dict[str, Any]], rxnorm_records: Iterable[dict[str, Any]], candidate_policy: CandidatePolicy) -> FinalModelBundle:
+def load_final_model_bundle(checkpoint: str | Path, head_dir: str | Path, icd10_records: Iterable[dict[str, Any]], rxnorm_records: Iterable[dict[str, Any]], candidate_policy: CandidatePolicy, qwen_reranker: Any | None = None) -> FinalModelBundle:
     detector = TransformerNERDetector(checkpoint, max_length=512, stride=128)
     assertion = AssertionRuntimePredictor(checkpoint, head_dir)
     return FinalModelBundle(
@@ -125,6 +125,7 @@ def load_final_model_bundle(checkpoint: str | Path, head_dir: str | Path, icd10_
         assertion_model=assertion,
         candidate_policy=candidate_policy,
         kb_linker=KBFirstRecovery(icd10_records, rxnorm_records),
+        qwen_reranker=qwen_reranker,
     )
 
 

@@ -83,6 +83,8 @@ def _hash_named_files(root: Path, names: tuple[str, ...]) -> str:
 
 
 def _phase_01_preflight(config: RunConfig, phase: str, context: Mapping[str, Any]) -> Mapping[str, Any]:
+    if config.run_mode == "full" and config.fast_dev_run:
+        raise ValueError("Cannot execute full production run when fast_dev_run is True. Set fast_dev_run=False in RunConfig.")
     artifact_dir = _artifact_dir(config)
     artifact_dir.mkdir(parents=True, exist_ok=True)
     if config.artifact_source_dir is not None:
@@ -609,13 +611,16 @@ def _phase_12_inference(config: RunConfig, phase: str, context: Mapping[str, Any
     if not input_source.is_absolute():
         input_source = Path.cwd() / input_source
     output_dir = _run_dir(context) / "output"
+    runtime_config_path = config.config_path or (_artifact_dir(config) / "config.json")
+    loaded_cfg = load_config(runtime_config_path) if runtime_config_path.exists() else {}
+    enable_qwen = bool(loaded_cfg.get("enable_qwen", False))
     summary = run_inference_with_bundle(
         input_source=input_source,
         output_dir=output_dir,
         bundle=bundle,
         entity_mapping=entity_mapping,
         assertion_mapping=assertion_mapping,
-        config=InferenceConfig(enable_kb_recovery=True, enable_qwen=False),
+        config=InferenceConfig(enable_kb_recovery=True, enable_qwen=enable_qwen),
         create_zip=True,
         zip_path=_run_dir(context) / "output.zip",
         diagnostics_dir=_run_dir(context) / "diagnostics",

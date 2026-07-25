@@ -9,7 +9,7 @@ from typing import Any
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "seed": 42,
-    "fast_dev_run": True,
+    "fast_dev_run": False,
     "input_zip": "input.zip",
     "input_dir": "input",
     "train_dir": "train",
