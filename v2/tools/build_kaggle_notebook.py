@@ -320,7 +320,7 @@ else:
         code_cell(
             '''if SESSION.completed and SESSION.completed[-1] == ACTIVE_PHASES[-1]:
     SUMMARY = finish_run(SESSION)
-    log_step(9, "END", "Run completed", status=SUMMARY.status, phase=SUMMARY.phase_completed)
+    log_step(9, "END", "Run completed", run_status=SUMMARY.status, phase=SUMMARY.phase_completed)
     print(json.dumps(SUMMARY.__dict__, ensure_ascii=False, default=str))
 else:
     print(json.dumps({"status": "INCOMPLETE", "completed": SESSION.completed, "next": ACTIVE_PHASES[len(SESSION.completed):]}, ensure_ascii=False))

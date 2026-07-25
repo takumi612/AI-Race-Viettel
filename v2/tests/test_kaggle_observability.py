@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).parents[1]
@@ -37,3 +38,33 @@ def test_training_script_logs_epoch_and_summary_context():
     assert "[TRAINING_START]" in source
     assert "[TRAINING_END]" in source
     assert "[TRAINING_ERROR]" in source
+
+
+def test_notebook_finalization_logs_summary_without_status_argument_collision():
+    notebook = json.loads((ROOT / "medical_information_extraction_kaggle.ipynb").read_text(encoding="utf-8"))
+    final_cell = next(cell for cell in reversed(notebook["cells"]) if cell["cell_type"] == "code")
+    final_source = "".join(final_cell["source"])
+    events = []
+
+    def log_step(step, status, message, **context):
+        events.append((step, status, message, context))
+
+    summary = SimpleNamespace(status="PASS", phase_completed="phase_13_packaging")
+    namespace = {
+        "SESSION": SimpleNamespace(completed=["phase_13_packaging"]),
+        "ACTIVE_PHASES": ("phase_13_packaging",),
+        "finish_run": lambda _session: summary,
+        "log_step": log_step,
+        "json": json,
+    }
+
+    exec(compile(final_source, "<finalization>", "exec"), namespace)
+
+    assert events == [
+        (
+            9,
+            "END",
+            "Run completed",
+            {"run_status": "PASS", "phase": "phase_13_packaging"},
+        )
+    ]
