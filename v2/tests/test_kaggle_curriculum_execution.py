@@ -13,7 +13,7 @@ def test_stage_hyperparameters_override_global_training_defaults():
     resolved = resolve_stage_hyperparameters(global_config, stage3, fast_dev_run=False)
 
     assert resolved == {
-        "epochs": 4,
+        "epochs": 6,
         "learning_rate": 1e-5,
         "batch_size": 2,
     }

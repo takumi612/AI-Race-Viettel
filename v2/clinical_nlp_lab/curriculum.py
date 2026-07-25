@@ -126,7 +126,7 @@ def plan_curriculum(
     stage1 = StageSpec(
         name="stage1",
         parent_stage=None,
-        max_epochs=3,
+        max_epochs=5,
         learning_rate=3e-5,
         organizer_fraction=0.0,
         replay_fraction=0.0,
@@ -136,7 +136,7 @@ def plan_curriculum(
     stage2 = StageSpec(
         name="stage2",
         parent_stage="stage1",
-        max_epochs=2,
+        max_epochs=3,
         learning_rate=2e-5,
         organizer_fraction=0.35,
         replay_fraction=0.0,
@@ -146,7 +146,7 @@ def plan_curriculum(
     stage3 = StageSpec(
         name="stage3",
         parent_stage="stage2",
-        max_epochs=4,
+        max_epochs=6,
         learning_rate=1e-5,
         organizer_fraction=0.80,
         replay_fraction=0.20,
@@ -156,7 +156,7 @@ def plan_curriculum(
     final_fit = StageSpec(
         name="final_fit",
         parent_stage="stage3",
-        max_epochs=2,
+        max_epochs=3,
         learning_rate=5e-6,
         organizer_fraction=0.50,
         replay_fraction=0.15,
