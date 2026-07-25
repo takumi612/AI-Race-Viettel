@@ -244,3 +244,65 @@ def validate_dataset_contract(
         "errors": errors,
         "is_valid": not errors,
     }
+
+
+def audit_training_contract(
+    documents: Iterable[ClinicalDocument],
+) -> dict[str, Any]:
+    """Validate model-facing annotations without mutating source data."""
+    document_list = list(documents)
+    errors: list[dict[str, Any]] = []
+    type_counts: Counter[str] = Counter()
+    for document in document_list:
+        positions = [entity.position for entity in document.entities]
+        if positions != sorted(positions):
+            errors.append({"document_id": document.document_id, "code": "unsorted"})
+        previous_end = -1
+        for index, entity in enumerate(document.entities):
+            type_counts[entity.type] += 1
+            try:
+                entity.validate_offset(document.raw_text)
+            except ValueError as exc:
+                errors.append(
+                    {
+                        "document_id": document.document_id,
+                        "entity_index": index,
+                        "code": "invalid_offset",
+                        "message": str(exc),
+                    }
+                )
+            if entity.start < previous_end:
+                errors.append(
+                    {
+                        "document_id": document.document_id,
+                        "entity_index": index,
+                        "code": "overlap",
+                    }
+                )
+            previous_end = max(previous_end, entity.end)
+            if entity.type not in TRAINING_ENTITY_TYPES:
+                errors.append(
+                    {
+                        "document_id": document.document_id,
+                        "entity_index": index,
+                        "code": "unsupported_type",
+                    }
+                )
+            if entity.assertions and entity.type not in ASSERTION_ENTITY_TYPES:
+                errors.append(
+                    {
+                        "document_id": document.document_id,
+                        "entity_index": index,
+                        "code": "assertion_scope",
+                    }
+                )
+    missing_types = sorted(TRAINING_ENTITY_TYPES - set(type_counts))
+    if missing_types:
+        errors.append({"code": "missing_types", "types": missing_types})
+    return {
+        "document_count": len(document_list),
+        "entity_count": sum(type_counts.values()),
+        "type_counts": dict(type_counts),
+        "errors": errors,
+        "is_valid": not errors,
+    }

@@ -12,7 +12,10 @@ class DummyFastTokenizer:
         self,
         text: str,
         truncation: bool = False,
+        max_length: int = 512,
+        stride: int = 128,
         return_offsets_mapping: bool = True,
+        return_overflowing_tokens: bool = False,
         add_special_tokens: bool = True,
     ):
         tokens = text.split(" ")
@@ -38,7 +41,38 @@ class DummyFastTokenizer:
             input_ids.append(2)
             offsets.append((0, 0))
 
-        return {"input_ids": input_ids, "offset_mapping": offsets}
+        if not return_overflowing_tokens or len(input_ids) <= max_length:
+            if return_overflowing_tokens:
+                return {
+                    "input_ids": [input_ids],
+                    "attention_mask": [[1] * len(input_ids)],
+                    "offset_mapping": [offsets],
+                    "overflow_to_sample_mapping": [0],
+                }
+            return {"input_ids": input_ids, "offset_mapping": offsets}
+
+        content_ids = input_ids[1:-1]
+        content_offsets = offsets[1:-1]
+        capacity = max_length - 2
+        step = capacity - stride
+        id_windows = []
+        offset_windows = []
+        start = 0
+        while start < len(content_ids):
+            end = min(len(content_ids), start + capacity)
+            ids = [0] + content_ids[start:end] + [2]
+            offs = [(0, 0)] + content_offsets[start:end] + [(0, 0)]
+            id_windows.append(ids)
+            offset_windows.append(offs)
+            if end == len(content_ids):
+                break
+            start += step
+        return {
+            "input_ids": id_windows,
+            "attention_mask": [[1] * len(item) for item in id_windows],
+            "offset_mapping": offset_windows,
+            "overflow_to_sample_mapping": [0] * len(id_windows),
+        }
 
 
 def test_owner_window_single_and_overlapping():

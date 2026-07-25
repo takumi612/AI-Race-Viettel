@@ -8,6 +8,15 @@ from .schema import ClinicalDocument, EntityAnnotation
 
 
 @dataclass(frozen=True)
+class OwnedEntity:
+    entity_id: str
+    entity_type: str
+    token_start: int
+    token_end: int
+    assertions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class TokenWindow:
     document_id: str
     record_id: str
@@ -19,6 +28,7 @@ class TokenWindow:
     loss_mask: tuple[bool, ...]
     owned_entity_ids: tuple[str, ...]
     assertion_labels: tuple[tuple[str, ...], ...] = ()
+    owned_entities: tuple[OwnedEntity, ...] = ()
 
 
 def _find_owner_window(
@@ -73,34 +83,37 @@ def build_owner_windows(
 
         encoded = tokenizer(
             record_text,
-            truncation=False,
+            truncation=True,
+            max_length=max_length,
+            stride=stride,
             return_offsets_mapping=True,
+            return_overflowing_tokens=True,
             add_special_tokens=True,
         )
+        input_windows = encoded["input_ids"]
+        offset_windows = encoded["offset_mapping"]
+        attention_windows = encoded.get("attention_mask")
+        if input_windows and isinstance(input_windows[0], int):
+            input_windows = [input_windows]
+            offset_windows = [offset_windows]
+            attention_windows = [attention_windows or [1] * len(input_windows[0])]
+        elif attention_windows is None:
+            attention_windows = [[1] * len(item) for item in input_windows]
 
-        input_ids_all = encoded["input_ids"]
-        raw_offsets_rel = encoded["offset_mapping"]
-        total_tokens = len(input_ids_all)
-
-        raw_offsets_abs: list[tuple[int, int]] = []
-        for start_rel, end_rel in raw_offsets_rel:
-            if start_rel == end_rel == 0:
-                raw_offsets_abs.append((-1, -1))
-            else:
-                raw_offsets_abs.append((record.raw_start + start_rel, record.raw_start + end_rel))
-
-        sub_windows: list[tuple[int, int]] = []
-        start_tok = 0
-        while start_tok < total_tokens:
-            end_tok = min(total_tokens, start_tok + max_length)
-            sub_windows.append((start_tok, end_tok))
-            if end_tok >= total_tokens:
-                break
-            start_tok = end_tok - stride
+        absolute_offset_windows: list[tuple[tuple[int, int], ...]] = []
+        for offset_window in offset_windows:
+            absolute_offset_windows.append(
+                tuple(
+                    (-1, -1)
+                    if start_rel == end_rel == 0
+                    else (record.raw_start + int(start_rel), record.raw_start + int(end_rel))
+                    for start_rel, end_rel in offset_window
+                )
+            )
 
         window_spans: list[tuple[int, int, int]] = []
-        for w_idx, (st, et) in enumerate(sub_windows):
-            tok_offsets = [off for off in raw_offsets_abs[st:et] if off != (-1, -1)]
+        for w_idx, window_offsets in enumerate(absolute_offset_windows):
+            tok_offsets = [off for off in window_offsets if off != (-1, -1)]
             if tok_offsets:
                 w_start = min(s for s, _ in tok_offsets)
                 w_end = max(e for _, e in tok_offsets)
@@ -113,21 +126,32 @@ def build_owner_windows(
         for ent_id, entity in record_entities:
             entity_owner_window[ent_id] = _find_owner_window(entity, window_spans)
 
-        for w_idx, (st, et) in enumerate(sub_windows):
-            w_input_ids = tuple(input_ids_all[st:et])
-            w_offsets = tuple(raw_offsets_abs[st:et])
-            w_attention = tuple([1] * len(w_input_ids))
+        for w_idx, input_window in enumerate(input_windows):
+            w_input_ids = tuple(int(item) for item in input_window)
+            w_offsets = absolute_offset_windows[w_idx]
+            w_attention = tuple(int(item) for item in attention_windows[w_idx])
 
-            owned_ent_ids = tuple(
-                ent_id
-                for ent_id, entity in record_entities
-                if entity_owner_window[ent_id] == w_idx
-            )
-            assertion_labels = tuple(
-                tuple(entity.assertions)
-                for ent_id, entity in record_entities
-                if entity_owner_window[ent_id] == w_idx
-            )
+            owned_metadata: list[OwnedEntity] = []
+            for ent_id, entity in record_entities:
+                if entity_owner_window[ent_id] != w_idx:
+                    continue
+                token_indices = [
+                    index
+                    for index, (tok_s, tok_e) in enumerate(w_offsets)
+                    if tok_s >= 0 and max(tok_s, entity.start) < min(tok_e, entity.end)
+                ]
+                if token_indices:
+                    owned_metadata.append(
+                        OwnedEntity(
+                            entity_id=ent_id,
+                            entity_type=entity.type,
+                            token_start=min(token_indices),
+                            token_end=max(token_indices) + 1,
+                            assertions=tuple(entity.assertions),
+                        )
+                    )
+            owned_ent_ids = tuple(item.entity_id for item in owned_metadata)
+            assertion_labels = tuple(item.assertions for item in owned_metadata)
 
             label_ids: list[int] = []
             loss_masks: list[bool] = []
@@ -181,6 +205,7 @@ def build_owner_windows(
                     loss_mask=tuple(loss_masks),
                     owned_entity_ids=owned_ent_ids,
                     assertion_labels=assertion_labels,
+                    owned_entities=tuple(owned_metadata),
                 )
             )
 

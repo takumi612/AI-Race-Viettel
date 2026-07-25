@@ -18,6 +18,7 @@ from transformers import (
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from clinical_nlp_lab.config import load_config, set_reproducible_seed
+from clinical_nlp_lab.curriculum import plan_curriculum, resolve_stage_hyperparameters
 from clinical_nlp_lab.data import grouped_train_validation_split, load_ner_training_documents, validate_documents
 from clinical_nlp_lab.dataset_quality import DatasetRecord
 from clinical_nlp_lab.schema import write_json
@@ -45,13 +46,16 @@ def load_stage_selection(path: str | Path) -> dict[str, object]:
     validation_ids = payload.get("validation_ids")
     if not isinstance(stage_name, str) or not isinstance(train_ids, list) or not isinstance(validation_ids, list):
         raise ValueError("stage manifest requires stage_name, train_ids and validation_ids")
-    return {
+    selection = {
         "stage_name": stage_name,
-        "train_ids": tuple(sorted({str(value) for value in train_ids}, key=lambda value: int(value))),
+        "train_ids": tuple(sorted((str(value) for value in train_ids), key=lambda value: int(value))),
         "validation_ids": tuple(sorted({str(value) for value in validation_ids}, key=lambda value: int(value))),
         "dataset_fingerprint": str(payload.get("dataset_fingerprint", "")),
         "split_fingerprint": str(payload.get("split_fingerprint", "")),
     }
+    if payload.get("stage_spec") is not None:
+        selection["stage_spec"] = dict(payload["stage_spec"])
+    return selection
 
 def main():
     parser = argparse.ArgumentParser()
@@ -117,16 +121,30 @@ def main():
         stage_contract_manifest = selection
     write_json(output_dir / "split_manifest.json", split_info)
 
-    if fast_dev_run:
+    if stage_contract_manifest:
+        stage_name = str(stage_contract_manifest["stage_name"])
+        expected_spec = next(
+            spec for spec in plan_curriculum("full") if spec.name == stage_name
+        )
+        supplied_spec = stage_contract_manifest.get("stage_spec")
+        if supplied_spec != expected_spec.to_dict():
+            raise ValueError(f"stage spec mismatch for {stage_name}")
+        resolved = resolve_stage_hyperparameters(
+            config, expected_spec, fast_dev_run=fast_dev_run
+        )
+        ner_epochs = int(resolved["epochs"])
+        train_batch_size = int(resolved["batch_size"])
+        learning_rate = float(resolved["learning_rate"])
+    elif fast_dev_run:
         train_docs = train_docs[: min(16, len(train_docs))]
         val_docs = val_docs[: min(4, len(val_docs))]
         ner_epochs = 1
         train_batch_size = 2
+        learning_rate = float(config["learning_rate"])
     else:
         ner_epochs = int(config["ner_epochs"])
         train_batch_size = int(config["batch_size"])
-        
-    learning_rate = float(config["learning_rate"])
+        learning_rate = float(config["learning_rate"])
     max_length = int(config.get("max_length", 512))
     stride = int(config.get("stride", 128))
     
@@ -244,8 +262,12 @@ def main():
         "trained": True,
         "train_chunks": train_contract.window_count,
         "validation_chunks": validation_contract.window_count,
+        "configured_epochs": ner_epochs,
+        "learning_rate": learning_rate,
+        "batch_size": train_batch_size,
         "training_loss": metrics.get("train_loss", 0.0),
         "best_metric": trainer.state.best_metric,
+        "best_checkpoint": trainer.state.best_model_checkpoint,
         "removed_checkpoints": removed_checkpoints,
         "output_dir": str(output_path),
     }

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence, Literal
 
 from .examples import TokenWindow
+from .curriculum import StageSpec
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,49 @@ class ReplayManifest:
                 for item in self.items
             ],
         }
+
+
+def select_stage_document_ids(
+    synthetic_ids: Sequence[str],
+    organizer_ids: Sequence[str],
+    stage_spec: StageSpec,
+    *,
+    seed: int,
+) -> tuple[str, ...]:
+    """Build a deterministic fixed-size curriculum exposure for one stage."""
+    synthetic = list(dict.fromkeys(str(item) for item in synthetic_ids))
+    organizer = list(dict.fromkeys(str(item) for item in organizer_ids))
+    fraction = float(stage_spec.organizer_fraction or 0.0)
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError("organizer_fraction must be between zero and one")
+    if not organizer or fraction == 0.0:
+        selected = synthetic
+    elif not synthetic or fraction == 1.0:
+        selected = organizer
+    else:
+        total = len(synthetic) + len(organizer)
+        organizer_target = int(round(total * fraction))
+        synthetic_target = total - organizer_target
+        rng = random.Random(seed)
+        rng.shuffle(synthetic)
+        rng.shuffle(organizer)
+
+        def cycle(values: list[str], count: int) -> list[str]:
+            return [values[index % len(values)] for index in range(count)]
+
+        replay_target = int(
+            round(synthetic_target * float(stage_spec.replay_fraction or 0.0))
+        )
+        fresh_synthetic = cycle(synthetic, synthetic_target - replay_target)
+        replay_pool = fresh_synthetic or synthetic
+        replay_synthetic = cycle(replay_pool, replay_target)
+        selected = (
+            cycle(organizer, organizer_target)
+            + fresh_synthetic
+            + replay_synthetic
+        )
+        rng.shuffle(selected)
+    return tuple(selected)
 
 
 def build_source_aware_epoch(

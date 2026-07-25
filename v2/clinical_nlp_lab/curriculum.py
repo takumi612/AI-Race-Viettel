@@ -56,6 +56,23 @@ class StageManifest:
         }
 
 
+def resolve_stage_hyperparameters(
+    config: Mapping[str, Any],
+    stage_spec: StageSpec | Mapping[str, Any],
+    *,
+    fast_dev_run: bool,
+) -> dict[str, int | float]:
+    """Resolve executable settings, with the stage contract taking precedence."""
+    spec = stage_spec.to_dict() if isinstance(stage_spec, StageSpec) else dict(stage_spec)
+    epochs = 1 if fast_dev_run else int(spec["max_epochs"])
+    batch_size = 2 if fast_dev_run else int(config["batch_size"])
+    return {
+        "epochs": epochs,
+        "learning_rate": float(spec["learning_rate"]),
+        "batch_size": batch_size,
+    }
+
+
 def build_stage_manifest(
     stage_spec: StageSpec,
     fingerprints: Mapping[str, str],

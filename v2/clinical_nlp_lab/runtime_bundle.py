@@ -10,6 +10,7 @@ from .candidate_policy import CandidatePolicy
 from .inference import FinalModelBundle, SpanProposal
 from .ner import TransformerNERDetector
 from .text import normalize_alias, normalize_with_mapping
+from .entity_types import ENTITY_TYPE_TO_ID
 
 
 class KBFirstRecovery:
@@ -39,6 +40,11 @@ class KBFirstRecovery:
             start = normalized_text.find(alias)
             while start >= 0:
                 end = start + len(alias)
+                left_is_word = start > 0 and normalized_text[start - 1].isalnum()
+                right_is_word = end < len(normalized_text) and normalized_text[end].isalnum()
+                if left_is_word or right_is_word:
+                    start = normalized_text.find(alias, start + 1)
+                    continue
                 raw_start = normalized_view.model_to_raw[start]
                 raw_end = normalized_view.model_to_raw[end - 1] + 1
                 raw_candidate = raw_text[raw_start:raw_end]
@@ -74,7 +80,7 @@ class AssertionRuntimePredictor:
         self.head_dir = Path(head_dir)
         binding_payload = __import__("json").loads((self.head_dir / "assertion_binding.json").read_text(encoding="utf-8"))
         self.thresholds = tuple(__import__("json").loads((self.head_dir / "assertion_thresholds.json").read_text(encoding="utf-8"))["thresholds"])
-        self.type_ids = {"DISEASE": 0, "DRUG": 1, "SYMPTOM": 2, "LAB_NAME": 3, "LAB_RESULT": 4}
+        self.type_ids = ENTITY_TYPE_TO_ID
         self.adapter = build_frozen_assertion_adapter(
             self.encoder,
             hidden_dim=int(self.encoder.config.hidden_size),

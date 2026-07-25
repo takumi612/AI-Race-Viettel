@@ -1,10 +1,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Iterable, Sequence, TypeVar
 import numpy as np
 import torch
 from torch import nn, Tensor
+
+
+DocumentT = TypeVar("DocumentT")
+
+
+def split_assertion_documents(
+    documents: Iterable[DocumentT],
+    validation_ids: set[str] | frozenset[str],
+) -> tuple[list[DocumentT], list[DocumentT]]:
+    """Partition documents for assertion fitting without calibration leakage."""
+    validation_id_set = {str(item) for item in validation_ids}
+    train: list[DocumentT] = []
+    validation: list[DocumentT] = []
+    for document in documents:
+        target = (
+            validation
+            if str(getattr(document, "document_id")) in validation_id_set
+            else train
+        )
+        target.append(document)
+    if not train or not validation:
+        raise ValueError("assertion train and validation partitions must be non-empty")
+    return train, validation
 
 
 @dataclass(frozen=True)
@@ -180,7 +203,12 @@ def fit_assertion_thresholds(
     encoder_hash: str = "",
     tokenizer_hash: str = "",
 ) -> AssertionThresholdArtifact:
-    probs = 1.0 / (1.0 + np.exp(-logits))  # Sigmoid
+    logits = np.asarray(logits, dtype=np.float64)
+    probs = np.empty_like(logits, dtype=np.float64)
+    positive = logits >= 0
+    probs[positive] = 1.0 / (1.0 + np.exp(-logits[positive]))
+    exp_values = np.exp(logits[~positive])
+    probs[~positive] = exp_values / (1.0 + exp_values)
     selected_thresholds: list[float] = []
 
     for axis in range(3):

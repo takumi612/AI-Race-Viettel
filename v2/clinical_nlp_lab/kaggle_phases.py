@@ -215,7 +215,13 @@ def _phase_06_prepare_training_contract(config: RunConfig, phase: str, context: 
     )
     path = _run_dir(context) / "artifacts" / "training_contract.json"
     _atomic_bytes(path, _json_bytes(contract.to_dict()))
-    return {"phase": phase, "contract": str(path), "window_count": contract.window_count, "label_map": label_to_id}
+    return {
+        "phase": phase,
+        "contract": str(path),
+        "sample_document_count": len(sample),
+        "sample_window_count": contract.window_count,
+        "label_map": label_to_id,
+    }
 
 
 def _stage_manifest_path(config: RunConfig, context: Mapping[str, Any], stage_name: str) -> Path:
@@ -223,30 +229,47 @@ def _stage_manifest_path(config: RunConfig, context: Mapping[str, Any], stage_na
 
 
 def _write_stage_input(config: RunConfig, context: Mapping[str, Any], stage_name: str) -> Path:
+    from .sampling import select_stage_document_ids
+
     split_payload = json.loads((_run_dir(context) / "artifacts" / "splits" / "split_descriptor.json").read_text(encoding="utf-8"))
     partitions = split_payload["fixed_partitions"]
     synthetic_train = list(partitions["synthetic_train_ids"])
     synthetic_validation = list(partitions["synthetic_validation_ids"])
     organizer_train = list(partitions["organizer_train_ids"])
     organizer_validation = list(partitions["organizer_validation_ids"])
+    stage_spec = next(spec for spec in plan_curriculum("full") if spec.name == stage_name)
     if stage_name == "stage1":
-        train_ids, validation_ids = synthetic_train, synthetic_validation
-    elif stage_name == "stage2":
-        train_ids = synthetic_train + organizer_train
-        validation_ids = synthetic_validation + organizer_validation
-    elif stage_name == "stage3":
-        train_ids = synthetic_train + organizer_train
+        train_ids = list(
+            select_stage_document_ids(
+                synthetic_train, organizer_train, stage_spec, seed=42
+            )
+        )
+        validation_ids = synthetic_validation
+    elif stage_name in {"stage2", "stage3"}:
+        train_ids = list(
+            select_stage_document_ids(
+                synthetic_train, organizer_train, stage_spec, seed=42
+            )
+        )
         validation_ids = synthetic_validation + organizer_validation
     else:
-        train_ids = synthetic_train + organizer_train + synthetic_validation + organizer_validation
+        train_ids = list(
+            select_stage_document_ids(
+                synthetic_train + synthetic_validation,
+                organizer_train + organizer_validation,
+                stage_spec,
+                seed=42,
+            )
+        )
         validation_ids = []
     payload = {
         "schema_id": "clinical_nlp.kaggle_stage_input",
         "schema_version": 1,
         "stage_name": stage_name,
         "dataset_root": str(Path(config.dataset_root).resolve()),
-        "train_ids": sorted(set(train_ids), key=lambda value: int(value)),
+        "train_ids": train_ids,
         "validation_ids": sorted(set(validation_ids), key=lambda value: int(value)),
+        "stage_spec": stage_spec.to_dict(),
         "dataset_fingerprint": split_payload["dataset_fingerprint"],
         "split_fingerprint": split_payload["fixed_split_sha256"],
     }
@@ -274,6 +297,28 @@ def _build_training_command(
             *args,
         ]
     return [sys.executable, str(script), *args]
+
+
+def read_training_stage_result(output_dir: str | Path) -> dict[str, Any]:
+    path = Path(output_dir) / "training_result.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"training stage result missing: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    required = {
+        "trained",
+        "train_chunks",
+        "validation_chunks",
+        "configured_epochs",
+        "learning_rate",
+        "batch_size",
+        "training_loss",
+        "best_metric",
+        "best_checkpoint",
+    }
+    missing = sorted(required - set(payload))
+    if missing:
+        raise ValueError(f"training stage result missing keys: {missing}")
+    return payload
 
 
 def _run_training_stage(config: RunConfig, phase: str, context: Mapping[str, Any], stage_name: str, parent_checkpoint: str | None) -> Mapping[str, Any]:
@@ -311,7 +356,16 @@ def _run_training_stage(config: RunConfig, phase: str, context: Mapping[str, Any
     manifest = build_stage_manifest(stage_spec, {"dataset": json.loads(stage_input.read_text(encoding="utf-8"))["dataset_fingerprint"], "split": json.loads(stage_input.read_text(encoding="utf-8"))["split_fingerprint"]}, checkpoint_hash)
     manifest_path = output_dir / "stage_manifest.json"
     write_json(manifest_path, manifest.to_dict())
-    return {"phase": phase, "stage": stage_name, "checkpoint_dir": str(checkpoint_dir), "checkpoint_sha256": checkpoint_hash, "log": str(log_path), "stage_manifest": str(manifest_path)}
+    training_result = read_training_stage_result(output_dir)
+    return {
+        "phase": phase,
+        "stage": stage_name,
+        "checkpoint_dir": str(checkpoint_dir),
+        "checkpoint_sha256": checkpoint_hash,
+        "log": str(log_path),
+        "stage_manifest": str(manifest_path),
+        "training": training_result,
+    }
 
 
 def _phase_07_stage1(config: RunConfig, phase: str, context: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -346,14 +400,34 @@ def _phase_11_fit_heads(config: RunConfig, phase: str, context: Mapping[str, Any
     checkpoint = run_dir / "checkpoints" / "final_fit" / "ner_model"
     if not checkpoint.is_dir():
         raise FileNotFoundError(f"final-fit checkpoint missing: {checkpoint}")
+    from .assertion_model import split_assertion_documents
+    from .entity_types import ENTITY_TYPE_TO_ID
+
     documents = load_ner_training_documents(config.dataset_root)
+    split_payload = json.loads(
+        (_run_dir(context) / "artifacts" / "splits" / "split_descriptor.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    fixed_partitions = split_payload["fixed_partitions"]
+    validation_ids = set(fixed_partitions["synthetic_validation_ids"]) | set(
+        fixed_partitions["organizer_validation_ids"]
+    )
+    train_documents, validation_documents = split_assertion_documents(
+        documents, validation_ids
+    )
     if config.fast_dev_run:
-        documents = documents[:32]
+        train_documents = train_documents[:32]
+        validation_documents = validation_documents[:8]
     tokenizer = AutoTokenizer.from_pretrained(str(checkpoint), use_fast=True)
     label_to_id, _ = build_bio_label_map({entity.type for document in documents for entity in document.entities})
-    records_by_document = {
+    train_records = {
         document.document_id: parse_document_records(document.document_id, document.raw_text, document.entities)
-        for document in documents
+        for document in train_documents
+    }
+    validation_records = {
+        document.document_id: parse_document_records(document.document_id, document.raw_text, document.entities)
+        for document in validation_documents
     }
     encoder = AutoModel.from_pretrained(str(checkpoint))
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -368,9 +442,9 @@ def _phase_11_fit_heads(config: RunConfig, phase: str, context: Mapping[str, Any
         encoder_hash=encoder_hash,
         tokenizer_hash=tokenizer_hash,
     ).to(device)
-    contract = build_training_contract(
-        documents,
-        records_by_document,
+    train_contract = build_training_contract(
+        train_documents,
+        train_records,
         tokenizer,
         label_to_id,
         dataset_fingerprint=context.get("dataset_fingerprint", "unbound"),
@@ -379,14 +453,22 @@ def _phase_11_fit_heads(config: RunConfig, phase: str, context: Mapping[str, Any
         stride=128,
         batch_size=8,
     )
+    validation_contract = build_training_contract(
+        validation_documents,
+        validation_records,
+        tokenizer,
+        label_to_id,
+        dataset_fingerprint=context.get("dataset_fingerprint", "unbound"),
+        split_fingerprint="assertion-validation",
+        max_length=512,
+        stride=128,
+        batch_size=8,
+    )
     optimizer = torch.optim.AdamW(adapter.head.parameters(), lr=1e-3)
     epochs = 1 if config.fast_dev_run else 3
-    collected_logits: list[np.ndarray] = []
-    collected_targets: list[np.ndarray] = []
-    collected_masks: list[np.ndarray] = []
     for _epoch in range(epochs):
         adapter.train()
-        for batch in contract.batches:
+        for batch in train_contract.batches:
             spans = batch["entity_spans"].to(device)
             types = batch["entity_types"].to(device)
             if spans.numel() == 0:
@@ -404,11 +486,26 @@ def _phase_11_fit_heads(config: RunConfig, phase: str, context: Mapping[str, Any
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
-            collected_logits.append(logits.detach().cpu().numpy())
-            collected_targets.append(targets.detach().cpu().numpy())
-            collected_masks.append(mask.detach().cpu().numpy())
+    collected_logits: list[np.ndarray] = []
+    collected_targets: list[np.ndarray] = []
+    collected_masks: list[np.ndarray] = []
+    adapter.eval()
+    with torch.inference_mode():
+        for batch in validation_contract.batches:
+            spans = batch["entity_spans"].to(device)
+            if spans.numel() == 0:
+                continue
+            logits = adapter(
+                batch["input_ids"].to(device),
+                batch["attention_mask"].to(device),
+                spans,
+                batch["entity_types"].to(device),
+            )
+            collected_logits.append(logits.cpu().numpy())
+            collected_targets.append(batch["assertion_targets"].numpy())
+            collected_masks.append(batch["assertion_mask"].numpy())
     if not collected_logits:
-        raise RuntimeError("final-fit produced no assertion training mentions")
+        raise RuntimeError("assertion validation produced no calibration mentions")
     logits_array = np.concatenate(collected_logits)
     targets_array = np.concatenate(collected_targets)
     masks_array = np.concatenate(collected_masks)
@@ -426,7 +523,7 @@ def _phase_11_fit_heads(config: RunConfig, phase: str, context: Mapping[str, Any
     write_json(head_dir / "assertion_thresholds.json", thresholds.to_dict())
     write_json(
         head_dir / "assertion_entity_type_map.json",
-        {name: index for index, name in enumerate(("DISEASE", "DRUG", "SYMPTOM", "LAB_NAME", "LAB_RESULT"))},
+        ENTITY_TYPE_TO_ID,
     )
 
     kb_candidates: dict[str, list[dict[str, Any]]] = {}
@@ -523,7 +620,19 @@ def _phase_12_inference(config: RunConfig, phase: str, context: Mapping[str, Any
         zip_path=_run_dir(context) / "output.zip",
         diagnostics_dir=_run_dir(context) / "diagnostics",
     )
-    return {"phase": phase, **summary, "output_dir": str(output_dir)}
+    from .output_quality import audit_submission_directory, enforce_output_quality
+
+    quality_report = audit_submission_directory(input_source, output_dir)
+    quality_path = _run_dir(context) / "diagnostics" / "output_quality.json"
+    write_json(quality_path, quality_report)
+    enforce_output_quality(quality_report)
+    return {
+        "phase": phase,
+        **summary,
+        "output_dir": str(output_dir),
+        "quality_report": str(quality_path),
+        "quality": quality_report,
+    }
 
 
 def _phase_13_packaging(config: RunConfig, phase: str, context: Mapping[str, Any]) -> Mapping[str, Any]:

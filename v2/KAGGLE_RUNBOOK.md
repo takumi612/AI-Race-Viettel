@@ -1,5 +1,19 @@
 # Runbook Kaggle — Clinical NLP contract-first
 
+## Quality and training-contract checks
+
+Training and inference share the tokenizer's native overflow-window contract.
+Each curriculum phase reports actual train/validation chunk counts, configured
+epochs, learning rate, loss, best metric, and best checkpoint. Phase 6 reports
+`sample_window_count` for its 32-document diagnostic; it is not the complete
+training-window count.
+
+Before packaging, inference is rejected on pathological document coverage,
+one-type collapse, mid-word boundaries, punctuation-only entities, multiline
+entities, or spans longer than the supported limit. A failed quality gate means
+the checkpoint must be retrained or diagnosed; do not manually edit the
+submission to bypass it.
+
 Notebook canonical: `medical_information_extraction_kaggle.ipynb`.
 
 Tài liệu giải thích cho người mới: `KAGGLE_PIPELINE_ELI5_VI.md`.

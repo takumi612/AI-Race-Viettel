@@ -52,16 +52,21 @@ def merge_raw_span_proposals(
             p for p in proposals
             if rec.raw_start <= p.start and p.end <= rec.raw_end
         ]
-        rec_proposals.sort(key=lambda p: (p.start, -(p.end - p.start), -p.confidence))
+        rec_proposals.sort(
+            key=lambda p: (-p.confidence, p.start, p.end - p.start, p.entity_type)
+        )
         selected: list[SpanProposal] = []
         for prop in rec_proposals:
             if prop.start < 0 or prop.end <= prop.start:
                 continue
             if raw_text and raw_text[prop.start:prop.end] != prop.text:
                 continue
+            if raw_text and not _is_valid_proposal_boundary(prop, raw_text):
+                continue
             if any(max(prop.start, item.start) < min(prop.end, item.end) for item in selected):
                 continue
             selected.append(prop)
+        selected.sort(key=lambda item: (item.start, item.end, item.entity_type))
         for proposal in selected:
             merged_entities.append(
                 EntityAnnotation(
@@ -74,6 +79,27 @@ def merge_raw_span_proposals(
                 )
             )
     return tuple(merged_entities)
+
+
+def _is_valid_proposal_boundary(proposal: SpanProposal, raw_text: str) -> bool:
+    text = proposal.text
+    if not text.strip() or not any(character.isalnum() for character in text):
+        return False
+    if "\n" in text or "\r" in text or len(text) > 160:
+        return False
+    if (
+        proposal.start > 0
+        and raw_text[proposal.start - 1].isalnum()
+        and raw_text[proposal.start].isalnum()
+    ):
+        return False
+    if (
+        proposal.end < len(raw_text)
+        and raw_text[proposal.end - 1].isalnum()
+        and raw_text[proposal.end].isalnum()
+    ):
+        return False
+    return True
 
 
 def _coerce_proposal(value: Any, source: str) -> SpanProposal:

@@ -4,6 +4,7 @@ from typing import Sequence, TypedDict
 import torch
 
 from .examples import TokenWindow
+from .entity_types import ASSERTION_ENTITY_TYPES, entity_type_id as canonical_entity_type_id
 
 
 class TrainingBatch(TypedDict):
@@ -57,6 +58,23 @@ class ClinicalTokenCollator:
         assertion_mask_list: list[list[bool]] = []
 
         for b_idx, ex in enumerate(examples):
+            if ex.owned_entities:
+                for owned in ex.owned_entities:
+                    entity_spans_list.append(
+                        [b_idx, owned.token_start, owned.token_end]
+                    )
+                    entity_types_list.append(canonical_entity_type_id(owned.entity_type))
+                    label_set = set(owned.assertions)
+                    assertion_targets_list.append(
+                        [
+                            1.0 if axis in label_set else 0.0
+                            for axis in ("isNegated", "isHistorical", "isFamily")
+                        ]
+                    )
+                    assertion_mask_list.append(
+                        [owned.entity_type in ASSERTION_ENTITY_TYPES] * 3
+                    )
+                continue
             seq_len = len(ex.input_ids)
             idx = 0
             owned_entity_index = 0
