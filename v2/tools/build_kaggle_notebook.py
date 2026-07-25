@@ -82,7 +82,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-IS_KAGGLE = Path("/kaggle/input").is_dir()
+KAGGLE_INPUT_ROOT = Path("/kaggle/input")
+IS_KAGGLE = KAGGLE_INPUT_ROOT.is_dir()
 PROJECT_ROOT_OVERRIDE = os.environ.get("PROJECT_ROOT_OVERRIDE", "")
 GIT_CLONE_URL = os.environ.get("GIT_CLONE_URL", "https://github.com/takumi612/AI-Race-Viettel.git")
 GIT_CLONE_REF = os.environ.get("GIT_CLONE_REF", "codex/kaggle-end-to-end-pipeline")
@@ -154,21 +155,86 @@ from clinical_nlp_lab.orchestration import (
     start_run,
 )
 
-DATASET_ROOT = Path(os.environ.get("DATASET_ROOT", ""))
-if not str(DATASET_ROOT):
-    dataset_candidates = list(Path("/kaggle/input").rglob("synthetic_train_v2")) if IS_KAGGLE else []
-    DATASET_ROOT = dataset_candidates[0] if dataset_candidates else Path("../data_v2/Training_data/synthetic_train_v2")
+def _has_direct_files(path: Path, pattern: str) -> bool:
+    return path.is_dir() and any(path.glob(pattern))
+
+def _unique_paths(paths):
+    unique = {}
+    for path in paths:
+        resolved = Path(path).resolve()
+        unique[str(resolved)] = resolved
+    return list(unique.values())
+
+def _require_one(label: str, paths):
+    candidates = _unique_paths(paths)
+    if len(candidates) != 1:
+        rendered = [str(path) for path in candidates]
+        raise RuntimeError(
+            f"Expected exactly one valid {label}; found {len(candidates)}: {rendered}. "
+            f"Set the corresponding environment override explicitly."
+        )
+    return candidates[0]
+
+def _resolve_data_sources(
+    *,
+    kaggle_input_root: Path,
+    is_kaggle: bool,
+    dataset_root_override: str,
+    input_source_override: str,
+):
+    if dataset_root_override.strip():
+        dataset_root = Path(dataset_root_override).expanduser().resolve()
+    elif is_kaggle:
+        training_candidates = [
+            path
+            for path in kaggle_input_root.rglob("synthetic_train_v2")
+            if _has_direct_files(path / "input", "*.txt")
+            and _has_direct_files(path / "gt", "*.json")
+        ]
+        dataset_root = _require_one("training dataset", training_candidates)
+    else:
+        dataset_root = Path("../data_v2/Training_data/synthetic_train_v2").resolve()
+
+    if not _has_direct_files(dataset_root / "input", "*.txt"):
+        raise FileNotFoundError(f"Training input has no direct .txt files: {dataset_root / 'input'}")
+    if not _has_direct_files(dataset_root / "gt", "*.json"):
+        raise FileNotFoundError(f"Training ground truth has no direct .json files: {dataset_root / 'gt'}")
+
+    if input_source_override.strip():
+        input_source = Path(input_source_override).expanduser().resolve()
+        if input_source.is_file() and input_source.suffix.lower() == ".zip":
+            return dataset_root, input_source
+        if not _has_direct_files(input_source, "*.txt"):
+            raise FileNotFoundError(f"Inference input has no direct .txt files: {input_source}")
+        return dataset_root, input_source
+
+    if is_kaggle:
+        training_input = (dataset_root / "input").resolve()
+        inference_candidates = [
+            path
+            for path in kaggle_input_root.rglob("input")
+            if _has_direct_files(path, "*.txt")
+            and path.resolve() != training_input
+            and not (path.parent / "gt").is_dir()
+        ]
+        input_source = _require_one("inference input directory", inference_candidates)
+    else:
+        input_source = Path("input.zip").resolve()
+        if not input_source.is_file():
+            raise FileNotFoundError(
+                f"Local inference input archive does not exist: {input_source}. "
+                "Set INPUT_SOURCE explicitly."
+            )
+    return dataset_root, input_source
+
+DATASET_ROOT, INPUT_SOURCE = _resolve_data_sources(
+    kaggle_input_root=KAGGLE_INPUT_ROOT,
+    is_kaggle=IS_KAGGLE,
+    dataset_root_override=os.environ.get("DATASET_ROOT", ""),
+    input_source_override=os.environ.get("INPUT_SOURCE", ""),
+)
 ARTIFACT_DIR = Path(os.environ.get("ARTIFACT_DIR", str(Path("/kaggle/working/artifacts") if IS_KAGGLE else PROJECT_ROOT / "artifacts")))
 ARTIFACT_SOURCE_DIR = Path(os.environ.get("ARTIFACT_SOURCE_DIR", str(PROJECT_ROOT / "artifacts")))
-INPUT_SOURCE = Path(os.environ.get("INPUT_SOURCE", "input.zip"))
-if not INPUT_SOURCE.exists():
-    input_candidates = [
-        PROJECT_ROOT / "input",
-        DATASET_ROOT.parent / "input",
-        *(list(Path("/kaggle/input").rglob("input.zip")) if IS_KAGGLE else []),
-        *(list(Path("/kaggle/input").rglob("input")) if IS_KAGGLE else []),
-    ]
-    INPUT_SOURCE = next((candidate for candidate in input_candidates if candidate.exists()), INPUT_SOURCE)
 MODEL_SOURCE = os.environ.get("MODEL_SOURCE", "xlm-roberta-base")
 OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", "/kaggle/working/run_output" if IS_KAGGLE else "artifacts/run_output"))
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", str(ARTIFACT_DIR / "config.json")))

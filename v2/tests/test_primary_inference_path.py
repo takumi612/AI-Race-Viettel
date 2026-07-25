@@ -75,6 +75,21 @@ def test_invalid_proposal_is_rejected_before_assertion_or_candidate_steps():
     assert document.entities == []
 
 
+def test_inference_low_numeric_id_without_organizer_headers_is_one_record():
+    raw_text = "THIẾU MEN G6PD là gì?\n\n1. Thiếu men G6PD là bệnh gì?"
+
+    document = infer_document(
+        "1",
+        raw_text,
+        FinalModelBundle(ner_model=None, tokenizer=None),
+        InferenceConfig(enable_kb_recovery=False),
+    )
+
+    assert document.document_id == "1"
+    assert document.raw_text == raw_text
+    assert document.entities == []
+
+
 def test_kb_first_recovery_preserves_raw_offsets_for_aliases():
     recovery = KBFirstRecovery(
         [{"candidate_id": "E11", "aliases": ["diabetes"]}],

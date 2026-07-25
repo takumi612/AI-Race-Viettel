@@ -60,6 +60,8 @@ def parse_document_records(
     document_id: str,
     raw_text: str,
     entities: Sequence[Any],
+    *,
+    source_role: str | None = None,
 ) -> tuple[ClinicalRecord, ...]:
     dict_entities: list[dict[str, Any]] = []
     for e in entities:
@@ -69,7 +71,12 @@ def parse_document_records(
             dict_entities.append(dict(e))
         else:
             dict_entities.append({"position": [0, 0]})
-    spans = detect_record_spans(document_id, raw_text, dict_entities)
+    spans = detect_record_spans(
+        document_id,
+        raw_text,
+        dict_entities,
+        source_role=source_role,
+    )
     records: list[ClinicalRecord] = []
     for span in spans:
         indices: list[int] = []
@@ -187,7 +194,11 @@ def detect_record_spans(
     document_id: str,
     text: str,
     entities: Iterable[Mapping[str, Any]],
+    *,
+    source_role: str | None = None,
 ) -> tuple[RecordSpan, ...]:
+    if source_role not in {None, "inference"}:
+        raise RecordContractError(f"Unsupported record source role: {source_role!r}")
     try:
         numeric_id = int(document_id)
     except (TypeError, ValueError) as exc:
@@ -195,8 +206,21 @@ def detect_record_spans(
     if str(numeric_id) != document_id or numeric_id <= 0:
         raise RecordContractError("Document ID must be canonical positive decimal")
 
-    if numeric_id <= 200:
-        matches = list(_ORGANIZER_HEADER_RE.finditer(text))
+    matches = list(_ORGANIZER_HEADER_RE.finditer(text))
+    if source_role == "inference" and not matches:
+        spans = (
+            RecordSpan(
+                patient_block_id=f"{document_id}:record-0001",
+                start=0,
+                end=len(text),
+                confidence="high",
+                evidence="inference_single_document",
+                ordinal=1,
+            ),
+        )
+        return _validate_partition(document_id, text, spans, entities)
+
+    if numeric_id <= 200 or (source_role == "inference" and matches):
         if not matches:
             raise RecordContractError(
                 f"Document {document_id} has credible multi-patient scope but no recognized headers"

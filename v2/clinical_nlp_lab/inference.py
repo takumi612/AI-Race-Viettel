@@ -180,7 +180,12 @@ def infer_document(
     bundle: FinalModelBundle,
     config: InferenceConfig,
 ) -> ClinicalDocument:
-    records = parse_document_records(document_id, raw_text, ())
+    records = parse_document_records(
+        document_id,
+        raw_text,
+        (),
+        source_role="inference",
+    )
     proposals = _call_ner(bundle, raw_text, config)
 
     if config.enable_kb_recovery and bundle.kb_linker is not None:

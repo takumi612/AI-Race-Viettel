@@ -37,6 +37,13 @@ ai-race-clinical-data/
     └── reports/dataset_manifest.jsonl
 ```
 
+Notebook chỉ chấp nhận thư mục inference có file `.txt` trực tiếp. Layout Kaggle
+tự giải nén bị lồng thêm một cấp
+`ai-race-clinical-data/input/input/<document_id>.txt` cũng được tự nhận diện.
+Notebook không còn fallback sang `PROJECT_ROOT/input` hoặc chọn thư mục `input`
+đầu tiên chỉ vì nó tồn tại. Nếu có nhiều nguồn hợp lệ, notebook fail-fast; đặt
+`DATASET_ROOT` và `INPUT_SOURCE` để chọn rõ ràng.
+
 Trước khi chạy, bật GPU Accelerator và Internet để notebook clone source/model
 và cài dependency nếu cần. Các biến môi trường được hỗ trợ:
 
