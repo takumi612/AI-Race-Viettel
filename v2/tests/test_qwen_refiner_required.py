@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import json
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
+from clinical_nlp_lab.data import ClinicalDocument
+from clinical_nlp_lab.pipeline import run_inference_with_bundle
 from clinical_nlp_lab.qwen_refiner import RequiredQwenError, RequiredQwenRefiner
-from clinical_nlp_lab.schema import EntityAnnotation
+from clinical_nlp_lab.schema import EntityAnnotation, validate_submission_payload
+
+
+ROOT = Path(__file__).parents[1]
 
 
 class FakeEngine:
@@ -58,12 +65,34 @@ def test_refiner_selects_only_an_id_from_the_preserved_pool():
     refined = RequiredQwenRefiner(engine).refine((_entity(),), "Patient fever today.")
 
     assert refined[0].candidates == ["B02"]
-    assert refined[0].assertions == [
-        "polarity:NEGATED",
-        "temporality:CURRENT",
-        "certainty:CONFIRMED",
-        "experiencer:PATIENT",
-    ]
+    assert refined[0].assertions == ["isNegated"]
+
+
+def test_refiner_assertions_survive_real_mapping_and_submission_validation(tmp_path: Path, monkeypatch):
+    raw_text = "Patient fever today."
+    engine = FakeEngine([
+        ['{"selected_id":"B02"}'],
+        ['{"polarity":"NEGATED","temporality":"HISTORICAL","certainty":"POSSIBLE","experiencer":"FAMILY"}'],
+    ])
+    refined = RequiredQwenRefiner(engine).refine((_entity(),), raw_text)
+    document = ClinicalDocument("001", raw_text, entities=list(refined))
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "001.txt").write_text(raw_text, encoding="utf-8")
+    monkeypatch.setattr("clinical_nlp_lab.inference.infer_document", lambda *_args: document)
+
+    run_inference_with_bundle(
+        input_dir,
+        tmp_path / "output",
+        bundle=object(),
+        entity_mapping=json.loads((ROOT / "artifacts" / "entity_type_mapping.json").read_text(encoding="utf-8")),
+        assertion_mapping=json.loads((ROOT / "artifacts" / "assertion_mapping.json").read_text(encoding="utf-8")),
+        create_zip=False,
+    )
+
+    payload = json.loads((tmp_path / "output" / "001.json").read_text(encoding="utf-8"))
+    assert payload[0]["assertions"] == ["isNegated", "isHistorical", "isFamily"]
+    assert validate_submission_payload(payload, raw_text) == []
 
 
 def test_refiner_accepts_null_as_an_abstention():

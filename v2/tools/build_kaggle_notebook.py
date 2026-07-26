@@ -76,6 +76,7 @@ Kaggle Run All là bước nghiệm thu do người dùng thực hiện.
 import json
 import hashlib
 import os
+import importlib
 import importlib.util
 import subprocess
 import sys
@@ -132,6 +133,16 @@ if os.environ.get("INSTALL_RUNTIME_DEPS", "1") == "1":
     missing_modules = [module for module in required_modules if importlib.util.find_spec(module) is None]
     if missing_modules and requirements.is_file():
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(requirements)], check=True)
+
+if ENABLE_QWEN_RERANKER and importlib.util.find_spec("vllm") is None:
+    # Keep Kaggle's preinstalled torch/transformers stack unchanged.
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", "--no-deps", "vllm==0.25.1"],
+        check=True,
+    )
+    importlib.invalidate_caches()
+    if importlib.util.find_spec("vllm") is None:
+        raise ImportError("vllm installation completed but the module cannot be resolved")
 
 from clinical_nlp_lab.kaggle_phases import build_kaggle_phase_runners
 from clinical_nlp_lab.orchestration import (

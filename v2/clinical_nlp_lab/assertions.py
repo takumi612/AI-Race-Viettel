@@ -32,6 +32,16 @@ class AssertionAxes:
             f"experiencer:{self.experiencer}",
         ]
 
+    def submission_labels(self) -> list[str]:
+        labels: list[str] = []
+        if self.polarity == "NEGATED":
+            labels.append("isNegated")
+        if self.temporality == "HISTORICAL":
+            labels.append("isHistorical")
+        if self.experiencer == "FAMILY":
+            labels.append("isFamily")
+        return labels
+
 
 class HybridAssertionPredictor:
     def __init__(self, context_window: int = 120) -> None:

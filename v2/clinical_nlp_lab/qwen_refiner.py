@@ -84,7 +84,7 @@ class RequiredQwenRefiner:
                 if len(axes_values) != len(assertion_indices):
                     raise RequiredQwenError("assertion response count mismatch")
                 for index, axes in zip(assertion_indices, axes_values):
-                    refined[index].assertions = axes.labels()
+                    refined[index].assertions = axes.submission_labels()
             return tuple(refined)
         except RequiredQwenError:
             raise
