@@ -7,26 +7,26 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 
 
-def _load_module(name, path):
+def _load_module(monkeypatch, name, path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
+    monkeypatch.setitem(sys.modules, name, module)
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
 
 
-def _load_assertions():
+def _load_assertions(monkeypatch):
     package = types.ModuleType("clinical_nlp_lab")
     package.__path__ = [str(ROOT / "clinical_nlp_lab")]
-    sys.modules["clinical_nlp_lab"] = package
-    _load_module("clinical_nlp_lab.schema", ROOT / "clinical_nlp_lab" / "schema.py")
-    _load_module("clinical_nlp_lab.text", ROOT / "clinical_nlp_lab" / "text.py")
-    return _load_module("clinical_nlp_lab.assertions", ROOT / "clinical_nlp_lab" / "assertions.py")
+    monkeypatch.setitem(sys.modules, "clinical_nlp_lab", package)
+    _load_module(monkeypatch, "clinical_nlp_lab.schema", ROOT / "clinical_nlp_lab" / "schema.py")
+    _load_module(monkeypatch, "clinical_nlp_lab.text", ROOT / "clinical_nlp_lab" / "text.py")
+    return _load_module(monkeypatch, "clinical_nlp_lab.assertions", ROOT / "clinical_nlp_lab" / "assertions.py")
 
 
 def test_assertion_predictor_does_not_use_removed_guided_json(monkeypatch):
-    assertions = _load_assertions()
+    assertions = _load_assertions(monkeypatch)
 
     class FakeSamplingParams:
         def __init__(self, *, temperature, max_tokens, structured_outputs=None):
@@ -53,4 +53,3 @@ def test_assertion_predictor_does_not_use_removed_guided_json(monkeypatch):
     result = predictor.predict_batch([{"context": "không sốt", "entity_text": "sốt"}])
 
     assert result[0].polarity == "NEGATED"
-

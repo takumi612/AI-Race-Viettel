@@ -53,7 +53,9 @@ def test_config_json_cannot_override_the_run_config_qwen_toggle(tmp_path: Path, 
     )
     artifact_dir = tmp_path / "artifacts"
     artifact_dir.mkdir()
-    (artifact_dir / "config.json").write_text('{"enable_qwen": true}', encoding="utf-8")
+    (artifact_dir / "config.json").write_text(
+        '{"enable_qwen": true, "enable_qwen_reranker": true}', encoding="utf-8"
+    )
     (artifact_dir / "entity_type_mapping.json").write_text("{}", encoding="utf-8")
     (artifact_dir / "assertion_mapping.json").write_text("{}", encoding="utf-8")
     input_source = tmp_path / "input.zip"

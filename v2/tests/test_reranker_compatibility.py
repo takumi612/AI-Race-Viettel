@@ -5,62 +5,72 @@ import types
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
-package = types.ModuleType("clinical_nlp_lab")
-package.__path__ = [str(ROOT / "clinical_nlp_lab")]
-sys.modules["clinical_nlp_lab"] = package
-compat_spec = importlib.util.spec_from_file_location("clinical_nlp_lab.vllm_compat", ROOT / "clinical_nlp_lab" / "vllm_compat.py")
-compat_module = importlib.util.module_from_spec(compat_spec)
-sys.modules["clinical_nlp_lab.vllm_compat"] = compat_module
-assert compat_spec.loader is not None
-compat_spec.loader.exec_module(compat_module)
-_SPEC = importlib.util.spec_from_file_location("clinical_nlp_lab.reranker", ROOT / "clinical_nlp_lab" / "reranker.py")
-_MODULE = importlib.util.module_from_spec(_SPEC)
-sys.modules["clinical_nlp_lab.reranker"] = _MODULE
-assert _SPEC.loader is not None
-_SPEC.loader.exec_module(_MODULE)
-_build_sampling_kwargs = _MODULE._build_sampling_kwargs
-_parse_selected_id = _MODULE._parse_selected_id
-_selection_warning_reason = _MODULE._selection_warning_reason
-ClinicalLLMReranker = _MODULE.ClinicalLLMReranker
 
 
-def test_parse_selected_id_accepts_fenced_json_and_candidate_id():
+def _load_reranker(monkeypatch):
+    package = types.ModuleType("clinical_nlp_lab")
+    package.__path__ = [str(ROOT / "clinical_nlp_lab")]
+    monkeypatch.setitem(sys.modules, "clinical_nlp_lab", package)
+    compat_spec = importlib.util.spec_from_file_location(
+        "clinical_nlp_lab.vllm_compat", ROOT / "clinical_nlp_lab" / "vllm_compat.py"
+    )
+    compat_module = importlib.util.module_from_spec(compat_spec)
+    monkeypatch.setitem(sys.modules, "clinical_nlp_lab.vllm_compat", compat_module)
+    assert compat_spec.loader is not None
+    compat_spec.loader.exec_module(compat_module)
+    spec = importlib.util.spec_from_file_location(
+        "clinical_nlp_lab.reranker", ROOT / "clinical_nlp_lab" / "reranker.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "clinical_nlp_lab.reranker", module)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_parse_selected_id_accepts_fenced_json_and_candidate_id(monkeypatch):
+    reranker = _load_reranker(monkeypatch)
     response = "```json\n{\"selected_id\": \"K59.0\"}\n```"
 
-    assert _parse_selected_id(response, [{"candidate_id": "K59.0"}]) == "K59.0"
+    assert reranker._parse_selected_id(response, [{"candidate_id": "K59.0"}]) == "K59.0"
 
 
-def test_parse_selected_id_rejects_explanatory_or_unknown_id():
+def test_parse_selected_id_rejects_explanatory_or_unknown_id(monkeypatch):
+    reranker = _load_reranker(monkeypatch)
     response = "The best choice is K59.0."
 
-    assert _parse_selected_id(response, [{"candidate_id": "I10"}]) is None
+    assert reranker._parse_selected_id(response, [{"candidate_id": "I10"}]) is None
 
 
-def test_non_strict_parser_keeps_legacy_malformed_and_unknown_fallbacks():
+def test_non_strict_parser_keeps_legacy_malformed_and_unknown_fallbacks(monkeypatch):
+    reranker = _load_reranker(monkeypatch)
     candidates = [{"candidate_id": "I10"}]
 
-    assert _parse_selected_id("not JSON", candidates) is None
-    assert _parse_selected_id('{"selected_id":"unknown"}', candidates) is None
+    assert reranker._parse_selected_id("not JSON", candidates) is None
+    assert reranker._parse_selected_id('{"selected_id":"unknown"}', candidates) is None
 
 
-def test_selection_warning_ignores_valid_null_selection():
-    assert _selection_warning_reason('{"selected_id": null}', [{"candidate_id": "I10"}]) is None
+def test_selection_warning_ignores_valid_null_selection(monkeypatch):
+    reranker = _load_reranker(monkeypatch)
+    assert reranker._selection_warning_reason('{"selected_id": null}', [{"candidate_id": "I10"}]) is None
 
 
-def test_selection_warning_reports_unknown_candidate_id():
-    reason = _selection_warning_reason('{"selected_id": "K59.0"}', [{"candidate_id": "I10"}])
+def test_selection_warning_reports_unknown_candidate_id(monkeypatch):
+    reranker = _load_reranker(monkeypatch)
+    reason = reranker._selection_warning_reason('{"selected_id": "K59.0"}', [{"candidate_id": "I10"}])
 
     assert reason == "unknown selected_id"
 
 
-def test_build_sampling_kwargs_uses_supported_structured_outputs_keyword():
+def test_build_sampling_kwargs_uses_supported_structured_outputs_keyword(monkeypatch):
+    reranker = _load_reranker(monkeypatch)
     class FakeSamplingParams:
         def __init__(self, *, temperature, max_tokens, structured_outputs=None):
             self.temperature = temperature
             self.max_tokens = max_tokens
             self.structured_outputs = structured_outputs
 
-    kwargs = _build_sampling_kwargs(
+    kwargs = reranker._build_sampling_kwargs(
         FakeSamplingParams,
         ["K59.0"],
         structured_outputs_factory=lambda **payload: payload,
@@ -74,6 +84,7 @@ def test_build_sampling_kwargs_uses_supported_structured_outputs_keyword():
 
 
 def test_destroy_tolerates_vllm_without_is_initialized(monkeypatch):
+    reranker_module = _load_reranker(monkeypatch)
     parallel_state = types.ModuleType("vllm.distributed.parallel_state")
     parallel_state.destroy_model_parallel = lambda: None
     distributed = types.ModuleType("vllm.distributed")
@@ -84,7 +95,7 @@ def test_destroy_tolerates_vllm_without_is_initialized(monkeypatch):
     monkeypatch.setitem(sys.modules, "vllm.distributed", distributed)
     monkeypatch.setitem(sys.modules, "vllm.distributed.parallel_state", parallel_state)
 
-    reranker = ClinicalLLMReranker.__new__(ClinicalLLMReranker)
+    reranker = reranker_module.ClinicalLLMReranker.__new__(reranker_module.ClinicalLLMReranker)
     reranker.llm = object()
 
     reranker.destroy()
@@ -92,6 +103,7 @@ def test_destroy_tolerates_vllm_without_is_initialized(monkeypatch):
 
 
 def test_reranker_forwards_configured_gpu_memory_limit(monkeypatch):
+    reranker_module = _load_reranker(monkeypatch)
     captured = {}
 
     class FakeLLM:
@@ -102,7 +114,7 @@ def test_reranker_forwards_configured_gpu_memory_limit(monkeypatch):
     fake_vllm.LLM = FakeLLM
     monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
 
-    ClinicalLLMReranker(
+    reranker_module.ClinicalLLMReranker(
         model_name="Qwen/test-awq",
         max_model_len=1024,
         batch_size=8,

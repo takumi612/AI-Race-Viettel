@@ -7,27 +7,27 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 
 
-def _load_retrieval():
+def _load_retrieval(monkeypatch):
     package = types.ModuleType("clinical_nlp_lab")
     package.__path__ = [str(ROOT / "clinical_nlp_lab")]
-    sys.modules["clinical_nlp_lab"] = package
+    monkeypatch.setitem(sys.modules, "clinical_nlp_lab", package)
     for module_name in ("bm25s", "faiss", "sentence_transformers"):
         sys.modules.setdefault(module_name, types.ModuleType(module_name))
     fake_st = sys.modules["sentence_transformers"]
     fake_st.SentenceTransformer = object
     text_spec = importlib.util.spec_from_file_location("clinical_nlp_lab.text", ROOT / "clinical_nlp_lab" / "text.py")
     text_module = importlib.util.module_from_spec(text_spec)
-    sys.modules["clinical_nlp_lab.text"] = text_module
+    monkeypatch.setitem(sys.modules, "clinical_nlp_lab.text", text_module)
     text_spec.loader.exec_module(text_module)
     spec = importlib.util.spec_from_file_location("clinical_nlp_lab.retrieval", ROOT / "clinical_nlp_lab" / "retrieval.py")
     module = importlib.util.module_from_spec(spec)
-    sys.modules["clinical_nlp_lab.retrieval"] = module
+    monkeypatch.setitem(sys.modules, "clinical_nlp_lab.retrieval", module)
     spec.loader.exec_module(module)
     return module
 
 
-def test_candidate_index_accepts_shared_encoder_and_releases_resources():
-    retrieval = _load_retrieval()
+def test_candidate_index_accepts_shared_encoder_and_releases_resources(monkeypatch):
+    retrieval = _load_retrieval(monkeypatch)
     encoder = object()
     index = retrieval.HybridCandidateIndex(
         [{"candidate_id": "I10", "aliases": ["tăng huyết áp"]}],
@@ -45,7 +45,7 @@ def test_candidate_index_accepts_shared_encoder_and_releases_resources():
 
 
 def test_hybrid_index_skips_bm25_when_tokenizer_returns_no_terms(monkeypatch):
-    retrieval = _load_retrieval()
+    retrieval = _load_retrieval(monkeypatch)
 
     class FakeBM25:
         def retrieve(self, *_args, **_kwargs):
@@ -74,8 +74,8 @@ def test_hybrid_index_skips_bm25_when_tokenizer_returns_no_terms(monkeypatch):
     assert ranked[0]["candidate_id"] == "I10"
 
 
-def test_hybrid_index_has_lexical_fallback_without_embedding_model():
-    retrieval = _load_retrieval()
+def test_hybrid_index_has_lexical_fallback_without_embedding_model(monkeypatch):
+    retrieval = _load_retrieval(monkeypatch)
     index = retrieval.HybridCandidateIndex(
         [{"candidate_id": "I10", "canonical_name": "tang huyet ap", "aliases": ["tang huyet ap"]}],
         "ICD-10",

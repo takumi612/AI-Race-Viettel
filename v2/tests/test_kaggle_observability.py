@@ -20,9 +20,10 @@ def test_kaggle_notebook_has_step_logger_and_failure_context():
 def test_training_notebook_has_one_qwen_enable_assignment_and_passes_it_to_run_config():
     notebook = json.loads((ROOT / "medical_information_extraction_kaggle.ipynb").read_text(encoding="utf-8"))
     source = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
-    assert source.count("ENABLE_QWEN_RERANKER = False") == 1
+    assert source.count("ENABLE_QWEN_RERANKER =") == 1
     assert "enable_qwen_reranker=ENABLE_QWEN_RERANKER" in source
     assert "KAGGLE_OPTIONS" not in source
+    assert 'loaded_cfg.get("enable_qwen"' not in source
 
 
 def test_ner_config_uses_twenty_epochs():

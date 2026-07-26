@@ -8,16 +8,16 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 
 
-def _load_data_module():
+def _load_data_module(monkeypatch):
     package = types.ModuleType("clinical_nlp_lab")
     package.__path__ = [str(ROOT / "clinical_nlp_lab")]
-    sys.modules["clinical_nlp_lab"] = package
+    monkeypatch.setitem(sys.modules, "clinical_nlp_lab", package)
 
     schema_spec = importlib.util.spec_from_file_location(
         "clinical_nlp_lab.schema", ROOT / "clinical_nlp_lab" / "schema.py"
     )
     schema_module = importlib.util.module_from_spec(schema_spec)
-    sys.modules["clinical_nlp_lab.schema"] = schema_module
+    monkeypatch.setitem(sys.modules, "clinical_nlp_lab.schema", schema_module)
     assert schema_spec.loader is not None
     schema_spec.loader.exec_module(schema_module)
 
@@ -25,14 +25,14 @@ def _load_data_module():
         "clinical_nlp_lab.data", ROOT / "clinical_nlp_lab" / "data.py"
     )
     data_module = importlib.util.module_from_spec(data_spec)
-    sys.modules["clinical_nlp_lab.data"] = data_module
+    monkeypatch.setitem(sys.modules, "clinical_nlp_lab.data", data_module)
     assert data_spec.loader is not None
     data_spec.loader.exec_module(data_module)
     return data_module
 
 
-def test_load_annotated_documents_normalizes_official_vietnamese_types(tmp_path):
-    data = _load_data_module()
+def test_load_annotated_documents_normalizes_official_vietnamese_types(tmp_path, monkeypatch):
+    data = _load_data_module(monkeypatch)
     input_dir = tmp_path / "input"
     gt_dir = tmp_path / "gt"
     input_dir.mkdir()
