@@ -227,12 +227,9 @@ def infer_document(
     merged_entities = _apply_assertions(merged_entities, raw_text, bundle.assertion_model)
 
     if config.enable_qwen and bundle.qwen_reranker is not None:
-        try:
-            refined = bundle.qwen_reranker.refine(merged_entities, raw_text)
-            if refined is not None:
-                merged_entities = tuple(refined)
-        except Exception:
-            pass
+        refined = bundle.qwen_reranker.refine(merged_entities, raw_text)
+        if refined is not None:
+            merged_entities = tuple(refined)
 
     for entity in merged_entities:
         entity.validate_offset(raw_text)

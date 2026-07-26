@@ -594,43 +594,131 @@ def _phase_12_inference(config: RunConfig, phase: str, context: Mapping[str, Any
     from .pipeline import run_inference_with_bundle
     from .runtime_bundle import load_final_model_bundle
 
-    checkpoint = _run_dir(context) / "checkpoints" / "final_fit" / "ner_model"
-    head_dir = _run_dir(context) / "artifacts" / "heads"
-    if not checkpoint.is_dir() or not head_dir.is_dir():
-        raise FileNotFoundError("final checkpoint or fitted heads are missing")
-    icd_path = _artifact_dir(config) / "icd10" / "icd10_dictionary.jsonl.gz"
-    rx_path = _artifact_dir(config) / "rxnorm" / "rxnorm_dictionary.jsonl.gz"
-    icd_records = load_candidate_dictionary(icd_path)
-    rx_records = load_candidate_dictionary(rx_path)
-    calibration_payload = json.loads((head_dir / "candidate_calibration.json").read_text(encoding="utf-8"))
-    policy = CandidatePolicy.from_calibration(calibration_payload)
-    bundle = load_final_model_bundle(checkpoint, head_dir, icd_records, rx_records, policy)
-    entity_mapping = json.loads((_artifact_dir(config) / "entity_type_mapping.json").read_text(encoding="utf-8"))
-    assertion_mapping = json.loads((_artifact_dir(config) / "assertion_mapping.json").read_text(encoding="utf-8"))
-    input_source = Path(config.input_source)
-    if not input_source.is_absolute():
-        input_source = Path.cwd() / input_source
-    output_dir = _run_dir(context) / "output"
-    summary = run_inference_with_bundle(
-        input_source=input_source,
-        output_dir=output_dir,
-        bundle=bundle,
-        entity_mapping=entity_mapping,
-        assertion_mapping=assertion_mapping,
-        config=InferenceConfig(enable_kb_recovery=True, enable_qwen=config.enable_qwen_reranker),
-        create_zip=True,
-        zip_path=_run_dir(context) / "output.zip",
-        diagnostics_dir=_run_dir(context) / "diagnostics",
-    )
-    from .output_quality import audit_submission_directory, enforce_output_quality
+    qwen_requested = bool(config.enable_qwen_reranker)
+    qwen_summary: dict[str, Any] = {
+        "qwen_requested": qwen_requested,
+        "qwen_initialized": False,
+        "qwen_model_name": None,
+        "qwen_rerank_query_count": 0,
+        "qwen_assertion_query_count": 0,
+        "qwen_abstention_count": 0,
+        "qwen_status": "DISABLED" if not qwen_requested else "FAILED",
+    }
+    qwen_reranker = None
+    qwen_runtime = None
+    phase_error: Exception | None = None
+    run_dir = _run_dir(context)
+    diagnostics_dir = run_dir / "diagnostics"
 
-    quality_report = audit_submission_directory(input_source, output_dir)
-    quality_path = _run_dir(context) / "diagnostics" / "output_quality.json"
-    write_json(quality_path, quality_report)
-    enforce_output_quality(quality_report)
+    try:
+        if qwen_requested:
+            from .entity_types import ASSERTION_ENTITY_TYPES
+            from .qwen_refiner import RequiredQwenRefiner
+            from .reranker import ClinicalLLMReranker
+
+            class ObservedRequiredQwenRefiner(RequiredQwenRefiner):
+                def refine(self, entities, raw_text):
+                    rerank_indices = [
+                        index
+                        for index, entity in enumerate(entities)
+                        if entity.type in {"DISEASE", "DRUG"} and entity.ranked_candidates
+                    ]
+                    assertion_count = sum(entity.type in ASSERTION_ENTITY_TYPES for entity in entities)
+                    qwen_summary["qwen_rerank_query_count"] += len(rerank_indices)
+                    qwen_summary["qwen_assertion_query_count"] += assertion_count
+                    refined = super().refine(entities, raw_text)
+                    qwen_summary["qwen_abstention_count"] += sum(
+                        not refined[index].candidates for index in rerank_indices
+                    )
+                    return refined
+
+            qwen_model_name = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+            qwen_runtime = ClinicalLLMReranker(
+                model_name=qwen_model_name,
+                gpu_memory_utilization=0.50,
+                max_model_len=4096,
+                batch_size=64,
+            )
+            qwen_reranker = ObservedRequiredQwenRefiner(qwen_runtime.llm, batch_size=64)
+            qwen_summary["qwen_initialized"] = True
+            qwen_summary["qwen_model_name"] = qwen_model_name
+
+        checkpoint = run_dir / "checkpoints" / "final_fit" / "ner_model"
+        head_dir = run_dir / "artifacts" / "heads"
+        if not checkpoint.is_dir() or not head_dir.is_dir():
+            raise FileNotFoundError("final checkpoint or fitted heads are missing")
+        icd_path = _artifact_dir(config) / "icd10" / "icd10_dictionary.jsonl.gz"
+        rx_path = _artifact_dir(config) / "rxnorm" / "rxnorm_dictionary.jsonl.gz"
+        icd_records = load_candidate_dictionary(icd_path)
+        rx_records = load_candidate_dictionary(rx_path)
+        calibration_payload = json.loads((head_dir / "candidate_calibration.json").read_text(encoding="utf-8"))
+        policy = CandidatePolicy.from_calibration(calibration_payload)
+        bundle = load_final_model_bundle(
+            checkpoint,
+            head_dir,
+            icd_records,
+            rx_records,
+            policy,
+            qwen_reranker=qwen_reranker,
+        )
+        entity_mapping = json.loads((_artifact_dir(config) / "entity_type_mapping.json").read_text(encoding="utf-8"))
+        assertion_mapping = json.loads((_artifact_dir(config) / "assertion_mapping.json").read_text(encoding="utf-8"))
+        input_source = Path(config.input_source)
+        if not input_source.is_absolute():
+            input_source = Path.cwd() / input_source
+        output_dir = run_dir / "output"
+        summary = run_inference_with_bundle(
+            input_source=input_source,
+            output_dir=output_dir,
+            bundle=bundle,
+            entity_mapping=entity_mapping,
+            assertion_mapping=assertion_mapping,
+            config=InferenceConfig(enable_kb_recovery=True, enable_qwen=qwen_requested),
+            create_zip=False,
+            diagnostics_dir=diagnostics_dir,
+        )
+        from .output_quality import audit_submission_directory, enforce_output_quality
+
+        quality_report = audit_submission_directory(input_source, output_dir)
+        quality_path = diagnostics_dir / "output_quality.json"
+        write_json(quality_path, quality_report)
+        enforce_output_quality(quality_report)
+        if qwen_requested:
+            qwen_summary["qwen_status"] = "COMPLETED"
+    except Exception as exc:
+        phase_error = exc
+        if qwen_requested:
+            qwen_summary["qwen_status"] = "FAILED"
+        raise
+    finally:
+        try:
+            if qwen_runtime is not None:
+                qwen_runtime.destroy()
+        except Exception:
+            if qwen_requested:
+                qwen_summary["qwen_status"] = "FAILED"
+            if phase_error is not None:
+                raise phase_error
+            raise
+        finally:
+            if qwen_requested and qwen_summary["qwen_status"] != "FAILED":
+                qwen_summary["qwen_status"] = "COMPLETED"
+            write_json(diagnostics_dir / "qwen_summary.json", qwen_summary)
+
+    output_zip = run_dir / "output.zip"
+    output_files = sorted(output_dir.glob("*.json"), key=lambda item: (int(item.stem), item.stem) if item.stem.isdigit() else (10**12, item.stem))
+    with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for output_file in output_files:
+            archive.write(output_file, arcname=f"output/{output_file.name}")
+    with zipfile.ZipFile(output_zip) as archive:
+        expected = [f"output/{path.name}" for path in output_files]
+        if archive.namelist() != expected or archive.testzip() is not None:
+            raise ValueError("Invalid output.zip structure or CRC")
+    summary.update({"zip_path": str(output_zip), "zip_structure_valid": True})
     return {
         "phase": phase,
         **summary,
+        **qwen_summary,
         "output_dir": str(output_dir),
         "quality_report": str(quality_path),
         "quality": quality_report,
