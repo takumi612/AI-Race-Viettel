@@ -66,8 +66,7 @@ class RequiredQwenRefiner:
                 if len(selected_ids) != len(rerank_indices):
                     raise RequiredQwenError("rerank response count mismatch")
                 for index, selected_id in zip(rerank_indices, selected_ids):
-                    if selected_id is not None:
-                        refined[index].candidates = [str(selected_id)]
+                    refined[index].candidates = [] if selected_id is None else [str(selected_id)]
 
             assertion_indices = [
                 index for index, entity in enumerate(refined) if entity.type in ASSERTION_ENTITY_TYPES

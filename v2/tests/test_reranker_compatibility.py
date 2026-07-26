@@ -36,6 +36,13 @@ def test_parse_selected_id_rejects_explanatory_or_unknown_id():
     assert _parse_selected_id(response, [{"candidate_id": "I10"}]) is None
 
 
+def test_non_strict_parser_keeps_legacy_malformed_and_unknown_fallbacks():
+    candidates = [{"candidate_id": "I10"}]
+
+    assert _parse_selected_id("not JSON", candidates) is None
+    assert _parse_selected_id('{"selected_id":"unknown"}', candidates) is None
+
+
 def test_selection_warning_ignores_valid_null_selection():
     assert _selection_warning_reason('{"selected_id": null}', [{"candidate_id": "I10"}]) is None
 

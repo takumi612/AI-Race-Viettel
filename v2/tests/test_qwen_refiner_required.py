@@ -72,7 +72,7 @@ def test_refiner_accepts_null_as_an_abstention():
 
     refined = RequiredQwenRefiner(engine).refine((entity,), "Patient fever today.")
 
-    assert refined[0].candidates == ["A01"]
+    assert refined[0].candidates == []
 
 
 def test_refiner_rejects_an_unknown_candidate_id():
@@ -96,6 +96,13 @@ def test_refiner_rejects_an_invalid_assertion_enum():
     ])
 
     with pytest.raises(RequiredQwenError, match="invalid polarity"):
+        RequiredQwenRefiner(engine).refine((_entity(),), "Patient fever today.")
+
+
+def test_refiner_rejects_malformed_assertion_json():
+    engine = FakeEngine([['{"selected_id":"A01"}'], ["not JSON"]])
+
+    with pytest.raises(RequiredQwenError, match="malformed JSON assertion response"):
         RequiredQwenRefiner(engine).refine((_entity(),), "Patient fever today.")
 
 
