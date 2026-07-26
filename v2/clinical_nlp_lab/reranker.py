@@ -32,13 +32,29 @@ def _build_sampling_kwargs(
     )
 
 
-def _parse_selected_id(response_text: str, candidates: list[dict[str, Any]]) -> Any | None:
+def _parse_selected_id(
+    response_text: str,
+    candidates: list[dict[str, Any]],
+    *,
+    strict: bool = False,
+) -> Any | None:
     payload = parse_json_object(response_text)
     if payload is None:
+        if strict:
+            raise ValueError("malformed JSON rerank response")
+        return None
+    if "selected_id" not in payload:
+        if strict:
+            raise ValueError("rerank response is missing selected_id")
         return None
     selected_id = payload.get("selected_id")
+    if selected_id is None:
+        return None
     candidate_by_text = {str(item["candidate_id"]): item["candidate_id"] for item in candidates}
-    return candidate_by_text.get(str(selected_id))
+    resolved_id = candidate_by_text.get(str(selected_id))
+    if strict and resolved_id is None:
+        raise ValueError("unknown selected_id")
+    return resolved_id
 
 
 def _selection_warning_reason(response_text: str, candidates: list[dict[str, Any]]) -> str | None:
@@ -100,7 +116,7 @@ class ClinicalLLMReranker:
     def _build_json_schema(self, candidates: list[dict[str, Any]]) -> str:
         return json.dumps(_candidate_schema([candidate["candidate_id"] for candidate in candidates]))
 
-    def rerank_batch(self, entity_queries: list[dict[str, Any]]) -> list[Any | None]:
+    def rerank_batch(self, entity_queries: list[dict[str, Any]], *, strict: bool = False) -> list[Any | None]:
         if not self.llm:
             raise RuntimeError("LLM is not initialized")
         from vllm import SamplingParams
@@ -130,7 +146,7 @@ class ClinicalLLMReranker:
                 raise RuntimeError(f"vLLM returned {len(outputs)} outputs for {len(query_batch)} rerank prompts")
             for query, output in zip(query_batch, outputs):
                 generated_text = output.outputs[0].text
-                selected_id = _parse_selected_id(generated_text, query["candidates"])
+                selected_id = _parse_selected_id(generated_text, query["candidates"], strict=strict)
                 warning_reason = _selection_warning_reason(generated_text, query["candidates"])
                 if warning_reason is not None:
                     logging.warning(

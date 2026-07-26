@@ -86,7 +86,13 @@ class ClinicalLLMAssertionPredictor:
         )
         return f"<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
         
-    def predict_batch(self, queries: list[dict], batch_size: int = 64) -> list[AssertionAxes]:
+    def predict_batch(
+        self,
+        queries: list[dict],
+        batch_size: int = 64,
+        *,
+        strict: bool = False,
+    ) -> list[AssertionAxes]:
         if not self.llm or not queries:
             return []
 
@@ -124,7 +130,14 @@ class ClinicalLLMAssertionPredictor:
             if len(outputs) != len(query_batch):
                 raise RuntimeError(f"vLLM returned {len(outputs)} outputs for {len(query_batch)} assertion prompts")
             for output in outputs:
-                data = parse_json_object(output.outputs[0].text) or {}
+                data = parse_json_object(output.outputs[0].text)
+                if strict and data is None:
+                    raise ValueError("malformed JSON assertion response")
+                data = data or {}
+                if strict:
+                    for field, choices in allowed.items():
+                        if data.get(field) not in choices:
+                            raise ValueError(f"invalid {field} assertion value")
                 values = {
                     field: data.get(field) if data.get(field) in choices else getattr(defaults, field)
                     for field, choices in allowed.items()
