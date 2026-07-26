@@ -34,6 +34,7 @@ class EntityAnnotation:
     confidence: float = 1.0
     mention_head: str | None = None
     evidence: list[str] = field(default_factory=list)
+    ranked_candidates: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def start(self) -> int:

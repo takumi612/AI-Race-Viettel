@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from clinical_nlp_lab import kaggle_phases
+from clinical_nlp_lab.inference import FinalModelBundle, InferenceConfig, infer_document
 from clinical_nlp_lab.orchestration import RunConfig
 
 
@@ -12,6 +13,33 @@ ROOT = Path(__file__).parents[1]
 
 def test_qwen_reranker_is_disabled_by_default():
     assert RunConfig().enable_qwen_reranker is False
+
+
+def test_runtime_ranked_candidate_pool_is_capped_and_preserved():
+    raw_text = "Sốt cao."
+    target = "Sốt cao"
+    ranked_candidates = tuple(
+        {"candidate_id": f"A{index:02d}", "score": 1.0 - index / 100}
+        for index in range(25)
+    )
+
+    bundle = FinalModelBundle(
+        ner_model=lambda _text, _config: [
+            {
+                "text": target,
+                "type": "DISEASE",
+                "position": [0, len(target)],
+                "ranked_candidates": ranked_candidates,
+                "candidate_ids": ["A00"],
+            }
+        ],
+        tokenizer=None,
+    )
+
+    document = infer_document("305", raw_text, bundle, InferenceConfig())
+
+    assert document.entities[0].ranked_candidates == list(ranked_candidates[:20])
+    assert document.entities[0].candidates == ["A00"]
 
 
 def test_config_json_cannot_override_the_run_config_qwen_toggle(tmp_path: Path, monkeypatch):

@@ -76,6 +76,7 @@ def merge_raw_span_proposals(
                     candidates=list(proposal.candidate_ids),
                     confidence=proposal.confidence,
                     evidence=[f"proposal_{proposal.source}"],
+                    ranked_candidates=[dict(candidate) for candidate in proposal.ranked_candidates],
                 )
             )
     return tuple(merged_entities)

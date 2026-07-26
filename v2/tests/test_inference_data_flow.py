@@ -29,6 +29,40 @@ def test_kb_first_recovery_when_ner_misses():
     assert merged[0].type == "DISEASE"
 
 
+def test_merge_retains_ranked_candidates_without_changing_submission_payload():
+    raw_text = "HS-0301: sốt cao."
+    records = [ClinicalRecord("301", "301:record-0001", 0, len(raw_text), (0,))]
+    target = "sốt cao"
+    start = raw_text.index(target)
+    ranked_candidates = (
+        {"candidate_id": "A00", "score": 0.91},
+        {"candidate_id": "B00", "score": 0.42},
+    )
+
+    merged = merge_raw_span_proposals(
+        [
+            SpanProposal(
+                target,
+                "DISEASE",
+                start,
+                start + len(target),
+                0.95,
+                "kb_first",
+                ranked_candidates=ranked_candidates,
+                candidate_ids=("A00",),
+            )
+        ],
+        records,
+        raw_text=raw_text,
+    )
+
+    assert merged[0].ranked_candidates == list(ranked_candidates)
+    assert merged[0].candidates == ["A00"]
+    submission = merged[0].to_submission("CHẨN_ĐOÁN", [])
+    assert set(submission) == {"text", "type", "position", "assertions", "candidates"}
+    assert "ranked_candidates" not in submission
+
+
 def test_invalid_round_trip_proposal_filtered():
     raw_text = "Bệnh nhân bị ho kéo dài."
     records = [
