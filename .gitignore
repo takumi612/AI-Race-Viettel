@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
 .venv/
+.worktrees/
 
 # Runtime data and generated output are supplied through Google Drive
 /input.zip
