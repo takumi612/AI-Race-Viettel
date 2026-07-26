@@ -92,7 +92,6 @@ USE_GIT_CLONE = os.environ.get("USE_GIT_CLONE", "1" if IS_KAGGLE else "0") == "1
 RUN_MODE = os.environ.get("RUN_MODE", "full")
 RUN_ID = os.environ.get("RUN_ID", "") or None
 ENABLE_QWEN_RERANKER = False
-QWEN_GPU_MEMORY_UTILIZATION = 0.50
 
 def log_step(step: int, status: str, message: str, **context):
     marker = {"START": "STEP_START", "END": "STEP_END", "ERROR": "STEP_ERROR"}.get(status, "STEP_INFO")
@@ -100,14 +99,6 @@ def log_step(step: int, status: str, message: str, **context):
     print(f"[{marker}] STEP {step} {json.dumps(payload, ensure_ascii=False, default=str)}", flush=True)
 
 EXPECTED_STEP_LABELS = ("STEP 1", "STEP 2", "STEP 3", "STEP 4", "STEP 5", "STEP 6", "STEP 7", "STEP 8", "STEP 9")
-
-KAGGLE_OPTIONS = {
-    "enable_qwen_reranker": ENABLE_QWEN_RERANKER,
-    "qwen_gpu_memory_utilization": QWEN_GPU_MEMORY_UTILIZATION,
-}
-# Compatibility contract for the legacy pipeline adapter:
-# run_inference(enable_qwen_reranker=ENABLE_QWEN_RERANKER,
-#               qwen_gpu_memory_utilization=QWEN_GPU_MEMORY_UTILIZATION)
 
 PROJECT_ROOT = Path(PROJECT_ROOT_OVERRIDE).expanduser() if PROJECT_ROOT_OVERRIDE.strip() else Path.cwd()
 if IS_KAGGLE and not PROJECT_ROOT_OVERRIDE.strip() and USE_GIT_CLONE:
@@ -272,6 +263,7 @@ config = RunConfig(
     expected_gpu_count=EXPECTED_GPU_COUNT,
     use_distributed=os.environ.get("USE_DISTRIBUTED", "1") == "1",
     fast_dev_run=os.environ.get("FAST_DEV_RUN", "0") == "1",
+    enable_qwen_reranker=ENABLE_QWEN_RERANKER,
     dataset_fingerprint=DATASET_FINGERPRINT,
     config_fingerprint=CONFIG_FINGERPRINT,
 )

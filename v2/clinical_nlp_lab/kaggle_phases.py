@@ -611,16 +611,13 @@ def _phase_12_inference(config: RunConfig, phase: str, context: Mapping[str, Any
     if not input_source.is_absolute():
         input_source = Path.cwd() / input_source
     output_dir = _run_dir(context) / "output"
-    runtime_config_path = config.config_path or (_artifact_dir(config) / "config.json")
-    loaded_cfg = load_config(runtime_config_path) if runtime_config_path.exists() else {}
-    enable_qwen = bool(loaded_cfg.get("enable_qwen", False))
     summary = run_inference_with_bundle(
         input_source=input_source,
         output_dir=output_dir,
         bundle=bundle,
         entity_mapping=entity_mapping,
         assertion_mapping=assertion_mapping,
-        config=InferenceConfig(enable_kb_recovery=True, enable_qwen=enable_qwen),
+        config=InferenceConfig(enable_kb_recovery=True, enable_qwen=config.enable_qwen_reranker),
         create_zip=True,
         zip_path=_run_dir(context) / "output.zip",
         diagnostics_dir=_run_dir(context) / "diagnostics",

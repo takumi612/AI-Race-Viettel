@@ -17,13 +17,12 @@ def test_kaggle_notebook_has_step_logger_and_failure_context():
     assert all(f"STEP {step}" in source for step in range(1, 10))
 
 
-def test_training_notebook_exposes_qwen_toggle_and_passes_it_to_pipeline():
+def test_training_notebook_has_one_qwen_enable_assignment_and_passes_it_to_run_config():
     notebook = json.loads((ROOT / "medical_information_extraction_kaggle.ipynb").read_text(encoding="utf-8"))
     source = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
-    assert "ENABLE_QWEN_RERANKER" in source
+    assert source.count("ENABLE_QWEN_RERANKER = False") == 1
     assert "enable_qwen_reranker=ENABLE_QWEN_RERANKER" in source
-    assert "QWEN_GPU_MEMORY_UTILIZATION = 0.50" in source
-    assert "qwen_gpu_memory_utilization=QWEN_GPU_MEMORY_UTILIZATION" in source
+    assert "KAGGLE_OPTIONS" not in source
 
 
 def test_ner_config_uses_twenty_epochs():

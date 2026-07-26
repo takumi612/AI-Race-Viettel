@@ -119,3 +119,22 @@ def test_missing_phase_runner_fails_closed_instead_of_claiming_pass(tmp_path: Pa
 def test_inference_only_requires_a_bound_final_bundle(tmp_path: Path):
     with pytest.raises(OrchestrationError, match="final model bundle"):
         run_inference_only(RunConfig(output_dir=tmp_path, run_id="run-no-bundle"), bundle=None)
+
+
+def test_resume_and_inference_only_preserve_the_qwen_toggle(tmp_path: Path):
+    seen: list[bool] = []
+
+    def runner(config, phase, context):
+        seen.append(config.enable_qwen_reranker)
+        return {"phase": phase}
+
+    config = RunConfig(
+        output_dir=tmp_path,
+        run_id="run-qwen",
+        enable_qwen_reranker=True,
+        phase_runners={phase: runner for phase in PHASES},
+    )
+    resume_run(config, LatestPointer("run-qwen", PHASES[0], "default"))
+    run_inference_only(config, bundle=object())
+
+    assert seen and all(seen)

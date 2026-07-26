@@ -44,6 +44,7 @@ class RunConfig:
     use_distributed: bool = True
     seed: int = 42
     fast_dev_run: bool = False
+    enable_qwen_reranker: bool = False
     run_id: str | None = None
     dataset_fingerprint: str = "unbound"
     config_fingerprint: str = "default"
@@ -290,6 +291,7 @@ def resume_run(config: RunConfig, latest: LatestPointer) -> RunSummary:
         use_distributed=config.use_distributed,
         seed=config.seed,
         fast_dev_run=config.fast_dev_run,
+        enable_qwen_reranker=config.enable_qwen_reranker,
         run_id=latest.run_id,
         dataset_fingerprint=config.dataset_fingerprint,
         config_fingerprint=config.config_fingerprint,
@@ -317,6 +319,7 @@ def run_inference_only(config: RunConfig, bundle: Any) -> RunSummary:
         use_distributed=config.use_distributed,
         seed=config.seed,
         fast_dev_run=config.fast_dev_run,
+        enable_qwen_reranker=config.enable_qwen_reranker,
         run_id=config.run_id,
         dataset_fingerprint=config.dataset_fingerprint,
         config_fingerprint=config.config_fingerprint,
