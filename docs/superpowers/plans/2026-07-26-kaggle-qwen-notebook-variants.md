@@ -81,23 +81,24 @@ Use a setup-source marker replacement so braces in the existing generated Python
 def build_qwen_bootstrap(enabled: bool) -> str:
     if not enabled:
         return ""
-    return '''VLLM_CUDA129_WHEEL = (
-    "https://github.com/vllm-project/vllm/releases/download/v0.25.1/"
-    "vllm-0.25.1+cu129-cp38-abi3-manylinux_2_28_x86_64.whl"
-)
-subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q", "--upgrade",
-     VLLM_CUDA129_WHEEL, "--extra-index-url", "https://download.pytorch.org/whl/cu129"],
-    check=True,
-)
-importlib.invalidate_caches()
-try:
-    from vllm import LLM as _VLLM_IMPORT_CHECK
-except Exception as exc:
-    raise RuntimeError(
-        "Qwen is enabled but the CUDA 12.9 vLLM runtime failed to import. "
-        "Restart with the unableQwen notebook or inspect the CUDA driver."
-    ) from exc
+    return '''if ENABLE_QWEN_RERANKER:
+    VLLM_CUDA129_WHEEL = (
+        "https://github.com/vllm-project/vllm/releases/download/v0.25.1/"
+        "vllm-0.25.1+cu129-cp38-abi3-manylinux_2_28_x86_64.whl"
+    )
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", "--upgrade",
+         VLLM_CUDA129_WHEEL, "--extra-index-url", "https://download.pytorch.org/whl/cu129"],
+        check=True,
+    )
+    importlib.invalidate_caches()
+    try:
+        from vllm import LLM as _VLLM_IMPORT_CHECK
+    except Exception as exc:
+        raise RuntimeError(
+            "Qwen is enabled but the CUDA 12.9 vLLM runtime failed to import. "
+            "Restart with the unableQwen notebook or inspect the CUDA driver."
+        ) from exc
 '''
 ```
 
@@ -135,10 +136,10 @@ git commit -m "feat: generate Kaggle Qwen notebook variants"
 - Consumes: builder CLI `--qwen-mode {enabled,unable}`
 - Produces: two import-ready user notebooks
 
-- [ ] **Step 1: Generate the unable-Qwen canonical and user notebook**
+- [ ] **Step 1: Generate the Qwen-enabled canonical and unable-Qwen fallback**
 
 ```powershell
-python v2/tools/build_kaggle_notebook.py --qwen-mode unable --output v2/medical_information_extraction_kaggle.ipynb
+python v2/tools/build_kaggle_notebook.py --qwen-mode enabled --output v2/medical_information_extraction_kaggle.ipynb
 python v2/tools/build_kaggle_notebook.py --qwen-mode unable --output ai-race-training-v2-unableQwen.ipynb
 ```
 

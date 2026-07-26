@@ -55,10 +55,48 @@ CANONICAL_PHASES = (
 )
 
 
-def build_notebook() -> dict[str, Any]:
+def build_qwen_bootstrap(enabled: bool) -> str:
+    if not enabled:
+        return ""
+    return '''if ENABLE_QWEN_RERANKER:
+    VLLM_CUDA129_WHEEL = (
+        "https://github.com/vllm-project/vllm/releases/download/v0.25.1/"
+        "vllm-0.25.1+cu129-cp38-abi3-manylinux_2_28_x86_64.whl"
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--upgrade",
+            VLLM_CUDA129_WHEEL,
+            "--extra-index-url",
+            "https://download.pytorch.org/whl/cu129",
+        ],
+        check=True,
+    )
+    importlib.invalidate_caches()
+    try:
+        from vllm import LLM as _VLLM_IMPORT_CHECK
+    except Exception as exc:
+        raise RuntimeError(
+            "Qwen is enabled but the CUDA 12.9 vLLM runtime failed to import. "
+            "Use the unableQwen notebook or inspect the Kaggle CUDA driver/runtime."
+        ) from exc
+'''
+
+
+def build_notebook(enable_qwen_reranker: bool = False) -> dict[str, Any]:
+    qwen_runtime_note = (
+        "Qwen enabled: vLLM 0.25.1 on CUDA 12.9"
+        if enable_qwen_reranker
+        else "Qwen disabled: vLLM is not installed or imported"
+    )
     cells: list[dict[str, Any]] = [
         markdown_cell(
-            """# Contract-first Clinical NLP — Kaggle Run All
+            f"""# Contract-first Clinical NLP — Kaggle Run All
 
 Notebook này chỉ điều phối API runtime. Business logic nằm trong
 `clinical_nlp_lab`; không train local và không copy logic lớn vào notebook.
@@ -68,6 +106,9 @@ từ GitHub (Internet phải bật), chỉ cần attach Dataset dữ liệu theo
 `KAGGLE_RUNBOOK.md`, bật GPU, rồi chạy `Save Version → Run All`. Có thể đặt
 `GIT_CLONE_URL`, `GIT_CLONE_REF` hoặc `PROJECT_ROOT_OVERRIDE` trong setup cell.
 Kaggle Run All là bước nghiệm thu do người dùng thực hiện.
+
+Runtime: **{qwen_runtime_note}**. Bật GPU và Internet cho bản Qwen; attach
+`synthetic_train_v2` cùng thư mục inference input trước khi chọn Run All.
 """
         )
     ]
@@ -92,7 +133,7 @@ GIT_CLONE_DIR = Path(os.environ.get("GIT_CLONE_DIR", "/kaggle/working/AI-Race-Vi
 USE_GIT_CLONE = os.environ.get("USE_GIT_CLONE", "1" if IS_KAGGLE else "0") == "1"
 RUN_MODE = os.environ.get("RUN_MODE", "full")
 RUN_ID = os.environ.get("RUN_ID", "") or None
-ENABLE_QWEN_RERANKER = False
+ENABLE_QWEN_RERANKER = __ENABLE_QWEN_RERANKER__
 
 def log_step(step: int, status: str, message: str, **context):
     marker = {"START": "STEP_START", "END": "STEP_END", "ERROR": "STEP_ERROR"}.get(status, "STEP_INFO")
@@ -127,22 +168,14 @@ if not (PROJECT_ROOT / "clinical_nlp_lab").is_dir():
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+__QWEN_BOOTSTRAP__
+
 if os.environ.get("INSTALL_RUNTIME_DEPS", "1") == "1":
     requirements = PROJECT_ROOT / "requirements-kaggle.txt"
     required_modules = ("transformers", "accelerate", "sentencepiece", "safetensors")
     missing_modules = [module for module in required_modules if importlib.util.find_spec(module) is None]
     if missing_modules and requirements.is_file():
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(requirements)], check=True)
-
-if ENABLE_QWEN_RERANKER and importlib.util.find_spec("vllm") is None:
-    # Keep Kaggle's preinstalled torch/transformers stack unchanged.
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-q", "--no-deps", "vllm==0.25.1"],
-        check=True,
-    )
-    importlib.invalidate_caches()
-    if importlib.util.find_spec("vllm") is None:
-        raise ImportError("vllm installation completed but the module cannot be resolved")
 
 from clinical_nlp_lab.kaggle_phases import build_kaggle_phase_runners
 from clinical_nlp_lab.orchestration import (
@@ -300,6 +333,8 @@ else:
 log_step(1, "END", "Runtime session opened", run_mode=RUN_MODE, active_phases=list(ACTIVE_PHASES), run_id=SESSION.run_id)
 # Batch APIs remain available for non-notebook callers: execute_run(config), resume_run(config, latest), run_inference_only(config, bundle).
 '''
+    setup_source = setup_source.replace("__ENABLE_QWEN_RERANKER__", repr(enable_qwen_reranker))
+    setup_source = setup_source.replace("__QWEN_BOOTSTRAP__", build_qwen_bootstrap(enable_qwen_reranker))
     cells.append(code_cell(setup_source))
     for index, description in enumerate(PHASE_DOCS, 1):
         phase = f"phase_{index:02d}_" + (description.lower().replace("/", "_").replace(" ", "_") if False else "")
@@ -365,11 +400,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build the contract-first Kaggle Clinical NLP notebook")
     parser.add_argument("--output", type=Path, default=Path("medical_information_extraction_kaggle.ipynb"))
     parser.add_argument("--source", type=Path, default=None, help="Optional reviewed notebook template")
+    parser.add_argument(
+        "--qwen-mode",
+        choices=("enabled", "unable"),
+        default="unable",
+        help="Generate a CUDA 12.9 Qwen notebook or a notebook with no vLLM runtime",
+    )
     args = parser.parse_args()
     if args.source is not None and args.source.is_file():
         notebook = json.loads(args.source.read_text(encoding="utf-8"))
     else:
-        notebook = build_notebook()
+        notebook = build_notebook(enable_qwen_reranker=args.qwen_mode == "enabled")
     report = validate_notebook(notebook)
     if not report["valid"] or report["phase_count"] != 13:
         raise ValueError(report)
