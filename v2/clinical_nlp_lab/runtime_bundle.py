@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -13,11 +15,67 @@ from .text import normalize_alias, normalize_with_mapping
 from .entity_types import ENTITY_TYPE_TO_ID
 
 
+_UNSAFE_SINGLE_TOKEN_ALIASES = {
+    "benh",
+    "bệnh",
+    "co",
+    "da",
+    "dau",
+    "ho",
+    "khong",
+    "không",
+    "khoa",
+    "luc",
+    "lúc",
+    "mang",
+    "phau",
+    "phẫu",
+    "the",
+    "thể",
+    "thuat",
+    "thuật",
+    "tin",
+    "va",
+    "và",
+    "xet",
+    "xét",
+}
+
+_NON_DRUG_CLINICAL_TERMS = {
+    "creatinine",
+    "glucose",
+    "protein",
+    "prothrombin",
+}
+
+
+def is_safe_recovery_alias(alias: str, entity_type: str) -> bool:
+    tokens = alias.split()
+    if not tokens or not all(any(character.isalnum() for character in token) for token in tokens):
+        return False
+    if len(tokens) == 1:
+        token = tokens[0]
+        if entity_type == "DRUG" and token in _NON_DRUG_CLINICAL_TERMS:
+            return False
+        return len(token) >= 5 and token not in _UNSAFE_SINGLE_TOKEN_ALIASES
+    return len(alias) >= 6 and any(
+        token not in _UNSAFE_SINGLE_TOKEN_ALIASES for token in tokens
+    )
+
+
+def _candidate_display_name(record: dict[str, Any], alias: str) -> str:
+    for key in ("name", "canonical_name", "name_vi", "name_en"):
+        value = str(record.get(key, "")).strip()
+        if value:
+            return value
+    return alias
+
+
 class KBFirstRecovery:
     """Exact raw-text alias recovery with ranked candidates."""
 
     def __init__(self, icd10_records: Iterable[dict[str, Any]], rxnorm_records: Iterable[dict[str, Any]]) -> None:
-        self._entries: list[tuple[str, str, str, dict[str, Any]]] = []
+        grouped: dict[tuple[str, str, str], dict[str, dict[str, Any]]] = {}
         for entity_type, system, records in (
             ("DISEASE", "ICD10", icd10_records),
             ("DRUG", "RXNORM", rxnorm_records),
@@ -27,16 +85,80 @@ class KBFirstRecovery:
                 aliases = list(record.get("aliases") or [])
                 for alias in aliases:
                     normalized = normalize_alias(str(alias))
-                    if normalized and candidate_id:
-                        self._entries.append((entity_type, system, normalized, record))
-        self._entries.sort(key=lambda item: (-len(item[2]), item[0], item[2], item[3].get("candidate_id", "")))
+                    if candidate_id and is_safe_recovery_alias(normalized, entity_type):
+                        grouped.setdefault((entity_type, system, normalized), {})[
+                            candidate_id
+                        ] = record
+        self._entries: list[
+            tuple[str, str, str, tuple[dict[str, Any], ...]]
+        ] = [
+            (
+                entity_type,
+                system,
+                alias,
+                tuple(records_by_id[key] for key in sorted(records_by_id)),
+            )
+            for (entity_type, system, alias), records_by_id in grouped.items()
+        ]
+        self._entries.sort(key=lambda item: (-len(item[2]), item[0], item[2]))
+        self._exact_entries: dict[tuple[str, str], set[int]] = defaultdict(set)
+        self._token_entries: dict[tuple[str, str], set[int]] = defaultdict(set)
+        for index, (entity_type, _system, alias, _records) in enumerate(self._entries):
+            self._exact_entries[(entity_type, alias)].add(index)
+            for token in alias.split():
+                if len(token) >= 4 and token not in _UNSAFE_SINGLE_TOKEN_ALIASES:
+                    self._token_entries[(entity_type, token)].add(index)
+
+    def rank_candidates(
+        self, entity_type: str, mention: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        if limit < 1:
+            raise ValueError("candidate ranking limit must be positive")
+        normalized = normalize_alias(mention)
+        if not normalized or entity_type not in {"DISEASE", "DRUG"}:
+            return []
+        entry_indices = set(self._exact_entries.get((entity_type, normalized), ()))
+        if not entry_indices:
+            for token in normalized.split():
+                if len(token) >= 4:
+                    entry_indices.update(
+                        self._token_entries.get((entity_type, token), ())
+                    )
+
+        mention_tokens = set(normalized.split())
+        ranked_by_id: dict[str, dict[str, Any]] = {}
+        for index in entry_indices:
+            _entry_type, system, alias, records = self._entries[index]
+            alias_tokens = set(alias.split())
+            union = mention_tokens | alias_tokens
+            token_score = len(mention_tokens & alias_tokens) / len(union) if union else 0.0
+            sequence_score = SequenceMatcher(None, normalized, alias).ratio() * 0.95
+            score = 1.0 if normalized == alias else max(token_score, sequence_score)
+            for record in records:
+                candidate_id = str(record["candidate_id"])
+                previous = ranked_by_id.get(candidate_id)
+                if previous is not None and float(previous["score"]) >= score:
+                    continue
+                ranked_by_id[candidate_id] = {
+                    "candidate_id": candidate_id,
+                    "official_display_id": candidate_id,
+                    "canonical_id": candidate_id,
+                    "name": _candidate_display_name(record, alias),
+                    "canonical_name": str(record.get("canonical_name", "")),
+                    "score": round(float(score), 6),
+                    "system": system,
+                }
+        return sorted(
+            ranked_by_id.values(),
+            key=lambda item: (-float(item["score"]), str(item["candidate_id"])),
+        )[:limit]
 
     def scan_raw_text(self, raw_text: str) -> list[SpanProposal]:
         normalized_view = normalize_with_mapping(raw_text)
         normalized_text = normalized_view.model_text
         proposals: list[SpanProposal] = []
         seen: set[tuple[int, int, str]] = set()
-        for entity_type, system, alias, record in self._entries:
+        for entity_type, system, alias, records in self._entries:
             start = normalized_text.find(alias)
             while start >= 0:
                 end = start + len(alias)
@@ -49,15 +171,16 @@ class KBFirstRecovery:
                 raw_end = normalized_view.model_to_raw[end - 1] + 1
                 raw_candidate = raw_text[raw_start:raw_end]
                 if normalize_alias(raw_candidate) == alias and (raw_start, raw_end, entity_type) not in seen:
-                    candidate_id = str(record["candidate_id"])
-                    ranked = (
+                    ranked = tuple(
                         {
-                            "candidate_id": candidate_id,
-                            "official_display_id": candidate_id,
-                            "canonical_id": candidate_id,
+                            "candidate_id": str(record["candidate_id"]),
+                            "official_display_id": str(record["candidate_id"]),
+                            "canonical_id": str(record["candidate_id"]),
+                            "name": _candidate_display_name(record, alias),
                             "score": 1.0,
                             "system": system,
-                        },
+                        }
+                        for record in records
                     )
                     proposals.append(SpanProposal(raw_candidate, entity_type, raw_start, raw_end, 0.99, "kb_first", ranked_candidates=ranked))
                     seen.add((raw_start, raw_end, entity_type))

@@ -15,6 +15,23 @@ class OutputQualityError(ValueError):
     """Raised when inference output violates semantic safety gates."""
 
 
+_SUSPICIOUS_GENERIC_SURFACES = {
+    "bệnh",
+    "không",
+    "khoa",
+    "lúc",
+    "mang",
+    "phẫu",
+    "thể",
+    "thuật",
+    "tin",
+    "và",
+    "xét",
+}
+
+_CANDIDATE_ELIGIBLE_TYPES = {"DISEASE", "DRUG", "CHẨN_ĐOÁN", "THUỐC"}
+
+
 def audit_output_documents(
     documents: Iterable[ClinicalDocument],
 ) -> dict[str, Any]:
@@ -25,6 +42,10 @@ def audit_output_documents(
     punctuation_only = 0
     multiline = 0
     max_span_length = 0
+    single_token_entities = 0
+    suspicious_generic_spans = 0
+    candidate_eligible = 0
+    candidate_linked = 0
 
     for document in document_list:
         spans: list[tuple[int, int]] = []
@@ -33,6 +54,13 @@ def audit_output_documents(
             type_counts[entity.type] += 1
             spans.append((entity.start, entity.end))
             max_span_length = max(max_span_length, entity.end - entity.start)
+            if len(entity.text.split()) == 1:
+                single_token_entities += 1
+            if entity.text.strip().casefold() in _SUSPICIOUS_GENERIC_SURFACES:
+                suspicious_generic_spans += 1
+            if entity.type in _CANDIDATE_ELIGIBLE_TYPES:
+                candidate_eligible += 1
+                candidate_linked += bool(entity.candidates)
             if not any(character.isalnum() for character in entity.text):
                 punctuation_only += 1
             if "\n" in entity.text or "\r" in entity.text:
@@ -79,6 +107,14 @@ def audit_output_documents(
         "punctuation_only_count": punctuation_only,
         "multiline_count": multiline,
         "max_span_length": max_span_length,
+        "single_token_entity_count": single_token_entities,
+        "suspicious_generic_span_count": suspicious_generic_spans,
+        "candidate_eligible_count": candidate_eligible,
+        "candidate_linked_entity_count": candidate_linked,
+        "candidate_link_rate": round(
+            candidate_linked / candidate_eligible if candidate_eligible else 0.0,
+            6,
+        ),
     }
 
 
@@ -96,6 +132,10 @@ def enforce_output_quality(report: dict[str, Any]) -> None:
         violations.append(f"multiline={report['multiline_count']}")
     if int(report["max_span_length"]) > 160:
         violations.append(f"max_span_length={report['max_span_length']}")
+    generic_count = int(report.get("suspicious_generic_span_count", 0))
+    entity_count = int(report["entity_count"])
+    if generic_count >= 3 and generic_count / max(1, entity_count) >= 0.01:
+        violations.append(f"generic_spans={generic_count}")
     if violations:
         raise OutputQualityError(
             "Output quality gate rejected model collapse: " + ", ".join(violations)
@@ -119,6 +159,8 @@ def audit_submission_directory(
                 text=str(item["text"]),
                 type=str(item["type"]),
                 position=(int(item["position"][0]), int(item["position"][1])),
+                candidates=[str(value) for value in item.get("candidates", [])],
+                assertions=[str(value) for value in item.get("assertions", [])],
             )
             for item in payload
         ]

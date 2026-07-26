@@ -25,8 +25,9 @@ from clinical_nlp_lab.schema import write_json
 from clinical_nlp_lab.training import (
     build_bio_label_map,
     build_training_contract,
-    compute_non_o_metrics,
+    compute_bio_span_metrics,
     remove_nested_checkpoints,
+    write_ner_calibration,
 )
 
 class FeatureDataset(Dataset):
@@ -227,7 +228,7 @@ def main():
     }
     if validation_contract.windows:
         training_kwargs.update({
-            "metric_for_best_model": "f1",
+            "metric_for_best_model": "entity_f1",
             "greater_is_better": True,
         })
     
@@ -242,17 +243,26 @@ def main():
         train_dataset=FeatureDataset(train_contract.windows),
         eval_dataset=FeatureDataset(validation_contract.windows) if validation_contract.windows else None,
         data_collator=collate_owner_windows,
-        compute_metrics=compute_non_o_metrics if validation_contract.windows else None,
+        compute_metrics=compute_bio_span_metrics if validation_contract.windows else None,
         callbacks=[EarlyStoppingCallback(early_stopping_patience=2)] if validation_contract.windows else None,
     )
     trainer.processing_class = tokenizer
     
     print(f"[Subprocess] Starting Trainer.train() (epochs={ner_epochs}, batch={train_batch_size}, grad_accum={grad_accum_steps})")
     train_result = trainer.train()
+    evaluation = trainer.evaluate() if validation_contract.windows else {}
     trainer.save_model(str(output_path))
     is_main_process = not torch.distributed.is_available() or not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
     if is_main_process:
         tokenizer.save_pretrained(str(output_path))
+        if evaluation:
+            write_ner_calibration(
+                output_path / "ner_calibration.json",
+                {
+                    key.removeprefix("eval_"): value
+                    for key, value in evaluation.items()
+                },
+            )
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         torch.distributed.barrier()
     removed_checkpoints = remove_nested_checkpoints(output_path) if is_main_process else []

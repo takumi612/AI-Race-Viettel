@@ -174,6 +174,30 @@ def _apply_candidate_policy(proposal: SpanProposal, policy: Any | None) -> SpanP
         return replace(proposal, candidate_ids=())
 
 
+def _attach_ranked_candidates(
+    proposal: SpanProposal, linker: Any | None
+) -> SpanProposal:
+    if (
+        linker is None
+        or proposal.entity_type not in {"DISEASE", "DRUG"}
+        or proposal.ranked_candidates
+    ):
+        return proposal
+    rank = getattr(linker, "rank_candidates", None)
+    if not callable(rank):
+        return proposal
+    try:
+        ranked = rank(proposal.entity_type, proposal.text, limit=20)
+    except TypeError:
+        ranked = rank(proposal.entity_type, proposal.text)
+    return replace(
+        proposal,
+        ranked_candidates=tuple(
+            dict(item) for item in (ranked or ()) if isinstance(item, Mapping)
+        )[:20],
+    )
+
+
 def _apply_assertions(
     entities: tuple[EntityAnnotation, ...],
     raw_text: str,
@@ -214,6 +238,10 @@ def infer_document(
         source_role="inference",
     )
     proposals = _call_ner(bundle, raw_text, config)
+    proposals = [
+        _attach_ranked_candidates(proposal, bundle.kb_linker)
+        for proposal in proposals
+    ]
 
     if config.enable_kb_recovery and bundle.kb_linker is not None:
         try:

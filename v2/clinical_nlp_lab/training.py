@@ -7,7 +7,7 @@ from pathlib import Path
 import shutil
 from typing import Any, Iterable, Mapping, Sequence
 
-from .schema import ClinicalDocument, EntityAnnotation
+from .schema import ClinicalDocument, EntityAnnotation, write_json
 
 
 def compute_non_o_metrics(eval_prediction: Any) -> dict[str, float]:
@@ -30,6 +30,142 @@ def compute_non_o_metrics(eval_prediction: Any) -> dict[str, float]:
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     accuracy = float((y_pred == y_true).mean())
     return {"precision": precision, "recall": recall, "f1": f1, "accuracy": accuracy}
+
+
+def _bio_type(label_id: int) -> tuple[str, int] | None:
+    if label_id <= 0:
+        return None
+    if label_id % 2:
+        return "B", (label_id - 1) // 2
+    return "I", (label_id - 2) // 2
+
+
+def _decode_bio_spans(
+    label_ids: Sequence[int],
+    confidences: Sequence[float] | None = None,
+) -> list[tuple[int, int, int, float]]:
+    spans: list[tuple[int, int, int, float]] = []
+    current_start: int | None = None
+    current_type: int | None = None
+    current_scores: list[float] = []
+
+    def flush(end: int) -> None:
+        nonlocal current_start, current_type, current_scores
+        if current_start is not None and current_type is not None:
+            confidence = (
+                sum(current_scores) / len(current_scores) if current_scores else 1.0
+            )
+            spans.append((current_start, end, current_type, confidence))
+        current_start = None
+        current_type = None
+        current_scores = []
+
+    for index, raw_label in enumerate(label_ids):
+        label_id = int(raw_label)
+        decoded = _bio_type(label_id) if label_id != -100 else None
+        if decoded is None:
+            flush(index)
+            continue
+        prefix, entity_type = decoded
+        if prefix == "B" or entity_type != current_type:
+            flush(index)
+            current_start = index
+            current_type = entity_type
+        if confidences is not None:
+            current_scores.append(float(confidences[index]))
+    flush(len(label_ids))
+    return spans
+
+
+def compute_bio_span_metrics(eval_prediction: Any) -> dict[str, float]:
+    """Score exact typed BIO spans and calibrate a precision-tiebroken threshold.
+
+    Hugging Face supplies one row per owner window. The row index is part of
+    each span key so repeated token positions in different windows never match.
+    """
+    import numpy as np
+
+    logits, labels = eval_prediction
+    logits_array = np.asarray(logits, dtype=np.float64)
+    labels_array = np.asarray(labels)
+    shifted = logits_array - logits_array.max(axis=-1, keepdims=True)
+    exp_values = np.exp(shifted)
+    probabilities = exp_values / exp_values.sum(axis=-1, keepdims=True)
+    predictions = probabilities.argmax(axis=-1)
+    token_confidences = probabilities.max(axis=-1)
+
+    gold_keys: set[tuple[int, int, int, int]] = set()
+    predicted_spans: list[tuple[int, int, int, int, float]] = []
+    for row_index in range(labels_array.shape[0]):
+        gold_row = [int(value) for value in labels_array[row_index].tolist()]
+        prediction_row = [
+            -100 if gold_label == -100 else int(predicted_label)
+            for gold_label, predicted_label in zip(
+                gold_row, predictions[row_index].tolist()
+            )
+        ]
+        confidence_row = [float(value) for value in token_confidences[row_index].tolist()]
+        for start, end, entity_type, _ in _decode_bio_spans(gold_row):
+            gold_keys.add((row_index, start, end, entity_type))
+        for start, end, entity_type, confidence in _decode_bio_spans(
+            prediction_row, confidence_row
+        ):
+            predicted_spans.append(
+                (row_index, start, end, entity_type, confidence)
+            )
+
+    best = (0.0, 0.0, 0.0, 0.95)
+    for threshold in (0.50, 0.60, 0.70, 0.80, 0.85, 0.90, 0.95, 0.99):
+        predicted_keys = {
+            (row, start, end, entity_type)
+            for row, start, end, entity_type, confidence in predicted_spans
+            if confidence >= threshold
+        }
+        true_positive = len(gold_keys & predicted_keys)
+        precision = true_positive / len(predicted_keys) if predicted_keys else 0.0
+        recall = true_positive / len(gold_keys) if gold_keys else 0.0
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if precision + recall
+            else 0.0
+        )
+        current = (f1, precision, recall, threshold)
+        if current[0] > best[0] or (
+            current[0] == best[0] and current[3] > best[3]
+        ):
+            best = current
+
+    token_metrics = compute_non_o_metrics((logits_array, labels_array))
+    return {
+        **token_metrics,
+        "entity_precision": float(best[1]),
+        "entity_recall": float(best[2]),
+        "entity_f1": float(best[0]),
+        "ner_confidence_threshold": float(best[3]),
+    }
+
+
+def write_ner_calibration(
+    path: str | Path,
+    metrics: Mapping[str, Any],
+) -> None:
+    threshold = float(metrics["ner_confidence_threshold"])
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("NER confidence threshold must be in [0, 1]")
+    write_json(
+        path,
+        {
+            "schema_id": "clinical_nlp.ner_calibration",
+            "schema_version": 1,
+            "objective": "entity_exact_f1_precision_tiebreak",
+            "confidence_threshold": threshold,
+            "validation": {
+                "entity_precision": float(metrics["entity_precision"]),
+                "entity_recall": float(metrics["entity_recall"]),
+                "entity_f1": float(metrics["entity_f1"]),
+            },
+        },
+    )
 
 
 def compute_entity_metrics(expected_documents, predicted_documents):
@@ -469,7 +605,7 @@ def train_transformer_ner(
         "fp16": torch.cuda.is_available(),
         "gradient_accumulation_steps": max(1, int(gradient_accumulation_steps)),
         "gradient_checkpointing": bool(torch.cuda.is_available()),
-        "metric_for_best_model": "f1" if validation_contract.windows else None,
+        "metric_for_best_model": "entity_f1" if validation_contract.windows else None,
         "greater_is_better": True if validation_contract.windows else None,
     }
     if not validation_contract.windows:
@@ -486,7 +622,7 @@ def train_transformer_ner(
         "train_dataset": FeatureDataset(train_contract.windows),
         "eval_dataset": FeatureDataset(validation_contract.windows) if validation_contract.windows else None,
         "data_collator": collate_owner_windows,
-        "compute_metrics": compute_non_o_metrics if validation_contract.windows else None,
+        "compute_metrics": compute_bio_span_metrics if validation_contract.windows else None,
     }
     # `processing_class` replaced the older `tokenizer` Trainer argument.
     trainer_parameters = inspect.signature(Trainer.__init__).parameters
@@ -497,8 +633,16 @@ def train_transformer_ner(
     train_result = trainer.train()
     trainer.save_model(str(output_path))
     tokenizer.save_pretrained(str(output_path))
-    removed_checkpoints = remove_nested_checkpoints(output_path)
     evaluation = trainer.evaluate() if validation_contract.windows else {}
+    if evaluation:
+        write_ner_calibration(
+            output_path / "ner_calibration.json",
+            {
+                key.removeprefix("eval_"): value
+                for key, value in evaluation.items()
+            },
+        )
+    removed_checkpoints = remove_nested_checkpoints(output_path)
     return {
         "trained": True,
         "train_documents": len(train_documents),

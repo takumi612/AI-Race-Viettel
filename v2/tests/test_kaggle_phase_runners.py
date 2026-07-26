@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from clinical_nlp_lab.orchestration import PHASES, RunConfig
-from clinical_nlp_lab.kaggle_phases import build_kaggle_phase_runners, _build_training_command
+from clinical_nlp_lab.kaggle_phases import (
+    _build_training_command,
+    _write_stage_input,
+    build_kaggle_phase_runners,
+)
 from scripts.train_ner_subprocess import load_stage_selection
 
 
@@ -76,3 +80,35 @@ def test_training_command_uses_direct_script_without_duplicate_path():
     command = _build_training_command(config, Path("train.py"), ["--stage-name", "stage1"], gpu_count=1)
     assert command[:2] == [command[0], "train.py"]
     assert command.count("train.py") == 1
+
+
+def test_final_fit_keeps_validation_partition_for_entity_calibration(tmp_path: Path):
+    run_dir = tmp_path / "run-output" / "run-1"
+    split_dir = run_dir / "artifacts" / "splits"
+    split_dir.mkdir(parents=True)
+    (split_dir / "split_descriptor.json").write_text(
+        __import__("json").dumps(
+            {
+                "fixed_partitions": {
+                    "synthetic_train_ids": ["201", "202"],
+                    "synthetic_validation_ids": ["203"],
+                    "organizer_train_ids": ["101"],
+                    "organizer_validation_ids": ["102"],
+                },
+                "dataset_fingerprint": "dataset",
+                "fixed_split_sha256": "split",
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = RunConfig(output_dir=tmp_path / "run-output")
+
+    path = _write_stage_input(
+        config,
+        {"run_dir": str(run_dir)},
+        "final_fit",
+    )
+
+    payload = __import__("json").loads(path.read_text(encoding="utf-8"))
+    assert payload["validation_ids"] == ["102", "203"]
+    assert set(payload["train_ids"]).isdisjoint(payload["validation_ids"])

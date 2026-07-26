@@ -287,6 +287,7 @@ def run_inference_with_bundle(
     drop_unmapped = bool(entity_mapping.get("drop_unmapped", True))
     type_counts: Counter[str] = Counter()
     candidate_linked = 0
+    candidate_eligible = 0
     output_files: list[Path] = []
 
     for source_document in documents:
@@ -312,6 +313,7 @@ def run_inference_with_bundle(
             submission.append(entity.to_submission(official_type, official_assertions))
             type_counts[entity.type] += 1
             candidate_linked += bool(entity.candidates)
+            candidate_eligible += entity.type in {"DISEASE", "DRUG"}
 
         errors = validate_submission_payload(submission, source_document.raw_text)
         if errors:
@@ -329,6 +331,11 @@ def run_inference_with_bundle(
                 "offset_validation_passed": True,
                 "training_or_fitting_on_input": False,
                 "primary_path": "final_model_bundle",
+                "ner_confidence_threshold": getattr(
+                    getattr(bundle, "ner_model", None),
+                    "confidence_threshold",
+                    None,
+                ),
             },
         )
         output_files.append(output_file)
@@ -355,6 +362,16 @@ def run_inference_with_bundle(
         "internal_entity_count": sum(type_counts.values()),
         "internal_type_counts": dict(type_counts.most_common()),
         "candidate_linked_entity_count": candidate_linked,
+        "candidate_eligible_entity_count": candidate_eligible,
+        "candidate_link_rate": round(
+            candidate_linked / candidate_eligible if candidate_eligible else 0.0,
+            6,
+        ),
+        "ner_confidence_threshold": getattr(
+            getattr(bundle, "ner_model", None),
+            "confidence_threshold",
+            None,
+        ),
         "submission_entity_count": sum(
             len(json.loads(path.read_text(encoding="utf-8"))) for path in output_files
         ),

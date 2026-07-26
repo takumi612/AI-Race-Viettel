@@ -257,13 +257,13 @@ def _write_stage_input(config: RunConfig, context: Mapping[str, Any], stage_name
     else:
         train_ids = list(
             select_stage_document_ids(
-                synthetic_train + synthetic_validation,
-                organizer_train + organizer_validation,
+                synthetic_train,
+                organizer_train,
                 stage_spec,
                 seed=42,
             )
         )
-        validation_ids = []
+        validation_ids = synthetic_validation + organizer_validation
     payload = {
         "schema_id": "clinical_nlp.kaggle_stage_input",
         "schema_version": 1,

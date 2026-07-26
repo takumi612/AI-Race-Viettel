@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import json
 from collections import defaultdict
 from dataclasses import replace
 from pathlib import Path
@@ -8,6 +9,36 @@ from typing import Any, Iterable
 
 from .schema import EntityAnnotation
 from .text import normalize_alias, tokenize_with_offsets
+
+
+DEFAULT_NER_CONFIDENCE_THRESHOLD = 0.85
+
+
+def load_ner_confidence_threshold(model_dir: str | Path) -> float:
+    calibration_path = Path(model_dir) / "ner_calibration.json"
+    if not calibration_path.is_file():
+        return DEFAULT_NER_CONFIDENCE_THRESHOLD
+    payload = json.loads(calibration_path.read_text(encoding="utf-8"))
+    if (
+        payload.get("schema_id") != "clinical_nlp.ner_calibration"
+        or payload.get("schema_version") != 1
+    ):
+        raise ValueError("NER calibration schema is unsupported")
+    try:
+        threshold = float(payload["confidence_threshold"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("NER calibration threshold is missing or invalid") from exc
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("NER calibration threshold must be in [0, 1]")
+    return threshold
+
+
+def filter_entities_by_confidence(
+    entities: Iterable[EntityAnnotation], threshold: float
+) -> list[EntityAnnotation]:
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("NER confidence threshold must be in [0, 1]")
+    return [entity for entity in entities if entity.confidence >= threshold]
 
 
 SYMPTOM_PATTERN = re.compile(
@@ -202,6 +233,7 @@ class TransformerNERDetector:
             raise FileNotFoundError(f"NER checkpoint directory not found: {self.model_dir}")
         self.max_length = max_length
         self.stride = stride
+        self.confidence_threshold = load_ner_confidence_threshold(self.model_dir)
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_dir), use_fast=True)
         self.model = AutoModelForTokenClassification.from_pretrained(str(self.model_dir))
@@ -256,7 +288,8 @@ class TransformerNERDetector:
                     confidences[chunk_index].tolist(),
                 )
             )
-        return merge_chunk_predictions(chunk_entities, raw_text)
+        merged = merge_chunk_predictions(chunk_entities, raw_text)
+        return filter_entities_by_confidence(merged, self.confidence_threshold)
 
 
 def spans_overlap(left: EntityAnnotation, right: EntityAnnotation) -> bool:

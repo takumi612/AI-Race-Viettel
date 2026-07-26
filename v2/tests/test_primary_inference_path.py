@@ -29,6 +29,20 @@ class FakeKB:
         ]
 
 
+class RankingKB:
+    def scan_raw_text(self, raw_text: str):
+        return []
+
+    def rank_candidates(self, entity_type: str, text: str, limit: int = 20):
+        assert entity_type == "DISEASE"
+        assert text == "diabetes"
+        assert limit == 20
+        return [
+            {"candidate_id": "E11", "score": 0.96},
+            {"candidate_id": "E13", "score": 0.72},
+        ]
+
+
 class FakeAssertion:
     def predict(self, raw_text, entities):
         return {(entity.start, entity.end, entity.type): ["isNegated"] for entity in entities}
@@ -59,6 +73,34 @@ def test_inference_composes_ner_kb_assertion_and_candidate_policy():
     assert disease.candidates == ["E11"]
     assert disease.assertions == ["isNegated"]
     assert symptom.assertions == ["isNegated"]
+
+
+def test_ner_disease_receives_ranked_candidates_before_policy_and_qwen():
+    class DiseaseNER:
+        def propose(self, raw_text: str, config: InferenceConfig):
+            start = raw_text.index("diabetes")
+            return [
+                SpanProposal(
+                    "diabetes", "DISEASE", start, start + 8, 0.95, "ner"
+                )
+            ]
+
+    document = infer_document(
+        "302",
+        "Patient has diabetes.",
+        FinalModelBundle(
+            ner_model=DiseaseNER(),
+            tokenizer=object(),
+            candidate_policy=FakePolicy(),
+            kb_linker=RankingKB(),
+        ),
+        InferenceConfig(enable_kb_recovery=False),
+    )
+
+    assert document.entities[0].candidates == ["E11"]
+    assert [
+        item["candidate_id"] for item in document.entities[0].ranked_candidates
+    ] == ["E11", "E13"]
 
 
 def test_invalid_proposal_is_rejected_before_assertion_or_candidate_steps():
