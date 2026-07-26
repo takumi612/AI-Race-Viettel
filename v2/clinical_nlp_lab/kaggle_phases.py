@@ -653,13 +653,11 @@ def _phase_12_inference(config: RunConfig, phase: str, context: Mapping[str, Any
         rx_records = load_candidate_dictionary(rx_path)
         calibration_payload = json.loads((head_dir / "candidate_calibration.json").read_text(encoding="utf-8"))
         policy = CandidatePolicy.from_calibration(calibration_payload)
-        bundle = load_final_model_bundle(
-            checkpoint,
-            head_dir,
-            icd_records,
-            rx_records,
-            policy,
-            qwen_reranker=qwen_reranker,
+        bundle_args = (checkpoint, head_dir, icd_records, rx_records, policy)
+        bundle = (
+            load_final_model_bundle(*bundle_args, qwen_reranker=qwen_reranker)
+            if qwen_reranker is not None
+            else load_final_model_bundle(*bundle_args)
         )
         entity_mapping = json.loads((_artifact_dir(config) / "entity_type_mapping.json").read_text(encoding="utf-8"))
         assertion_mapping = json.loads((_artifact_dir(config) / "assertion_mapping.json").read_text(encoding="utf-8"))
@@ -694,12 +692,12 @@ def _phase_12_inference(config: RunConfig, phase: str, context: Mapping[str, Any
         try:
             if qwen_runtime is not None:
                 qwen_runtime.destroy()
-        except Exception:
+        except Exception as cleanup_error:
             if qwen_requested:
                 qwen_summary["qwen_status"] = "FAILED"
             if phase_error is not None:
-                raise phase_error
-            raise
+                raise cleanup_error from phase_error
+            raise cleanup_error
         finally:
             if qwen_requested and qwen_summary["qwen_status"] != "FAILED":
                 qwen_summary["qwen_status"] = "COMPLETED"

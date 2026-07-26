@@ -184,6 +184,23 @@ def test_phase_12_propagates_qwen_cleanup_failures_before_creating_output_zip(tm
     assert not (Path(context["run_dir"]) / "output.zip").exists()
 
 
+def test_phase_12_surfaces_cleanup_error_when_inference_also_fails(tmp_path: Path, monkeypatch):
+    config, context = _phase_paths(tmp_path)
+    config = RunConfig(**{**config.__dict__, "enable_qwen_reranker": True})
+    _CleanupFailingReranker.instances.clear()
+    _patch_phase_dependencies(
+        monkeypatch,
+        pipeline=lambda **_kwargs: (_ for _ in ()).throw(RequiredQwenError("Qwen generation failed")),
+    )
+    monkeypatch.setattr("clinical_nlp_lab.reranker.ClinicalLLMReranker", _CleanupFailingReranker)
+
+    with pytest.raises(RuntimeError, match="cleanup failed") as error:
+        kaggle_phases._phase_12_inference(config, "phase_12_inference", context)
+
+    assert isinstance(error.value.__cause__, RequiredQwenError)
+    assert "generation failed" in str(error.value.__cause__)
+
+
 def test_required_qwen_failure_stops_before_phase_13_and_pass_manifest(tmp_path: Path, monkeypatch):
     config, context = _phase_paths(tmp_path)
     _patch_phase_dependencies(monkeypatch, pipeline=lambda **_kwargs: pytest.fail("inference must not run"))
