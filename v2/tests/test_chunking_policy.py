@@ -23,11 +23,12 @@ def test_complete_entity_in_overlapping_chunk_gets_normal_bio_labels():
     assert labels == [-100, 1, 2, 0, -100]
 
 
-def test_overlapping_same_type_chunk_predictions_are_merged_before_resolution():
+def test_overlapping_same_type_chunk_predictions_keep_higher_ranked_observed_boundary():
     text = "0123456789"
     left = EntityAnnotation("23456", "DISEASE", (2, 7), confidence=0.95)
     right = EntityAnnotation("45678", "DISEASE", (4, 9), confidence=0.80)
     merged = merge_chunk_predictions([left, right], text)
     assert len(merged) == 1
-    assert merged[0].position == (2, 9)
-    assert merged[0].text == "2345678"
+    assert merged[0].position == (2, 7)
+    assert merged[0].text == "23456"
+    assert merged[0].position in {left.position, right.position}
