@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import ast
+import json
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).parents[1]
@@ -106,3 +109,26 @@ def test_enabled_and_unable_variants_keep_the_same_pipeline_phases():
         for cell in unable["cells"]
         if cell["cell_type"] == "markdown" and "## Phase " in "".join(cell["source"])
     ]
+
+
+@pytest.mark.parametrize(
+    ("notebook_path", "enable_qwen_reranker"),
+    (
+        (ROOT / "medical_information_extraction_kaggle.ipynb", True),
+        (ROOT.parent / "ai-race-training-v2-enableQwen.ipynb", True),
+        (ROOT.parent / "ai-race-training-v2-unableQwen.ipynb", False),
+    ),
+)
+def test_checked_in_notebook_artifacts_match_builder_and_parse(
+    notebook_path: Path,
+    enable_qwen_reranker: bool,
+):
+    saved_notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+    expected_notebook = _load_builder().build_notebook(
+        enable_qwen_reranker=enable_qwen_reranker
+    )
+
+    assert saved_notebook == expected_notebook
+    for index, cell in enumerate(saved_notebook["cells"]):
+        if cell["cell_type"] == "code":
+            ast.parse("".join(cell["source"]), filename=f"{notebook_path}:cell-{index}")
