@@ -8,6 +8,10 @@
 
 **Tech Stack:** Python 3.10+, pytest, PyTorch/Transformers, vLLM 0.25.1, Qwen2.5-7B-Instruct-AWQ, Jupyter/Kaggle.
 
+**Local pytest prerequisite:** when running from the repository root, first set
+`$env:PYTHONPATH = (Join-Path (Get-Location) 'v2')`. The package is source-rooted
+under `v2/` and root pytest collection otherwise cannot import `clinical_nlp_lab`.
+
 ## Global Constraints
 
 - Do not train, fit, calibrate, or create labels from the competition inference input.
@@ -51,7 +55,7 @@
 - Consumes: per-window `EntityAnnotation` values produced by `bio_predictions_to_spans()`.
 - Produces: `merge_chunk_predictions(chunk_predictions, raw_text) -> list[EntityAnnotation]`, where every returned boundary was present in an input prediction and evidence records independent window support.
 
-- [ ] **Step 1: Write failing boundary-consensus unit tests**
+- [x] **Step 1: Write failing boundary-consensus unit tests**
 
 ```python
 from clinical_nlp_lab.ner import merge_chunk_predictions
@@ -110,13 +114,13 @@ def test_long_observed_boundary_is_not_removed_by_length():
     assert len(merged[0].text) > 100
 ```
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run: `python -m pytest v2/tests/test_chunk_boundary_consensus.py -q`
 
 Expected: the conflicting-overlap test fails because current code creates `(10, 60)`.
 
-- [ ] **Step 3: Add window evidence at decode time**
+- [x] **Step 3: Add window evidence at decode time**
 
 In `TransformerNERDetector.detect()`, append the owner-window identifier before merging:
 
@@ -126,7 +130,7 @@ for entity in decoded:
 chunk_entities.extend(decoded)
 ```
 
-- [ ] **Step 4: Implement observed-boundary consensus**
+- [x] **Step 4: Implement observed-boundary consensus**
 
 Replace union construction with grouping and deterministic selection:
 
@@ -147,7 +151,7 @@ def _boundary_rank(entity: EntityAnnotation) -> tuple[int, float, int, int, int]
 
 Deduplicate identical `(start, end, type)` values by merging evidence and taking maximum confidence. Implement `_near_equivalent(left, right, raw_text)` as start/end deltas of at most one character with no `.;:\n\r` delimiter in the symmetric boundary difference. Near-equivalent predictions may combine window evidence but must select one observed boundary. Other overlapping same-type predictions are conflicts: select the higher `_boundary_rank()` value without combining support and never construct `min(start), max(end)`. Pass the selected observed entities to `resolve_overlaps()`.
 
-- [ ] **Step 5: Verify GREEN and related regressions**
+- [x] **Step 5: Verify GREEN and related regressions**
 
 Run:
 
@@ -158,7 +162,7 @@ python -m pytest v2/tests/test_ner_policy.py v2/tests/test_ner_confidence_filter
 
 Expected: all tests pass.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```powershell
 git add -- v2/clinical_nlp_lab/ner.py v2/tests/test_chunk_boundary_consensus.py
@@ -179,7 +183,7 @@ git commit -m "fix: select consensus NER chunk boundaries"
 - Produces: `RequiredQwenRefiner.validate_entities(entities, raw_text) -> tuple[EntityAnnotation, ...]` and `validation_counters() -> dict[str, object]`.
 - Preserves: existing `RequiredQwenRefiner.refine()` behavior for candidate reranking and assertion refinement.
 
-- [ ] **Step 1: Write failing keep/drop/trim unit tests**
+- [x] **Step 1: Write failing keep/drop/trim unit tests**
 
 Use the existing fake-vLLM pattern from `v2/tests/test_qwen_refiner_required.py`:
 
@@ -264,13 +268,13 @@ def test_exact_kb_entity_bypasses_qwen(fake_engine):
 
 Also test `keep`, `drop`, response-count mismatch, whitespace-only trim, and exact raw-offset round trip.
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run: `python -m pytest v2/tests/test_qwen_entity_validator.py -q`
 
 Expected: import failure because `qwen_entity_validator.py` does not exist.
 
-- [ ] **Step 3: Implement decision and counter dataclasses**
+- [x] **Step 3: Implement decision and counter dataclasses**
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -298,13 +302,13 @@ class EntityValidationCounters:
 
 Add `to_dict()`, `add()`, and `delta()` as pure deterministic methods.
 
-- [ ] **Step 4: Implement strict prompt, schema, parsing, and application**
+- [x] **Step 4: Implement strict prompt, schema, parsing, and application**
 
 Use `build_sampling_kwargs()`, `iter_batches()`, and `parse_json_object()` from `vllm_compat.py`. The schema allows only `keep`, `drop`, and `trim`; `trim` must include relative boundaries and an entity type from `ENTITY_TYPE_TO_ID`.
 
 The prompt must state in Vietnamese that explanations, causes, risk factors, and treatment advice are not part of the smallest entity mention. Include one long valid ICD example and one invalid explanatory-clause example. Apply trim only after validating containment and `raw_text[absolute_start:absolute_end]` equality.
 
-- [ ] **Step 5: Add the required-Qwen facade**
+- [x] **Step 5: Add the required-Qwen facade**
 
 In `RequiredQwenRefiner.__init__`, instantiate `QwenEntityValidator`. Add:
 
@@ -326,7 +330,7 @@ def validation_counters(self):
 
 Do not call `validate_entities()` inside the legacy `refine()` method; Task 3 places it at the correct point in inference.
 
-- [ ] **Step 6: Verify GREEN and existing Qwen tests**
+- [x] **Step 6: Verify GREEN and existing Qwen tests**
 
 Run:
 
@@ -337,7 +341,7 @@ python -m pytest v2/tests/test_qwen_refiner_required.py v2/tests/test_required_q
 
 Expected: all tests pass without CUDA, model downloads, or network access.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```powershell
 git add -- v2/clinical_nlp_lab/qwen_entity_validator.py v2/clinical_nlp_lab/qwen_refiner.py v2/tests/test_qwen_entity_validator.py
@@ -357,7 +361,7 @@ git commit -m "feat: validate NER entities with strict Qwen decisions"
 - Changes: `infer_document()` order to merge before Qwen entity validation and link/assert only afterward.
 - Preserves: `FinalModelBundle` and `InferenceConfig` public constructors.
 
-- [ ] **Step 1: Write a failing unit test for trim then relink/assert**
+- [x] **Step 1: Write a failing unit test for trim then relink/assert**
 
 ```python
 def test_trimmed_entity_is_relinked_and_asserted_using_final_boundary():
@@ -419,13 +423,13 @@ def test_exact_kb_span_over_160_characters_is_not_filtered():
     assert len(merged[0].text) > 160
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run: `python -m pytest v2/tests/test_inference_data_flow.py::test_trimmed_entity_is_relinked_and_asserted_using_final_boundary -q`
 
 Expected: failure because current inference links before Qwen refinement and has no `validate_entities()` call.
 
-- [ ] **Step 3: Implement source-priority proposal arbitration**
+- [x] **Step 3: Implement source-priority proposal arbitration**
 
 Extend `SpanProposal` with `support_count: int = 1`. Rank record proposals by:
 
@@ -441,11 +445,11 @@ Use descending rank in `merge_raw_span_proposals()` so an exact KB span beats an
 
 Remove the current `len(text) > 160` rejection from `_is_valid_proposal_boundary()`. Keep rejection of empty, punctuation-only, multiline, mid-word, and cross-record spans.
 
-- [ ] **Step 4: Implement post-validation linking**
+- [x] **Step 4: Implement post-validation linking**
 
 Add `_link_validated_entities()` that converts each validated entity to a `SpanProposal`, calls `_attach_ranked_candidates()` and `_apply_candidate_policy()`, and returns copied entities containing only the new ranked/selected candidates.
 
-- [ ] **Step 5: Reorder `infer_document()`**
+- [x] **Step 5: Reorder `infer_document()`**
 
 Implement this exact sequence:
 
@@ -466,7 +470,7 @@ if config.enable_qwen and bundle.qwen_reranker is not None:
 
 Exact KB entities bypass validation inside `QwenEntityValidator` but still pass through the same downstream linking/assertion flow.
 
-- [ ] **Step 6: Verify GREEN and related unit tests**
+- [x] **Step 6: Verify GREEN and related unit tests**
 
 Run:
 
@@ -477,7 +481,7 @@ python -m pytest v2/tests/test_primary_inference_path.py v2/tests/test_required_
 
 Expected: all tests pass.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 ```powershell
 git add -- v2/clinical_nlp_lab/inference.py v2/tests/test_inference_data_flow.py
@@ -500,7 +504,7 @@ git commit -m "refactor: link metadata after Qwen entity validation"
 - Consumes: `RequiredQwenRefiner.validation_counters()`.
 - Produces Phase 12 fields: `qwen_entity_query_count`, `qwen_entity_keep_count`, `qwen_entity_drop_count`, `qwen_entity_trim_count`, `qwen_entity_kb_bypass_count`, before/after type counts, before/after length buckets, and maximum lengths.
 
-- [ ] **Step 1: Write failing pure counter unit tests**
+- [x] **Step 1: Write failing pure counter unit tests**
 
 ```python
 def test_validation_counter_add_and_delta_are_deterministic():
@@ -512,21 +516,21 @@ def test_validation_counter_add_and_delta_are_deterministic():
 
 Add a length-bucket test for `1-50`, `51-100`, and `101+`.
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run: `python -m pytest v2/tests/test_qwen_entity_validator.py -q`
 
 Expected: failure until `copy()`, `add()`, `delta()`, bucket counts, and max lengths are implemented.
 
-- [ ] **Step 3: Add cumulative and per-document snapshots**
+- [x] **Step 3: Add cumulative and per-document snapshots**
 
 Expose `validation_counters()` as a deep copied dictionary. In `run_inference_with_bundle()`, snapshot counters immediately before and after each `infer_document()` call and write the delta under `qwen_entity_validation` in that document's diagnostic JSON.
 
-- [ ] **Step 4: Add Phase 12 summary fields**
+- [x] **Step 4: Add Phase 12 summary fields**
 
 After `run_inference_with_bundle()` returns, merge `bundle.qwen_reranker.validation_counters()` into `qwen_summary`. Keep existing rerank/assertion counters and `qwen_status` unchanged. Qwen-disabled mode emits zeros and empty dictionaries.
 
-- [ ] **Step 5: Verify GREEN and existing observability tests**
+- [x] **Step 5: Verify GREEN and existing observability tests**
 
 Run:
 
@@ -537,7 +541,7 @@ python -m pytest v2/tests/test_required_qwen_phase.py v2/tests/test_kaggle_obser
 
 Expected: all tests pass. No new Phase 12 integration test is added.
 
-- [ ] **Step 6: Commit Task 4**
+- [x] **Step 6: Commit Task 4**
 
 ```powershell
 git add -- v2/clinical_nlp_lab/qwen_entity_validator.py v2/clinical_nlp_lab/qwen_refiner.py v2/clinical_nlp_lab/pipeline.py v2/clinical_nlp_lab/kaggle_phases.py v2/tests/test_qwen_entity_validator.py v2/tests/test_required_qwen_phase.py
@@ -566,7 +570,7 @@ git commit -m "feat: report Qwen entity validation decisions"
 - Produces: `compare_document_merge_strategies(expected, raw_chunk_predictions, provenance, raw_texts) -> dict[str, object]`, containing `legacy_union` and `boundary_consensus` metrics from the same predictions.
 - Produces: `TransformerNERDetector.predict_chunks(raw_text) -> list[EntityAnnotation]` for audit/calibration; `detect()` remains the filtered production API.
 
-- [ ] **Step 1: Write failing natural-validation unit tests**
+- [x] **Step 1: Write failing natural-validation unit tests**
 
 ```python
 def test_natural_validation_partition_is_fixed_and_disjoint():
@@ -607,7 +611,7 @@ def test_natural_validation_summary_binds_expected_inventory():
 
 `build_natural_validation_manifest()` scans the real dataset layout and delegates all contract checks to the pure `validate_natural_validation_summary()` function tested above.
 
-- [ ] **Step 2: Write failing document-metric unit tests**
+- [x] **Step 2: Write failing document-metric unit tests**
 
 ```python
 def entity(start: int, end: int, entity_type: str, confidence: float = 1.0):
@@ -646,7 +650,7 @@ def test_consensus_merge_beats_legacy_union_on_same_chunk_predictions():
 
 Also test type breakdown, overlap metrics, `51-100`, `101+`, and deterministic JSON-compatible output.
 
-- [ ] **Step 3: Run both test files and verify RED**
+- [x] **Step 3: Run both test files and verify RED**
 
 Run:
 
@@ -656,7 +660,7 @@ python -m pytest v2/tests/test_natural_validation.py v2/tests/test_document_ner_
 
 Expected: import failures for the new interfaces.
 
-- [ ] **Step 4: Implement the fixed validation contract**
+- [x] **Step 4: Implement the fixed validation contract**
 
 In `natural_validation.py`, define:
 
@@ -668,19 +672,19 @@ OFFICIAL_TYPES = {"CHẨN_ĐOÁN", "THUỐC", "TRIỆU_CHỨNG", "TÊN_XÉT_NGHI
 
 The manifest validates 20 input/GT pairs, 1,488 entities, all five official types, 120 spans longer than 50 characters, five spans longer than 100, and maximum length 110. It writes schema ID/version, document IDs, fingerprint, counts, and length buckets.
 
-- [ ] **Step 5: Bind the validation IDs into every training stage**
+- [x] **Step 5: Bind the validation IDs into every training stage**
 
 Phase 5 writes `artifacts/splits/natural_validation.json`. `_write_stage_input()` removes 181–200 from every selected train list and uses them as the organizer validation component, while retaining the existing synthetic validation IDs. Phase 11 uses the same fixed IDs for assertion validation and excludes them from head training.
 
 Do not mutate the source dataset and do not use the competition inference directory.
 
-- [ ] **Step 6: Implement pure document-level calibration**
+- [x] **Step 6: Implement pure document-level calibration**
 
 Evaluate thresholds `(0.50, 0.60, 0.70, 0.80, 0.85, 0.90, 0.95, 0.99)`. Select maximum exact typed F1; break ties by precision, then higher threshold. Report exact and type-matched overlap metrics overall, by type, by provenance, and by length bucket.
 
 Add a training-only `_legacy_union_for_audit()` that reproduces the old `min(start)/max(end)` behavior without being imported by production inference. `compare_document_merge_strategies()` runs legacy union and the new consensus merger on the same raw chunk predictions, reports both metric sets, and raises when consensus exact precision is not higher or exact F1 decreases on the fixed natural validation slice.
 
-- [ ] **Step 7: Expose unfiltered chunk predictions and publish post-merge metrics**
+- [x] **Step 7: Expose unfiltered chunk predictions and publish post-merge metrics**
 
 Refactor `TransformerNERDetector.detect()`:
 
@@ -697,7 +701,7 @@ After the selected checkpoint is saved on the main process, release the Trainer 
 
 Add these fields to `training_result.json`: `document_entity_precision`, `document_entity_recall`, `document_entity_f1`, `document_overlap_f1`, and `document_ner_confidence_threshold`.
 
-- [ ] **Step 8: Verify GREEN and training contract regressions**
+- [x] **Step 8: Verify GREEN and training contract regressions**
 
 Run:
 
@@ -708,7 +712,7 @@ python -m pytest v2/tests/test_kaggle_phase_runners.py v2/tests/test_kaggle_phas
 
 Expected: all tests pass without loading an actual Transformer checkpoint.
 
-- [ ] **Step 9: Commit Task 5**
+- [x] **Step 9: Commit Task 5**
 
 ```powershell
 git add -- v2/clinical_nlp_lab/natural_validation.py v2/clinical_nlp_lab/kaggle_phases.py v2/clinical_nlp_lab/training.py v2/clinical_nlp_lab/ner.py v2/scripts/train_ner_subprocess.py v2/tests/test_natural_validation.py v2/tests/test_document_ner_metrics.py v2/tests/test_kaggle_phase_runners.py v2/tests/test_kaggle_phase_results.py
@@ -731,7 +735,7 @@ git commit -m "feat: calibrate NER on fixed natural validation spans"
 - Produces: generated notebook markdown naming required Qwen entity validation and the Phase 12 smoke fields.
 - Preserves: 13 canonical phases and the single `ENABLE_QWEN_RERANKER` toggle.
 
-- [ ] **Step 1: Write failing notebook text unit tests**
+- [x] **Step 1: Write failing notebook text unit tests**
 
 ```python
 def test_enabled_notebook_documents_entity_validation_smoke_fields():
@@ -745,17 +749,17 @@ def test_enabled_notebook_documents_entity_validation_smoke_fields():
     assert "Nếu lỗi, lưu cell output và stack trace" in markdown
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run: `python -m pytest v2/tests/test_kaggle_notebook_variants.py -q`
 
 Expected: the new markdown assertions fail.
 
-- [ ] **Step 3: Add the smoke checklist to the builder and runbook**
+- [x] **Step 3: Add the smoke checklist to the builder and runbook**
 
 The checklist tells the user to verify all 13 phases, `qwen_status=COMPLETED`, entity validation counters, 100 output JSON files, valid ZIP/CRC, zero offset errors, and before/after length reports. The error handoff requires the failing cell output, complete traceback, Phase 12 result when present, `diagnostics/qwen_summary.json`, and `diagnostics/output_quality.json`.
 
-- [ ] **Step 4: Regenerate the notebook artifacts**
+- [x] **Step 4: Regenerate the notebook artifacts**
 
 Run from `D:\AI Race Viettel`:
 
@@ -765,7 +769,7 @@ python v2/tools/build_kaggle_notebook.py --qwen-mode enabled --output ai-race-tr
 python v2/tools/build_kaggle_notebook.py --qwen-mode unable --output ai-race-training-v2-unableQwen.ipynb
 ```
 
-- [ ] **Step 5: Verify generated notebooks**
+- [x] **Step 5: Verify generated notebooks**
 
 Run:
 
@@ -775,7 +779,7 @@ python -m pytest v2/tests/test_kaggle_notebook_variants.py v2/tests/test_inferen
 
 Expected: all tests pass; each notebook has 13 phases and no code-cell syntax errors.
 
-- [ ] **Step 6: Commit Task 6**
+- [x] **Step 6: Commit Task 6**
 
 ```powershell
 git add -- v2/tools/build_kaggle_notebook.py v2/tests/test_kaggle_notebook_variants.py v2/KAGGLE_RUNBOOK.md v2/medical_information_extraction_kaggle.ipynb ai-race-training-v2-enableQwen.ipynb ai-race-training-v2-unableQwen.ipynb
@@ -793,7 +797,7 @@ git commit -m "docs: add Kaggle NER validation smoke checklist"
 **Interfaces:**
 - Produces: a locally verified branch, updated Kaggle notebook, and exact user smoke-test instructions.
 
-- [ ] **Step 1: Run all newly added unit tests**
+- [x] **Step 1: Run all newly added unit tests**
 
 ```powershell
 python -m pytest v2/tests/test_chunk_boundary_consensus.py v2/tests/test_qwen_entity_validator.py v2/tests/test_natural_validation.py v2/tests/test_document_ner_metrics.py -q
@@ -801,15 +805,16 @@ python -m pytest v2/tests/test_chunk_boundary_consensus.py v2/tests/test_qwen_en
 
 Expected: all pass on CPU with no network access.
 
-- [ ] **Step 2: Run existing tests related to changed modules**
+- [x] **Step 2: Run existing tests related to changed modules**
 
 ```powershell
+$env:PYTHONPATH = (Join-Path (Get-Location) 'v2')
 python -m pytest v2/tests/test_inference_data_flow.py v2/tests/test_primary_inference_path.py v2/tests/test_ner_calibration.py v2/tests/test_ner_confidence_filter.py v2/tests/test_required_qwen_phase.py v2/tests/test_qwen_refiner_required.py v2/tests/test_single_toggle_qwen.py v2/tests/test_kaggle_phase_runners.py v2/tests/test_kaggle_phase_results.py v2/tests/test_kaggle_observability.py v2/tests/test_kaggle_notebook_variants.py v2/tests/test_inference_notebook.py -q
 ```
 
 Expected: all pass. These are existing regression tests, not a new integration suite.
 
-- [ ] **Step 3: Run static and repository checks**
+- [x] **Step 3: Run static and repository checks**
 
 ```powershell
 python -m compileall -q v2/clinical_nlp_lab v2/scripts v2/tools
@@ -819,7 +824,7 @@ git status --short
 
 Expected: Python compilation succeeds, no whitespace errors, and only intentional files remain modified.
 
-- [ ] **Step 4: Inspect acceptance evidence**
+- [x] **Step 4: Inspect acceptance evidence**
 
 Confirm locally:
 
@@ -831,7 +836,7 @@ Confirm locally:
 - document calibration uses exact span F1 with precision tie-break;
 - notebooks remain 13-phase and expose the user smoke checklist.
 
-- [ ] **Step 5: Commit any final plan/checklist-only adjustment**
+- [x] **Step 5: Commit any final plan/checklist-only adjustment**
 
 If verification required no code adjustment, do not create an empty commit. If only tracked documentation changed:
 
@@ -840,6 +845,6 @@ git add -- docs/superpowers/plans/2026-07-27-precision-first-ner-boundary.md
 git commit -m "docs: record precision-first NER verification"
 ```
 
-- [ ] **Step 6: Hand off Kaggle smoke test to the user**
+- [x] **Step 6: Hand off Kaggle smoke test to the user**
 
 Provide the enabled notebook path, branch/commit, Run All prerequisites, and the exact error bundle to return if it fails. Do not claim Kaggle runtime success until the user reports the result.
