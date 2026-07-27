@@ -21,6 +21,77 @@ from .schema import ClinicalDocument, validate_submission_payload, write_json
 from .text import detect_sections
 
 
+_QWEN_ENTITY_COUNTER_FIELDS = (
+    "query_count",
+    "keep",
+    "drop",
+    "trim",
+    "kb_bypass",
+    "before_type_counts",
+    "after_type_counts",
+    "before_length_buckets",
+    "after_length_buckets",
+    "max_before_length",
+    "max_after_length",
+)
+
+
+def _empty_qwen_entity_validation_counters() -> dict[str, object]:
+    return {
+        "query_count": 0,
+        "keep": 0,
+        "drop": 0,
+        "trim": 0,
+        "kb_bypass": 0,
+        "before_type_counts": {},
+        "after_type_counts": {},
+        "before_length_buckets": {},
+        "after_length_buckets": {},
+        "max_before_length": 0,
+        "max_after_length": 0,
+    }
+
+
+def _qwen_entity_validation_snapshot(bundle: Any) -> Any | None:
+    refiner = getattr(bundle, "qwen_reranker", None)
+    if refiner is None:
+        return None
+    snapshot = getattr(refiner, "validation_counter_snapshot", None)
+    if callable(snapshot):
+        return snapshot()
+    counters = getattr(refiner, "validation_counters", None)
+    return counters() if callable(counters) else None
+
+
+def _qwen_entity_validation_delta(before: Any | None, after: Any | None) -> dict[str, object]:
+    if before is None or after is None:
+        return _empty_qwen_entity_validation_counters()
+    delta = getattr(after, "delta", None)
+    if callable(delta):
+        result = delta(before)
+        to_dict = getattr(result, "to_dict", None)
+        if callable(to_dict):
+            return to_dict()
+    if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+        return _empty_qwen_entity_validation_counters()
+
+    result = _empty_qwen_entity_validation_counters()
+    for key in _QWEN_ENTITY_COUNTER_FIELDS:
+        before_value = before.get(key, result[key])
+        after_value = after.get(key, result[key])
+        if isinstance(after_value, Mapping) and isinstance(before_value, Mapping):
+            result[key] = {
+                name: int(after_value.get(name, 0)) - int(before_value.get(name, 0))
+                for name in sorted(set(before_value) | set(after_value))
+                if int(after_value.get(name, 0)) != int(before_value.get(name, 0))
+            }
+        elif key.startswith("max_"):
+            result[key] = int(after_value) if int(after_value) > int(before_value) else 0
+        else:
+            result[key] = int(after_value) - int(before_value)
+    return result
+
+
 def enrich_records_from_train_documents(
     icd10_records: list[dict[str, Any]],
     rxnorm_records: list[dict[str, Any]],
@@ -291,11 +362,17 @@ def run_inference_with_bundle(
     output_files: list[Path] = []
 
     for source_document in documents:
+        qwen_validation_before = _qwen_entity_validation_snapshot(bundle)
         inferred = infer_document(
             source_document.document_id,
             source_document.raw_text,
             bundle,
             inference_config,
+        )
+        qwen_validation_after = _qwen_entity_validation_snapshot(bundle)
+        qwen_entity_validation = _qwen_entity_validation_delta(
+            qwen_validation_before,
+            qwen_validation_after,
         )
         submission: list[dict[str, Any]] = []
         dropped: Counter[str] = Counter()
@@ -331,6 +408,7 @@ def run_inference_with_bundle(
                 "offset_validation_passed": True,
                 "training_or_fitting_on_input": False,
                 "primary_path": "final_model_bundle",
+                "qwen_entity_validation": qwen_entity_validation,
                 "ner_confidence_threshold": getattr(
                     getattr(bundle, "ner_model", None),
                     "confidence_threshold",

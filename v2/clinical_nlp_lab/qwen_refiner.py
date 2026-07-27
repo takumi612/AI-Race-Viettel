@@ -38,6 +38,10 @@ class RequiredQwenRefiner:
     def validation_counters(self) -> dict[str, object]:
         return self._entity_validation_counters.to_dict()
 
+    def validation_counter_snapshot(self) -> EntityValidationCounters:
+        """Return an internal-safe counter state for per-document diagnostics."""
+        return self._entity_validation_counters.copy()
+
     @staticmethod
     def _context(raw_text: str, entity: EntityAnnotation, window: int = 120) -> str:
         return raw_text[max(0, entity.start - window):min(len(raw_text), entity.end + window)]

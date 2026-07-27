@@ -140,12 +140,8 @@ class EntityValidationResult:
 
 
 def _length_bucket(length: int) -> str:
-    if length <= 10:
-        return "0-10"
-    if length <= 25:
-        return "11-25"
     if length <= 50:
-        return "26-50"
+        return "1-50"
     if length <= 100:
         return "51-100"
     return "101+"

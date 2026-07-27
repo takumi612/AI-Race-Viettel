@@ -90,6 +90,17 @@ def test_phase_12_disabled_never_initializes_qwen_and_reports_disabled(tmp_path:
     assert result["qwen_rerank_query_count"] == 0
     assert result["qwen_assertion_query_count"] == 0
     assert result["qwen_abstention_count"] == 0
+    assert result["qwen_entity_query_count"] == 0
+    assert result["qwen_entity_keep_count"] == 0
+    assert result["qwen_entity_drop_count"] == 0
+    assert result["qwen_entity_trim_count"] == 0
+    assert result["qwen_entity_kb_bypass_count"] == 0
+    assert result["qwen_entity_before_type_counts"] == {}
+    assert result["qwen_entity_after_type_counts"] == {}
+    assert result["qwen_entity_before_length_buckets"] == {}
+    assert result["qwen_entity_after_length_buckets"] == {}
+    assert result["qwen_entity_max_before_length"] == 0
+    assert result["qwen_entity_max_after_length"] == 0
     assert result["qwen_status"] == "DISABLED"
 
 
@@ -122,6 +133,22 @@ def test_phase_12_uses_run_config_toggle_despite_both_config_file_keys(tmp_path:
     _patch_phase_dependencies(monkeypatch, pipeline=pipeline)
     monkeypatch.setattr("clinical_nlp_lab.reranker.ClinicalLLMReranker", _FakeReranker)
     monkeypatch.setattr("clinical_nlp_lab.qwen_refiner.RequiredQwenRefiner.refine", passthrough_refine)
+    monkeypatch.setattr(
+        "clinical_nlp_lab.qwen_refiner.RequiredQwenRefiner.validation_counters",
+        lambda _self: {
+            "query_count": 3,
+            "keep": 1,
+            "drop": 1,
+            "trim": 1,
+            "kb_bypass": 2,
+            "before_type_counts": {"DISEASE": 3},
+            "after_type_counts": {"DISEASE": 2},
+            "before_length_buckets": {"1-50": 3},
+            "after_length_buckets": {"1-50": 2},
+            "max_before_length": 81,
+            "max_after_length": 44,
+        },
+    )
 
     result = kaggle_phases._phase_12_inference(config, "phase_12_inference", context)
 
@@ -140,6 +167,17 @@ def test_phase_12_uses_run_config_toggle_despite_both_config_file_keys(tmp_path:
     assert result["qwen_rerank_query_count"] == 1
     assert result["qwen_assertion_query_count"] == 1
     assert result["qwen_abstention_count"] == 1
+    assert result["qwen_entity_query_count"] == 3
+    assert result["qwen_entity_keep_count"] == 1
+    assert result["qwen_entity_drop_count"] == 1
+    assert result["qwen_entity_trim_count"] == 1
+    assert result["qwen_entity_kb_bypass_count"] == 2
+    assert result["qwen_entity_before_type_counts"] == {"DISEASE": 3}
+    assert result["qwen_entity_after_type_counts"] == {"DISEASE": 2}
+    assert result["qwen_entity_before_length_buckets"] == {"1-50": 3}
+    assert result["qwen_entity_after_length_buckets"] == {"1-50": 2}
+    assert result["qwen_entity_max_before_length"] == 81
+    assert result["qwen_entity_max_after_length"] == 44
     assert result["qwen_status"] == "COMPLETED"
 
 

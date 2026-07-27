@@ -602,6 +602,17 @@ def _phase_12_inference(config: RunConfig, phase: str, context: Mapping[str, Any
         "qwen_rerank_query_count": 0,
         "qwen_assertion_query_count": 0,
         "qwen_abstention_count": 0,
+        "qwen_entity_query_count": 0,
+        "qwen_entity_keep_count": 0,
+        "qwen_entity_drop_count": 0,
+        "qwen_entity_trim_count": 0,
+        "qwen_entity_kb_bypass_count": 0,
+        "qwen_entity_before_type_counts": {},
+        "qwen_entity_after_type_counts": {},
+        "qwen_entity_before_length_buckets": {},
+        "qwen_entity_after_length_buckets": {},
+        "qwen_entity_max_before_length": 0,
+        "qwen_entity_max_after_length": 0,
         "qwen_status": "DISABLED" if not qwen_requested else "FAILED",
     }
     qwen_reranker = None
@@ -675,6 +686,27 @@ def _phase_12_inference(config: RunConfig, phase: str, context: Mapping[str, Any
             create_zip=False,
             diagnostics_dir=diagnostics_dir,
         )
+        if qwen_reranker is not None:
+            validation_counters = qwen_reranker.validation_counters()
+            qwen_summary.update(
+                {
+                    "qwen_entity_query_count": int(validation_counters["query_count"]),
+                    "qwen_entity_keep_count": int(validation_counters["keep"]),
+                    "qwen_entity_drop_count": int(validation_counters["drop"]),
+                    "qwen_entity_trim_count": int(validation_counters["trim"]),
+                    "qwen_entity_kb_bypass_count": int(validation_counters["kb_bypass"]),
+                    "qwen_entity_before_type_counts": validation_counters["before_type_counts"],
+                    "qwen_entity_after_type_counts": validation_counters["after_type_counts"],
+                    "qwen_entity_before_length_buckets": validation_counters[
+                        "before_length_buckets"
+                    ],
+                    "qwen_entity_after_length_buckets": validation_counters[
+                        "after_length_buckets"
+                    ],
+                    "qwen_entity_max_before_length": int(validation_counters["max_before_length"]),
+                    "qwen_entity_max_after_length": int(validation_counters["max_after_length"]),
+                }
+            )
         from .output_quality import audit_submission_directory, enforce_output_quality
 
         quality_report = audit_submission_directory(input_source, output_dir)

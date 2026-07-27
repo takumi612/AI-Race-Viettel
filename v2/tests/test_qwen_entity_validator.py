@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import json
 import sys
 import types
+from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
 from clinical_nlp_lab.qwen_entity_validator import EntityValidationCounters, QwenEntityValidator
 from clinical_nlp_lab.qwen_refiner import RequiredQwenError, RequiredQwenRefiner
-from clinical_nlp_lab.schema import EntityAnnotation
+from clinical_nlp_lab.schema import ClinicalDocument, EntityAnnotation, OFFICIAL_SCHEMA_KEYS
 
 
 class FakeEngine:
@@ -151,9 +154,26 @@ def test_counters_add_and_delta_are_deterministic():
     increment = EntityValidationCounters(query_count=3, keep=1, trim=2, kb_bypass=4)
     after = before.copy().add(increment)
 
-    assert after.to_dict()["query_count"] == 5
-    assert after.delta(before).to_dict()["query_count"] == 3
-    assert after.delta(before).to_dict()["trim"] == 2
+    assert after.delta(before).to_dict() == increment.to_dict()
+
+
+def test_validation_counters_use_document_length_buckets(fake_engine):
+    raw_text = "a" * 50 + " " + "b" * 100 + " " + "c" * 101
+    entities = (
+        EntityAnnotation(text="a" * 50, type="DISEASE", position=(0, 50)),
+        EntityAnnotation(text="b" * 100, type="DISEASE", position=(51, 151)),
+        EntityAnnotation(text="c" * 101, type="DISEASE", position=(152, 253)),
+    )
+
+    result = QwenEntityValidator(
+        fake_engine(['{"action":"keep"}', '{"action":"keep"}', '{"action":"keep"}'])
+    ).validate(entities, raw_text)
+
+    expected = {"1-50": 1, "51-100": 1, "101+": 1}
+    assert result.counters.before_length_buckets == expected
+    assert result.counters.after_length_buckets == expected
+    assert result.counters.max_before_length == 101
+    assert result.counters.max_after_length == 101
 
 
 def test_counter_delta_does_not_leak_a_prior_document_maximum():
@@ -176,6 +196,81 @@ def test_required_refiner_exposes_validation_and_accumulates_counters(fake_engin
     counters = refiner.validation_counters()
     assert counters["query_count"] == 1
     assert counters["drop"] == 1
+
+    counters["before_type_counts"]["MUTATED"] = 999
+    assert "MUTATED" not in refiner.validation_counters()["before_type_counts"]
+
+
+class _CounterSnapshotRefiner:
+    def __init__(self):
+        self._counters = EntityValidationCounters()
+
+    def validation_counters(self):
+        return deepcopy(self._counters.to_dict())
+
+    def validation_counter_snapshot(self):
+        return self._counters.copy()
+
+    def validate_one_document(self):
+        self._counters.add(
+            EntityValidationCounters(
+                query_count=1,
+                keep=1,
+                before_type_counts={"SYMPTOM": 1},
+                after_type_counts={"SYMPTOM": 1},
+                before_length_buckets={"1-50": 1},
+                after_length_buckets={"1-50": 1},
+                max_before_length=5,
+                max_after_length=5,
+            )
+        )
+
+
+def test_pipeline_writes_per_document_qwen_validation_counter_delta(tmp_path: Path, monkeypatch):
+    from clinical_nlp_lab.pipeline import run_inference_with_bundle
+
+    raw_text = "fever"
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "001.txt").write_text(raw_text, encoding="utf-8")
+    refiner = _CounterSnapshotRefiner()
+
+    def fake_infer(_document_id, _raw_text, _bundle, _config):
+        refiner.validate_one_document()
+        return ClinicalDocument(
+            "001",
+            raw_text,
+            entities=[EntityAnnotation(text="fever", type="SYMPTOM", position=(0, 5))],
+        )
+
+    monkeypatch.setattr("clinical_nlp_lab.inference.infer_document", fake_infer)
+    run_inference_with_bundle(
+        input_dir,
+        tmp_path / "output",
+        bundle=types.SimpleNamespace(qwen_reranker=refiner, ner_model=None),
+        entity_mapping={
+            "internal_to_official": {"SYMPTOM": next(key for key in OFFICIAL_SCHEMA_KEYS if "TRI" in key)},
+            "drop_unmapped": True,
+        },
+        create_zip=False,
+    )
+
+    diagnostic = json.loads(
+        (tmp_path / "diagnostics" / "001.json").read_text(encoding="utf-8")
+    )
+    assert diagnostic["qwen_entity_validation"] == {
+        "query_count": 1,
+        "keep": 1,
+        "drop": 0,
+        "trim": 0,
+        "kb_bypass": 0,
+        "before_type_counts": {"SYMPTOM": 1},
+        "after_type_counts": {"SYMPTOM": 1},
+        "before_length_buckets": {"1-50": 1},
+        "after_length_buckets": {"1-50": 1},
+        "max_before_length": 5,
+        "max_after_length": 5,
+    }
 
 
 def test_required_refiner_wraps_invalid_entity_validation(fake_engine):
