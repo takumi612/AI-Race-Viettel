@@ -194,25 +194,54 @@ merger remains active.
 - ZIP construction still requires exactly one `output/<id>.json` member per input
   document, numeric ordering, valid CRC, and no extra members.
 
-## 10. Testing Strategy
+## 10. Chiến lược kiểm thử
 
-Implementation follows test-driven development.
+Phần triển khai tuân theo Test-Driven Development (TDD). Với mỗi hành vi cần sửa,
+quy trình là: viết một test mô tả kết quả đúng, chạy để xác nhận test đang thất bại
+vì code cũ chưa có hành vi đó, viết lượng code nhỏ nhất để test vượt qua, sau đó chạy
+lại test liên quan và toàn bộ test suite để kiểm tra hồi quy.
 
-Unit tests will cover:
+### 10.1 Unit test
 
-- identical and near-identical window proposals;
-- conflicting proposals that previously produced a union boundary;
-- evidence ordering and deterministic tie-breaking;
-- long valid KB entities that must survive;
-- Qwen `keep`, `drop`, and valid `trim` decisions;
-- invalid relative offsets, types, actions, JSON, and response counts;
-- relinking and assertion execution after a trim or type change;
-- Qwen-disabled deterministic behavior;
-- Phase 12 counters and strict failure behavior.
+Unit test gọi trực tiếp logic thật với dữ liệu nhỏ, cố định và không cần tải model.
+Qwen được thay bằng fake engine trả JSON xác định trước; mục tiêu là kiểm tra parser,
+validation contract và luồng xử lý của hệ thống, không kiểm tra chất lượng của model
+ngôn ngữ trong môi trường unit test.
 
-Integration tests will cover one multi-window document through inference and one
-small synthetic Kaggle phase through packaging. Existing offset, ZIP, Qwen-required,
-candidate, assertion, and notebook contract tests must continue to pass.
+Các trường hợp cụ thể gồm:
+
+| Trường hợp | Dữ liệu kiểm tra | Kết quả bắt buộc |
+|---|---|---|
+| Hai window dự đoán giống nhau | Hai proposal cùng type và cùng `[start, end]` | Chỉ còn một entity, giữ đúng boundary gốc và ghi nhận hai nguồn bằng chứng |
+| Hai window gần giống nhau | Ví dụ `[10, 20]` và `[10, 21]` | Chọn một boundary đã quan sát; không tạo boundary mới |
+| Hai window xung đột | Ví dụ `[10, 40]` và `[30, 60]` | Tuyệt đối không tạo union `[10, 60]`; chọn proposal thắng theo policy |
+| Thứ tự độ mạnh bằng chứng | Exact-KB span cạnh tranh với Transformer span | Exact-KB thắng; nếu cùng nguồn thì xét đồng thuận, confidence rồi boundary ngắn hơn |
+| Entity KB hợp lệ nhưng rất dài | Exact-KB entity dài hơn 100 ký tự | Entity vẫn được giữ nguyên, chứng minh hệ thống không dùng hard cap độ dài |
+| Qwen `keep` | Fake engine trả action `keep` | Entity giữ nguyên text, type, position và offset vẫn hợp lệ |
+| Qwen `drop` | Fake engine trả action `drop` | Entity bị loại khỏi kết quả trước bước linking/assertion |
+| Qwen `trim` hợp lệ | Span gốc `[100, 160]`, Qwen trả relative range nằm bên trong | Tạo entity mới bằng đúng substring của raw text và offset tuyệt đối được dịch chính xác |
+| Phản hồi Qwen không hợp lệ | JSON lỗi, action/type lạ, relative offset ngoài span hoặc thiếu/thừa response | Ném `RequiredQwenError`; Phase 12 không được đóng gói output |
+| Metadata sau khi trim/retype | Qwen thay text, type hoặc position | Candidate retrieval và assertion phải chạy lại trên entity mới; metadata của entity cũ không được giữ lại |
+| Tắt Qwen | `ENABLE_QWEN_RERANKER=False` | Không gọi fake engine; boundary-consensus merge vẫn chạy và cho kết quả xác định |
+| Bộ đếm Phase 12 | Một batch có đủ `keep`, `drop`, `trim` và KB bypass | Summary/diagnostics báo đúng số query, quyết định, type và bucket độ dài trước–sau |
+
+### 10.2 Integration test
+
+Integration test ghép nhiều module thật với nhau nhưng vẫn dùng fixture nhỏ để chạy
+nhanh và lặp lại được:
+
+1. Một tài liệu dài được chia thành nhiều token window. Fake NER tạo các proposal
+   chồng lấn ở vùng stride; pipeline phải merge, gọi Qwen validator, chạy lại linking
+   và assertion, rồi xuất entity có raw offset chính xác.
+2. Một Kaggle Phase 12 thu nhỏ nhận vài file `.txt`, checkpoint/bundle fixture và fake
+   Qwen engine. Test chạy xuyên suốt đến thư mục output và ZIP, sau đó kiểm tra đúng
+   `output/<id>.json`, đúng số file, CRC hợp lệ, không có offset lỗi và có đủ counters.
+3. Một trường hợp Qwen trả response sai phải làm Phase 12 thất bại trước packaging và
+   không được để lại một ZIP có vẻ hợp lệ nhưng chưa qua validation.
+
+Ngoài các test mới, toàn bộ test hiện có về offset, ZIP, Qwen bắt buộc, candidate,
+assertion và notebook contract phải tiếp tục vượt qua. Kaggle Run All thật là bước
+nghiệm thu runtime cuối cùng, không thay thế unit test hay integration test.
 
 ## 11. Acceptance Criteria
 
