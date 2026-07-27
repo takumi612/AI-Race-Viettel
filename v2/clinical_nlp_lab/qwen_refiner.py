@@ -5,6 +5,7 @@ from typing import Any
 
 from .assertions import ClinicalLLMAssertionPredictor
 from .entity_types import ASSERTION_ENTITY_TYPES
+from .qwen_entity_validator import EntityValidationCounters, QwenEntityValidator
 from .reranker import ClinicalLLMReranker
 from .schema import EntityAnnotation
 
@@ -17,6 +18,25 @@ class RequiredQwenRefiner:
     def __init__(self, llm_engine: Any, *, batch_size: int = 64):
         self._llm_engine = llm_engine
         self.batch_size = batch_size
+        self._entity_validator = QwenEntityValidator(llm_engine, batch_size=batch_size)
+        self._entity_validation_counters = EntityValidationCounters()
+
+    def validate_entities(
+        self,
+        entities: tuple[EntityAnnotation, ...],
+        raw_text: str,
+    ) -> tuple[EntityAnnotation, ...]:
+        try:
+            result = self._entity_validator.validate(entities, raw_text)
+            self._entity_validation_counters.add(result.counters)
+            return result.entities
+        except RequiredQwenError:
+            raise
+        except Exception as exc:
+            raise RequiredQwenError(str(exc)) from exc
+
+    def validation_counters(self) -> dict[str, object]:
+        return self._entity_validation_counters.to_dict()
 
     @staticmethod
     def _context(raw_text: str, entity: EntityAnnotation, window: int = 120) -> str:
