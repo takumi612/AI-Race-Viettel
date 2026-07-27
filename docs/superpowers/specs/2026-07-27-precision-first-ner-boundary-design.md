@@ -225,23 +225,43 @@ Các trường hợp cụ thể gồm:
 | Tắt Qwen | `ENABLE_QWEN_RERANKER=False` | Không gọi fake engine; boundary-consensus merge vẫn chạy và cho kết quả xác định |
 | Bộ đếm Phase 12 | Một batch có đủ `keep`, `drop`, `trim` và KB bypass | Summary/diagnostics báo đúng số query, quyết định, type và bucket độ dài trước–sau |
 
-### 10.2 Integration test
+### 10.2 Component và contract test chạy local
 
-Integration test ghép nhiều module thật với nhau nhưng vẫn dùng fixture nhỏ để chạy
-nhanh và lặp lại được:
+Không xây dựng một integration test giả lập toàn bộ Kaggle Phase 12 trong local/CI.
+Phase này cần checkpoint Transformer thật, assertion head, KB artifacts, CUDA và
+vLLM Qwen; thay toàn bộ các dependency đó bằng mock sẽ chỉ kiểm tra orchestration
+chứ không chứng minh pipeline runtime thật hoạt động.
 
-1. Một tài liệu dài được chia thành nhiều token window. Fake NER tạo các proposal
-   chồng lấn ở vùng stride; pipeline phải merge, gọi Qwen validator, chạy lại linking
-   và assertion, rồi xuất entity có raw offset chính xác.
-2. Một Kaggle Phase 12 thu nhỏ nhận vài file `.txt`, checkpoint/bundle fixture và fake
-   Qwen engine. Test chạy xuyên suốt đến thư mục output và ZIP, sau đó kiểm tra đúng
-   `output/<id>.json`, đúng số file, CRC hợp lệ, không có offset lỗi và có đủ counters.
-3. Một trường hợp Qwen trả response sai phải làm Phase 12 thất bại trước packaging và
-   không được để lại một ZIP có vẻ hợp lệ nhưng chưa qua validation.
+Thay vào đó, test local được chia theo các ranh giới khả thi:
 
-Ngoài các test mới, toàn bộ test hiện có về offset, ZIP, Qwen bắt buộc, candidate,
-assertion và notebook contract phải tiếp tục vượt qua. Kaggle Run All thật là bước
-nghiệm thu runtime cuối cùng, không thay thế unit test hay integration test.
+1. Component test của `infer_document()` dùng fake NER, fake Qwen validator, fake KB
+   linker và fake assertion predictor nhưng chạy logic orchestration thật. Test đưa
+   vào các proposal mô phỏng nhiều window, rồi kiểm tra thứ tự merge → validate →
+   relink → assertion và raw offset cuối cùng.
+2. Contract test của Phase 12 patch các dependency nặng, tương tự test hiện có trong
+   `test_required_qwen_phase.py`. Test chỉ xác nhận toggle, bộ đếm, propagation lỗi,
+   cleanup và nguyên tắc không tạo ZIP khi validation thất bại.
+3. Packaging contract test tạo một thư mục output tạm với vài JSON đã hợp lệ, chạy
+   riêng logic đóng gói và kiểm tra member `output/<id>.json`, thứ tự, CRC và việc
+   không có file thừa. Test này không tuyên bố đã kiểm tra model inference.
+
+### 10.3 End-to-end smoke test trên Kaggle
+
+Kaggle Run All với GPU, Internet, dữ liệu attach và checkpoint/model thật là test
+end-to-end duy nhất. Bước này được thực hiện sau khi toàn bộ test local vượt qua và
+phải kiểm tra:
+
+- cả 13 phase hoàn tất;
+- Qwen entity validation có trạng thái `COMPLETED`;
+- các bộ đếm `keep`, `drop`, `trim` và KB bypass xuất hiện trong Phase 12;
+- đủ 100 JSON, ZIP đúng cấu trúc và CRC;
+- không có offset error;
+- báo cáo độ dài span trước–sau và validation metrics được sinh ra.
+
+Smoke test Kaggle không chạy tự động trong local/CI vì phụ thuộc GPU T4, CUDA/vLLM,
+model tải từ Hugging Face và thời gian huấn luyện dài. Ngoài các test mới, toàn bộ
+test hiện có về offset, ZIP, Qwen bắt buộc, candidate, assertion và notebook contract
+phải tiếp tục vượt qua.
 
 ## 11. Acceptance Criteria
 
