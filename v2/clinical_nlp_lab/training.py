@@ -168,6 +168,35 @@ def write_ner_calibration(
     )
 
 
+def write_document_ner_calibration(
+    path: str | Path,
+    report: Mapping[str, Any],
+) -> None:
+    """Publish the post-merge threshold selected on natural document spans."""
+    threshold = float(report["confidence_threshold"])
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("NER confidence threshold must be in [0, 1]")
+    exact = report.get("exact")
+    overlap = report.get("overlap")
+    if not isinstance(exact, Mapping) or not isinstance(overlap, Mapping):
+        raise ValueError("document calibration requires exact and overlap metrics")
+    write_json(
+        path,
+        {
+            "schema_id": "clinical_nlp.ner_calibration",
+            "schema_version": 2,
+            "objective": "document_exact_f1_precision_tiebreak",
+            "confidence_threshold": threshold,
+            "validation": {
+                "entity_precision": float(exact["precision"]),
+                "entity_recall": float(exact["recall"]),
+                "entity_f1": float(exact["f1"]),
+                "overlap_f1": float(overlap["f1"]),
+            },
+        },
+    )
+
+
 def compute_entity_metrics(expected_documents, predicted_documents):
     """Return exact-span and type-matched overlap micro metrics."""
     def spans(docs):

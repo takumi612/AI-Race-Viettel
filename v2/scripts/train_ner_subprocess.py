@@ -27,7 +27,13 @@ from clinical_nlp_lab.training import (
     build_training_contract,
     compute_bio_span_metrics,
     remove_nested_checkpoints,
+    write_document_ner_calibration,
     write_ner_calibration,
+)
+from clinical_nlp_lab.natural_validation import (
+    NATURAL_VALIDATION_IDS,
+    calibrate_document_entity_threshold,
+    compare_document_merge_strategies,
 )
 
 class FeatureDataset(Dataset):
@@ -57,6 +63,65 @@ def load_stage_selection(path: str | Path) -> dict[str, object]:
     if payload.get("stage_spec") is not None:
         selection["stage_spec"] = dict(payload["stage_spec"])
     return selection
+
+
+def publish_document_validation(
+    output_path: Path,
+    documents,
+    *,
+    max_length: int,
+    stride: int,
+) -> dict[str, float]:
+    """Calibrate a saved checkpoint against raw 181--200 chunk proposals only."""
+    from clinical_nlp_lab.ner import TransformerNERDetector, merge_chunk_predictions
+
+    by_id = {document.document_id: document for document in documents}
+    missing = sorted(set(NATURAL_VALIDATION_IDS) - set(by_id), key=int)
+    if missing:
+        raise ValueError(f"fixed natural validation documents are unavailable: {missing}")
+    expected = {document_id: by_id[document_id].entities for document_id in NATURAL_VALIDATION_IDS}
+    raw_texts = {document_id: by_id[document_id].raw_text for document_id in NATURAL_VALIDATION_IDS}
+    provenance = {document_id: "organizer_gt" for document_id in NATURAL_VALIDATION_IDS}
+    detector = TransformerNERDetector(
+        output_path,
+        max_length=max_length,
+        stride=stride,
+        confidence_threshold=0.0,
+    )
+    try:
+        raw_predictions = {
+            document_id: detector.predict_chunks(raw_texts[document_id])
+            for document_id in NATURAL_VALIDATION_IDS
+        }
+    finally:
+        detector.release()
+    comparison = compare_document_merge_strategies(
+        expected, raw_predictions, provenance, raw_texts
+    )
+    consensus = {
+        document_id: merge_chunk_predictions(raw_predictions[document_id], raw_texts[document_id])
+        for document_id in NATURAL_VALIDATION_IDS
+    }
+    calibration = calibrate_document_entity_threshold(expected, consensus, provenance)
+    write_document_ner_calibration(output_path / "ner_calibration.json", calibration)
+    write_json(
+        output_path / "document_validation_report.json",
+        {
+            "schema_id": "clinical_nlp.document_validation_report",
+            "schema_version": 1,
+            "merge_comparison": comparison,
+            "calibration": calibration,
+        },
+    )
+    exact = calibration["exact"]
+    overlap = calibration["overlap"]
+    return {
+        "document_entity_precision": float(exact["precision"]),
+        "document_entity_recall": float(exact["recall"]),
+        "document_entity_f1": float(exact["f1"]),
+        "document_overlap_f1": float(overlap["f1"]),
+        "document_ner_confidence_threshold": float(calibration["confidence_threshold"]),
+    }
 
 def main():
     parser = argparse.ArgumentParser()
@@ -253,6 +318,7 @@ def main():
     evaluation = trainer.evaluate() if validation_contract.windows else {}
     trainer.save_model(str(output_path))
     is_main_process = not torch.distributed.is_available() or not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
+    document_metrics = {}
     if is_main_process:
         tokenizer.save_pretrained(str(output_path))
         if evaluation:
@@ -263,6 +329,17 @@ def main():
                     for key, value in evaluation.items()
                 },
             )
+        # The Trainer's model is no longer needed once the checkpoint is on
+        # disk.  Move it off GPU before reloading for chunk-level audit.
+        trainer.model.to("cpu")
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        document_metrics = publish_document_validation(
+            output_path,
+            annotated_documents,
+            max_length=max_length,
+            stride=stride,
+        )
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         torch.distributed.barrier()
     removed_checkpoints = remove_nested_checkpoints(output_path) if is_main_process else []
@@ -280,6 +357,7 @@ def main():
         "best_checkpoint": trainer.state.best_model_checkpoint,
         "removed_checkpoints": removed_checkpoints,
         "output_dir": str(output_path),
+        **document_metrics,
     }
     
     if is_main_process:

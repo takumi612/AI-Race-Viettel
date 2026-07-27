@@ -38,6 +38,11 @@ from .candidate_training import ScoredCandidate, build_candidate_training_artifa
 from .candidate_policy import CandidatePolicy
 from .assertion_model import build_frozen_assertion_adapter, fit_assertion_thresholds
 from .kb import load_candidate_dictionary
+from .natural_validation import (
+    NATURAL_VALIDATION_IDS,
+    apply_natural_validation_partition,
+    build_natural_validation_manifest,
+)
 
 
 def _atomic_bytes(path: Path, payload: bytes) -> None:
@@ -174,6 +179,10 @@ def _phase_05_build_splits(config: RunConfig, phase: str, context: Mapping[str, 
     out.mkdir(parents=True, exist_ok=True)
     fixed = build_split_plan(config.dataset_root, seed=config.seed, eval_profile="fixed_fold", record_metadata=records, near_duplicates=near)
     _atomic_bytes(out / "split_fixed_fold.json", fixed.manifest_bytes)
+    natural_validation = build_natural_validation_manifest(
+        config.dataset_root, records.dataset_fingerprint
+    )
+    _atomic_bytes(out / "natural_validation.json", _json_bytes(natural_validation))
     oof_hashes: list[str] = []
     for fold in range(5):
         plan = build_split_plan(config.dataset_root, seed=config.seed, eval_profile="oof_extended", fold_index=fold, record_metadata=records, near_duplicates=near)
@@ -186,6 +195,7 @@ def _phase_05_build_splits(config: RunConfig, phase: str, context: Mapping[str, 
         "fixed_split_sha256": fixed.manifest_sha256,
         "oof_split_sha256": oof_hashes,
         "fixed_partitions": fixed.manifest["partitions"],
+        "natural_validation": str(out / "natural_validation.json"),
     }
     _atomic_bytes(out / "split_descriptor.json", _json_bytes(descriptor))
     return descriptor
@@ -264,13 +274,16 @@ def _write_stage_input(config: RunConfig, context: Mapping[str, Any], stage_name
             )
         )
         validation_ids = synthetic_validation + organizer_validation
+    train_ids, validation_ids = apply_natural_validation_partition(
+        train_ids, validation_ids
+    )
     payload = {
         "schema_id": "clinical_nlp.kaggle_stage_input",
         "schema_version": 1,
         "stage_name": stage_name,
         "dataset_root": str(Path(config.dataset_root).resolve()),
         "train_ids": train_ids,
-        "validation_ids": sorted(set(validation_ids), key=lambda value: int(value)),
+        "validation_ids": list(validation_ids),
         "stage_spec": stage_spec.to_dict(),
         "dataset_fingerprint": split_payload["dataset_fingerprint"],
         "split_fingerprint": split_payload["fixed_split_sha256"],
@@ -316,6 +329,11 @@ def read_training_stage_result(output_dir: str | Path) -> dict[str, Any]:
         "training_loss",
         "best_metric",
         "best_checkpoint",
+        "document_entity_precision",
+        "document_entity_recall",
+        "document_entity_f1",
+        "document_overlap_f1",
+        "document_ner_confidence_threshold",
     }
     missing = sorted(required - set(payload))
     if missing:
@@ -412,8 +430,10 @@ def _phase_11_fit_heads(config: RunConfig, phase: str, context: Mapping[str, Any
         )
     )
     fixed_partitions = split_payload["fixed_partitions"]
-    validation_ids = set(fixed_partitions["synthetic_validation_ids"]) | set(
-        fixed_partitions["organizer_validation_ids"]
+    validation_ids = (
+        set(fixed_partitions["synthetic_validation_ids"])
+        | set(fixed_partitions["organizer_validation_ids"])
+        | set(NATURAL_VALIDATION_IDS)
     )
     train_documents, validation_documents = split_assertion_documents(
         documents, validation_ids

@@ -218,6 +218,7 @@ class TransformerNERDetector:
         max_length: int = 512,
         stride: int = 128,
         device: str | None = None,
+        confidence_threshold: float | None = None,
     ) -> None:
         try:
             import torch
@@ -233,7 +234,13 @@ class TransformerNERDetector:
             raise FileNotFoundError(f"NER checkpoint directory not found: {self.model_dir}")
         self.max_length = max_length
         self.stride = stride
-        self.confidence_threshold = load_ner_confidence_threshold(self.model_dir)
+        self.confidence_threshold = (
+            load_ner_confidence_threshold(self.model_dir)
+            if confidence_threshold is None
+            else float(confidence_threshold)
+        )
+        if not 0.0 <= self.confidence_threshold <= 1.0:
+            raise ValueError("confidence_threshold must be in [0, 1]")
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_dir), use_fast=True)
         self.model = AutoModelForTokenClassification.from_pretrained(str(self.model_dir))
@@ -255,7 +262,8 @@ class TransformerNERDetector:
         if self.torch.cuda.is_available():
             self.torch.cuda.empty_cache()
 
-    def detect(self, raw_text: str) -> list[EntityAnnotation]:
+    def predict_chunks(self, raw_text: str) -> list[EntityAnnotation]:
+        """Decode every owner-window proposal without merge or confidence filtering."""
         from .training import bio_predictions_to_spans
 
         encoded = self.tokenizer(
@@ -291,7 +299,10 @@ class TransformerNERDetector:
                     set(entity.evidence + [f"transformer_window:{chunk_index}"])
                 )
             chunk_entities.extend(decoded)
-        merged = merge_chunk_predictions(chunk_entities, raw_text)
+        return chunk_entities
+
+    def detect(self, raw_text: str) -> list[EntityAnnotation]:
+        merged = merge_chunk_predictions(self.predict_chunks(raw_text), raw_text)
         return filter_entities_by_confidence(merged, self.confidence_threshold)
 
 

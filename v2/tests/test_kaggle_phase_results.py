@@ -16,6 +16,11 @@ def test_stage_result_exposes_executable_settings_and_metrics(tmp_path):
         "training_loss": 0.25,
         "best_metric": 0.81,
         "best_checkpoint": "checkpoint-42",
+        "document_entity_precision": 0.82,
+        "document_entity_recall": 0.75,
+        "document_entity_f1": 0.783,
+        "document_overlap_f1": 0.89,
+        "document_ner_confidence_threshold": 0.95,
         "removed_checkpoints": [],
         "output_dir": "ner_model",
     }

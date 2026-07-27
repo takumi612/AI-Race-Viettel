@@ -110,5 +110,10 @@ def test_final_fit_keeps_validation_partition_for_entity_calibration(tmp_path: P
     )
 
     payload = __import__("json").loads(path.read_text(encoding="utf-8"))
-    assert payload["validation_ids"] == ["102", "203"]
+    assert payload["validation_ids"] == [
+        *[str(value) for value in range(181, 201)],
+        "203",
+        "102",
+    ]
     assert set(payload["train_ids"]).isdisjoint(payload["validation_ids"])
+    assert not set(str(value) for value in range(181, 201)) & set(payload["train_ids"])
