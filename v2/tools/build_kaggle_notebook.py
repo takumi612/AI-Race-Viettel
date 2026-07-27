@@ -354,6 +354,23 @@ else:
 '''
             )
         )
+    qwen_smoke_status = "`qwen_status=COMPLETED`" if enable_qwen_reranker else "Qwen bị tắt cho biến thể unableQwen"
+    cells.append(
+        markdown_cell(
+            f"""## Smoke check sau Run All
+
+Chỉ nghiệm thu khi đủ **13 phase** canonical hoàn tất. Với bản Qwen, Phase 12
+phải báo {qwen_smoke_status}; đọc `qwen_entity_validation` để kiểm tra các bộ đếm
+**keep / drop / trim**, số offset lỗi bằng 0, và báo cáo độ dài thực thể trước/sau
+validation. Xác nhận có đúng 100 file JSON output, `output.zip` hợp lệ (kể cả CRC),
+và `diagnostics/output_quality.json` không báo offset error.
+
+Nếu lỗi, lưu cell output và stack trace đầy đủ; kèm Phase 12 result nếu đã có,
+`diagnostics/qwen_summary.json`, và `diagnostics/output_quality.json` để bàn giao
+chẩn đoán.
+"""
+        )
+    )
     cells.append(
         code_cell(
             '''if SESSION.completed and SESSION.completed[-1] == ACTIVE_PHASES[-1]:

@@ -127,14 +127,28 @@ Runner thật trên Kaggle sẽ publish `output.zip`, `trained_artifacts.zip`, m
 inventory, checksum và diagnostics. Không được tuyên bố `PASS` cho đến khi một
 phiên Kaggle `Run All` thật sự sinh ra các artifact này.
 
+## Smoke checklist sau Kaggle Run All
+
+Chỉ chấp nhận kết quả khi toàn bộ 13 phase canonical đã hoàn tất. Với notebook
+enableQwen, Phase 12 phải có `qwen_status=COMPLETED`. Kiểm tra diagnostics
+`qwen_entity_validation`: các bộ đếm `keep`, `drop`, `trim`, số offset error bằng
+0, và báo cáo độ dài entity trước/sau validation.
+
+Trước khi nộp, xác nhận đúng 100 JSON output, `output.zip` mở được và CRC hợp lệ,
+và `diagnostics/output_quality.json` không có lỗi offset. Không thay thế smoke
+check này bằng local training; local chỉ chạy CPU contract/unit test.
+
 ## Khi Kaggle lỗi: gói thông tin bàn giao
 
 Gửi lại các file sau:
 
 1. `run_manifest.json` và `LATEST.json` nếu có;
 2. `run.jsonl` trong thư mục run bị lỗi;
-3. `resource_plan.json`, tên phase/cell và toàn bộ traceback;
-4. `output.zip`/`trained_artifacts.zip` dở dang cùng inventory nếu có.
+3. failing cell output, tên phase/cell và toàn bộ stack trace;
+4. Phase 12 result nếu đã có, `diagnostics/qwen_summary.json`, và
+   `diagnostics/output_quality.json`;
+5. `resource_plan.json` và `output.zip`/`trained_artifacts.zip` dở dang cùng
+   inventory nếu có.
 
 Session tiếp theo sẽ kiểm tra phase lỗi trước, đối chiếu fingerprint rồi hướng
 dẫn `resume` hoặc chạy `full` mới. Không dùng local training thay cho chẩn đoán

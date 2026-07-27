@@ -70,6 +70,19 @@ def test_variant_markdown_names_the_selected_qwen_runtime():
     assert "Qwen disabled: vLLM is not installed or imported" in unable_markdown
 
 
+def test_enabled_notebook_documents_entity_validation_smoke_fields():
+    notebook = _load_builder().build_notebook(enable_qwen_reranker=True)
+    markdown = "\n".join(
+        "".join(cell["source"])
+        for cell in notebook["cells"]
+        if cell["cell_type"] == "markdown"
+    )
+
+    assert "qwen_entity_validation" in markdown
+    assert "keep / drop / trim" in markdown
+    assert "Nếu lỗi, lưu cell output và stack trace" in markdown
+
+
 def test_unable_variant_has_no_vllm_install_or_import_path():
     source = _source(_load_builder().build_notebook(enable_qwen_reranker=False))
 
