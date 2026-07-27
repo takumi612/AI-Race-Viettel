@@ -378,12 +378,28 @@ def _boundary_rank(entity: EntityAnnotation) -> tuple[int, float, int, int, int]
 def _merge_identical_boundaries(
     entities: list[EntityAnnotation], raw_text: str
 ) -> EntityAnnotation:
-    selected = max(entities, key=_boundary_rank)
+    selected = min(entities, key=_identical_boundary_selection_key)
     return replace(
         selected,
         text=raw_text[selected.start:selected.end],
         confidence=max(entity.confidence for entity in entities),
         evidence=sorted({item for entity in entities for item in entity.evidence}),
+    )
+
+
+def _identical_boundary_selection_key(entity: EntityAnnotation) -> tuple[Any, ...]:
+    """Rank identical spans deterministically when their primary rank is tied."""
+    return (
+        -_window_support(entity),
+        -float(entity.confidence),
+        entity.end - entity.start,
+        entity.start,
+        entity.end,
+        entity.mention_head or "",
+        tuple(entity.candidates),
+        tuple(entity.assertions),
+        tuple(sorted(entity.evidence)),
+        json.dumps(entity.ranked_candidates, ensure_ascii=False, sort_keys=True),
     )
 
 
