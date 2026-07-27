@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import types
 from copy import deepcopy
@@ -8,7 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from clinical_nlp_lab.qwen_entity_validator import EntityValidationCounters, QwenEntityValidator
+from clinical_nlp_lab.qwen_entity_validator import (
+    EntityValidationCounters,
+    QwenEntityValidator,
+    _parse_decision,
+    _validation_schema,
+)
 from clinical_nlp_lab.qwen_refiner import RequiredQwenError, RequiredQwenRefiner
 from clinical_nlp_lab.schema import ClinicalDocument, EntityAnnotation, OFFICIAL_SCHEMA_KEYS
 
@@ -77,6 +83,62 @@ def test_trim_translates_relative_offsets_and_clears_metadata(fake_engine):
     assert result.entities[0].candidates == []
     assert result.entities[0].assertions == []
     assert result.entities[0].evidence == ["proposal_ner"]
+
+
+def test_prompt_json_examples_are_valid_under_the_runtime_parser():
+    entity = ner_entity()
+    prompt = QwenEntityValidator._build_prompt(RAW_TEXT, entity)
+    examples = re.findall(r"\{[^{}\r\n]+\}", prompt)
+
+    decisions = [_parse_decision(example, entity) for example in examples]
+
+    assert [decision.action for decision in decisions] == ["keep", "drop", "trim"]
+    trim = decisions[-1]
+    assert 0 < trim.relative_start < trim.relative_end < len(entity.text)
+
+
+def test_guided_schema_requires_fields_for_each_action():
+    schema = _validation_schema(ner_entity())
+    variants = {
+        variant["properties"]["action"]["enum"][0]: variant
+        for variant in schema["oneOf"]
+    }
+
+    assert set(variants) == {"keep", "drop", "trim"}
+    assert variants["keep"]["required"] == ["action"]
+    assert variants["drop"]["required"] == ["action"]
+    assert set(variants["trim"]["required"]) == {
+        "action",
+        "relative_start",
+        "relative_end",
+        "entity_type",
+    }
+    assert all(variant["additionalProperties"] is False for variant in variants.values())
+    assert variants["trim"]["properties"]["relative_start"]["minimum"] == 1
+    assert variants["trim"]["properties"]["relative_end"]["maximum"] == len(ner_entity().text) - 1
+
+
+@pytest.mark.parametrize(
+    ("relative_start", "relative_end"),
+    [
+        (0, 4),
+        (1, len(ner_entity().text)),
+        (4, 4),
+    ],
+)
+def test_trim_must_change_both_original_boundaries(relative_start, relative_end):
+    entity = ner_entity()
+    response = json.dumps(
+        {
+            "action": "trim",
+            "relative_start": relative_start,
+            "relative_end": relative_end,
+            "entity_type": "DISEASE",
+        }
+    )
+
+    with pytest.raises(ValueError, match="strictly inside"):
+        _parse_decision(response, entity)
 
 
 def test_keep_preserves_the_original_entity_and_raw_offsets(fake_engine):

@@ -147,18 +147,44 @@ def _length_bucket(length: int) -> str:
     return "101+"
 
 
-def _validation_schema() -> dict[str, object]:
-    return {
-        "type": "object",
-        "properties": {
-            "action": {"enum": ["keep", "drop", "trim"]},
-            "relative_start": {"type": "integer"},
-            "relative_end": {"type": "integer"},
-            "entity_type": {"enum": list(ENTITY_TYPE_TO_ID)},
-        },
-        "required": ["action"],
-        "additionalProperties": False,
-    }
+def _validation_schema(entity: EntityAnnotation) -> dict[str, object]:
+    variants: list[dict[str, object]] = [
+        {
+            "type": "object",
+            "properties": {"action": {"enum": [action]}},
+            "required": ["action"],
+            "additionalProperties": False,
+        }
+        for action in ("keep", "drop")
+    ]
+    if len(entity.text) > 2:
+        variants.append(
+            {
+                "type": "object",
+                "properties": {
+                    "action": {"enum": ["trim"]},
+                    "relative_start": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": len(entity.text) - 2,
+                    },
+                    "relative_end": {
+                        "type": "integer",
+                        "minimum": 2,
+                        "maximum": len(entity.text) - 1,
+                    },
+                    "entity_type": {"enum": list(ENTITY_TYPE_TO_ID)},
+                },
+                "required": [
+                    "action",
+                    "relative_start",
+                    "relative_end",
+                    "entity_type",
+                ],
+                "additionalProperties": False,
+            }
+        )
+    return {"oneOf": variants}
 
 
 def _parse_decision(response_text: str, entity: EntityAnnotation) -> EntityValidationDecision:
@@ -210,6 +236,17 @@ class QwenEntityValidator:
 
     @staticmethod
     def _build_prompt(raw_text: str, entity: EntityAnnotation) -> str:
+        if len(entity.text) > 2:
+            trim_instruction = (
+                'Voi trim, vi du JSON hop le cho thuc the nay la '
+                '{"action":"trim","relative_start":1,'
+                f'"relative_end":{len(entity.text) - 1},'
+                '"entity_type":"DISEASE"}.'
+            )
+        else:
+            trim_instruction = (
+                "Thuc the nay qua ngan de trim hai dau; chi duoc keep hoac drop."
+            )
         return (
             "<|im_start|>system\n"
             "Ban la chuyen gia NER y khoa. Chi tra ve mot JSON hop le theo schema.\n"
@@ -223,8 +260,8 @@ class QwenEntityValidator:
             f"Thuc the: [{entity.text}]\n"
             f"Loai hien tai: {entity.type}\n"
             "Voi trim, relative_start va relative_end phai nam nghiem ngat ben trong text cua thuc the.\n"
-            'Tra ve {"action":"keep"} hoac {"action":"drop"}; voi trim tra ve '
-            '{"action":"trim","relative_start":0,"relative_end":4,"entity_type":"DISEASE"}.\n'
+            'Tra ve {"action":"keep"} hoac {"action":"drop"}. '
+            f"{trim_instruction}\n"
             "<|im_end|>\n<|im_start|>assistant\n"
         )
 
@@ -309,8 +346,10 @@ class QwenEntityValidator:
         for entity_batch, index_batch in zip(iter_batches(to_query, self.batch_size), iter_batches(query_indexes, self.batch_size)):
             prompts = [self._build_prompt(raw_text, entity) for entity in entity_batch]
             sampling_params = [
-                SamplingParams(**build_sampling_kwargs(SamplingParams, _validation_schema()))
-                for _ in entity_batch
+                SamplingParams(
+                    **build_sampling_kwargs(SamplingParams, _validation_schema(entity))
+                )
+                for entity in entity_batch
             ]
             outputs = self.llm.generate(prompts, sampling_params=sampling_params, use_tqdm=False)
             if len(outputs) != len(entity_batch):

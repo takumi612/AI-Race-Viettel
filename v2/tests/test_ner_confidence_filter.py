@@ -9,6 +9,7 @@ from clinical_nlp_lab.ner import (
     load_ner_confidence_threshold,
 )
 from clinical_nlp_lab.schema import EntityAnnotation
+from clinical_nlp_lab.training import write_document_ner_calibration
 
 
 def _entity(text: str, start: int, confidence: float) -> EntityAnnotation:
@@ -50,6 +51,20 @@ def test_detector_loads_versioned_calibration_artifact(tmp_path):
     assert load_ner_confidence_threshold(tmp_path) == 0.93
 
 
+def test_document_calibration_round_trip_preserves_runtime_threshold(tmp_path):
+    calibration_path = tmp_path / "ner_calibration.json"
+    write_document_ner_calibration(
+        calibration_path,
+        {
+            "confidence_threshold": 0.95,
+            "exact": {"precision": 0.8, "recall": 0.6, "f1": 0.685714},
+            "overlap": {"precision": 1.0, "recall": 0.75, "f1": 0.857143},
+        },
+    )
+
+    assert load_ner_confidence_threshold(tmp_path) == 0.95
+
+
 def test_legacy_checkpoint_uses_conservative_threshold(tmp_path):
     assert load_ner_confidence_threshold(tmp_path) == 0.85
 
@@ -60,7 +75,7 @@ def test_legacy_checkpoint_uses_conservative_threshold(tmp_path):
         {"schema_id": "wrong", "schema_version": 1, "confidence_threshold": 0.9},
         {
             "schema_id": "clinical_nlp.ner_calibration",
-            "schema_version": 2,
+            "schema_version": 3,
             "confidence_threshold": 0.9,
         },
         {

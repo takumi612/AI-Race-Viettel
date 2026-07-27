@@ -21,7 +21,7 @@ def load_ner_confidence_threshold(model_dir: str | Path) -> float:
     payload = json.loads(calibration_path.read_text(encoding="utf-8"))
     if (
         payload.get("schema_id") != "clinical_nlp.ner_calibration"
-        or payload.get("schema_version") != 1
+        or payload.get("schema_version") not in {1, 2}
     ):
         raise ValueError("NER calibration schema is unsupported")
     try:
