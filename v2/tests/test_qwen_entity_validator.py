@@ -94,7 +94,8 @@ def test_prompt_json_examples_are_valid_under_the_runtime_parser():
 
     assert [decision.action for decision in decisions] == ["keep", "drop", "trim"]
     trim = decisions[-1]
-    assert 0 < trim.relative_start < trim.relative_end < len(entity.text)
+    assert trim.relative_start == 0
+    assert trim.relative_end < len(entity.text)
 
 
 def test_guided_schema_requires_fields_for_each_action():
@@ -114,30 +115,47 @@ def test_guided_schema_requires_fields_for_each_action():
         "entity_type",
     }
     assert all(variant["additionalProperties"] is False for variant in variants.values())
-    assert variants["trim"]["properties"]["relative_start"]["minimum"] == 1
-    assert variants["trim"]["properties"]["relative_end"]["maximum"] == len(ner_entity().text) - 1
+    assert variants["trim"]["properties"]["relative_start"]["minimum"] == 0
+    assert variants["trim"]["properties"]["relative_end"]["maximum"] == len(ner_entity().text)
 
 
 @pytest.mark.parametrize(
     ("relative_start", "relative_end"),
     [
-        (0, 4),
-        (1, len(ner_entity().text)),
-        (4, 4),
+        (0, len("risk of pneumonia")),
+        (ner_entity().text.index("pneumonia"), len(ner_entity().text)),
     ],
 )
-def test_trim_must_change_both_original_boundaries(relative_start, relative_end):
+def test_parse_decision_allows_one_sided_trim(relative_start, relative_end):
+    entity = ner_entity()
+    decision = _parse_decision(
+        json.dumps(
+            {
+                "action": "trim",
+                "relative_start": relative_start,
+                "relative_end": relative_end,
+                "entity_type": "DISEASE",
+            }
+        ),
+        entity,
+    )
+
+    assert decision.relative_start == relative_start
+    assert decision.relative_end == relative_end
+
+
+def test_parse_decision_rejects_no_op_trim():
     entity = ner_entity()
     response = json.dumps(
         {
             "action": "trim",
-            "relative_start": relative_start,
-            "relative_end": relative_end,
+            "relative_start": 0,
+            "relative_end": len(entity.text),
             "entity_type": "DISEASE",
         }
     )
 
-    with pytest.raises(ValueError, match="strictly inside"):
+    with pytest.raises(ValueError, match="shorten"):
         _parse_decision(response, entity)
 
 

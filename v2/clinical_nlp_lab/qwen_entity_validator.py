@@ -165,13 +165,13 @@ def _validation_schema(entity: EntityAnnotation) -> dict[str, object]:
                     "action": {"enum": ["trim"]},
                     "relative_start": {
                         "type": "integer",
-                        "minimum": 1,
-                        "maximum": len(entity.text) - 2,
+                        "minimum": 0,
+                        "maximum": len(entity.text) - 1,
                     },
                     "relative_end": {
                         "type": "integer",
-                        "minimum": 2,
-                        "maximum": len(entity.text) - 1,
+                        "minimum": 1,
+                        "maximum": len(entity.text),
                     },
                     "entity_type": {"enum": list(ENTITY_TYPE_TO_ID)},
                 },
@@ -213,8 +213,10 @@ def _parse_decision(response_text: str, entity: EntityAnnotation) -> EntityValid
         raise ValueError("relative_end must be an integer")
     if entity_type not in ENTITY_TYPE_TO_ID:
         raise ValueError("invalid entity type")
-    if not (0 < relative_start < relative_end < len(entity.text)):
-        raise ValueError("trim boundaries must be strictly inside the original entity")
+    if not (0 <= relative_start < relative_end <= len(entity.text)):
+        raise ValueError("trim boundaries must stay within the original entity")
+    if relative_start == 0 and relative_end == len(entity.text):
+        raise ValueError("trim must shorten the original entity")
     return EntityValidationDecision(
         action="trim",
         relative_start=relative_start,
@@ -239,7 +241,7 @@ class QwenEntityValidator:
         if len(entity.text) > 2:
             trim_instruction = (
                 'Voi trim, vi du JSON hop le cho thuc the nay la '
-                '{"action":"trim","relative_start":1,'
+                '{"action":"trim","relative_start":0,'
                 f'"relative_end":{len(entity.text) - 1},'
                 '"entity_type":"DISEASE"}.'
             )
@@ -259,7 +261,7 @@ class QwenEntityValidator:
             f'Van ban goc:\n"""{raw_text}"""\n\n'
             f"Thuc the: [{entity.text}]\n"
             f"Loai hien tai: {entity.type}\n"
-            "Voi trim, relative_start va relative_end phai nam nghiem ngat ben trong text cua thuc the.\n"
+            "Voi trim, co the giu nguyen mot bien nhung ket qua phai ngan hon thuc the goc.\n"
             'Tra ve {"action":"keep"} hoac {"action":"drop"}. '
             f"{trim_instruction}\n"
             "<|im_end|>\n<|im_start|>assistant\n"
