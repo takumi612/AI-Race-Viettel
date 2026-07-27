@@ -32,6 +32,8 @@ class EntityValidationCounters:
     after_length_buckets: Counter[str] = field(default_factory=Counter)
     max_before_length: int = 0
     max_after_length: int = 0
+    _max_before_history: list[int] = field(default_factory=list, repr=False)
+    _max_after_history: list[int] = field(default_factory=list, repr=False)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -48,7 +50,24 @@ class EntityValidationCounters:
             "max_after_length": self.max_after_length,
         }
 
-    def add(self, other: "EntityValidationCounters") -> None:
+    def copy(self) -> "EntityValidationCounters":
+        return EntityValidationCounters(
+            query_count=self.query_count,
+            keep=self.keep,
+            drop=self.drop,
+            trim=self.trim,
+            kb_bypass=self.kb_bypass,
+            before_type_counts=Counter(self.before_type_counts),
+            after_type_counts=Counter(self.after_type_counts),
+            before_length_buckets=Counter(self.before_length_buckets),
+            after_length_buckets=Counter(self.after_length_buckets),
+            max_before_length=self.max_before_length,
+            max_after_length=self.max_after_length,
+            _max_before_history=list(self._max_before_history),
+            _max_after_history=list(self._max_after_history),
+        )
+
+    def add(self, other: "EntityValidationCounters") -> "EntityValidationCounters":
         self.query_count += other.query_count
         self.keep += other.keep
         self.drop += other.drop
@@ -60,6 +79,9 @@ class EntityValidationCounters:
         self.after_length_buckets.update(other.after_length_buckets)
         self.max_before_length = max(self.max_before_length, other.max_before_length)
         self.max_after_length = max(self.max_after_length, other.max_after_length)
+        self._max_before_history.extend(other._max_before_history or [other.max_before_length])
+        self._max_after_history.extend(other._max_after_history or [other.max_after_length])
+        return self
 
     def delta(self, previous: "EntityValidationCounters") -> "EntityValidationCounters":
         return EntityValidationCounters(
@@ -76,13 +98,38 @@ class EntityValidationCounters:
             after_length_buckets=_counter_delta(
                 self.after_length_buckets, previous.after_length_buckets
             ),
-            max_before_length=self.max_before_length,
-            max_after_length=self.max_after_length,
+            max_before_length=_delta_maximum(
+                self.max_before_length,
+                previous.max_before_length,
+                self._max_before_history,
+                previous._max_before_history,
+            ),
+            max_after_length=_delta_maximum(
+                self.max_after_length,
+                previous.max_after_length,
+                self._max_after_history,
+                previous._max_after_history,
+            ),
         )
 
 
 def _counter_delta(current: Counter[str], previous: Counter[str]) -> Counter[str]:
     return Counter({key: current[key] - previous[key] for key in set(current) | set(previous)})
+
+
+def _delta_maximum(
+    current: int,
+    previous: int,
+    current_history: list[int],
+    previous_history: list[int],
+) -> int:
+    """Return the maximum contributed after a compatible cumulative snapshot."""
+    if current_history[: len(previous_history)] == previous_history:
+        contributions = current_history[len(previous_history) :]
+        if contributions:
+            return max(contributions)
+        return 0
+    return current if current > previous else 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,8 +227,8 @@ class QwenEntityValidator:
             f"Thuc the: [{entity.text}]\n"
             f"Loai hien tai: {entity.type}\n"
             "Voi trim, relative_start va relative_end phai nam nghiem ngat ben trong text cua thuc the.\n"
-            "Tra ve {action:'keep'} hoac {action:'drop'}; voi trim tra ve "
-            "{action:'trim',relative_start:int,relative_end:int,entity_type:string}.\n"
+            'Tra ve {"action":"keep"} hoac {"action":"drop"}; voi trim tra ve '
+            '{"action":"trim","relative_start":0,"relative_end":4,"entity_type":"DISEASE"}.\n'
             "<|im_end|>\n<|im_start|>assistant\n"
         )
 

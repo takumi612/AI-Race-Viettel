@@ -149,12 +149,23 @@ def test_non_exact_kb_entity_still_queries_qwen(fake_engine):
 def test_counters_add_and_delta_are_deterministic():
     before = EntityValidationCounters(query_count=2, keep=1, drop=1)
     increment = EntityValidationCounters(query_count=3, keep=1, trim=2, kb_bypass=4)
+    after = before.copy().add(increment)
 
-    before.add(increment)
+    assert after.to_dict()["query_count"] == 5
+    assert after.delta(before).to_dict()["query_count"] == 3
+    assert after.delta(before).to_dict()["trim"] == 2
 
-    assert before.to_dict()["query_count"] == 5
-    assert before.delta(increment).to_dict()["query_count"] == 2
-    assert before.delta(increment).to_dict()["trim"] == 0
+
+def test_counter_delta_does_not_leak_a_prior_document_maximum():
+    cumulative = EntityValidationCounters()
+    cumulative.add(EntityValidationCounters(max_before_length=150, max_after_length=150))
+    before_short_document = cumulative.copy()
+    cumulative.add(EntityValidationCounters(max_before_length=9, max_after_length=9))
+
+    document_delta = cumulative.delta(before_short_document)
+
+    assert document_delta.max_before_length == 9
+    assert document_delta.max_after_length == 9
 
 
 def test_required_refiner_exposes_validation_and_accumulates_counters(fake_engine):
