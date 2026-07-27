@@ -199,7 +199,7 @@ merger remains active.
 Phần triển khai tuân theo Test-Driven Development (TDD). Với mỗi hành vi cần sửa,
 quy trình là: viết một test mô tả kết quả đúng, chạy để xác nhận test đang thất bại
 vì code cũ chưa có hành vi đó, viết lượng code nhỏ nhất để test vượt qua, sau đó chạy
-lại test liên quan và toàn bộ test suite để kiểm tra hồi quy.
+lại unit test mục tiêu và các test hiện có liên quan để kiểm tra hồi quy.
 
 ### 10.1 Unit test
 
@@ -220,36 +220,26 @@ Các trường hợp cụ thể gồm:
 | Qwen `keep` | Fake engine trả action `keep` | Entity giữ nguyên text, type, position và offset vẫn hợp lệ |
 | Qwen `drop` | Fake engine trả action `drop` | Entity bị loại khỏi kết quả trước bước linking/assertion |
 | Qwen `trim` hợp lệ | Span gốc `[100, 160]`, Qwen trả relative range nằm bên trong | Tạo entity mới bằng đúng substring của raw text và offset tuyệt đối được dịch chính xác |
-| Phản hồi Qwen không hợp lệ | JSON lỗi, action/type lạ, relative offset ngoài span hoặc thiếu/thừa response | Ném `RequiredQwenError`; Phase 12 không được đóng gói output |
-| Metadata sau khi trim/retype | Qwen thay text, type hoặc position | Candidate retrieval và assertion phải chạy lại trên entity mới; metadata của entity cũ không được giữ lại |
+| Phản hồi Qwen không hợp lệ | JSON lỗi, action/type lạ, relative offset ngoài span hoặc thiếu/thừa response | Hàm validator ném `RequiredQwenError` |
+| Metadata sau khi trim/retype | Qwen thay text, type hoặc position | Entity kết quả xóa candidate/assertion cũ để pipeline buộc phải tính lại metadata |
 | Tắt Qwen | `ENABLE_QWEN_RERANKER=False` | Không gọi fake engine; boundary-consensus merge vẫn chạy và cho kết quả xác định |
-| Bộ đếm Phase 12 | Một batch có đủ `keep`, `drop`, `trim` và KB bypass | Summary/diagnostics báo đúng số query, quyết định, type và bucket độ dài trước–sau |
+| Bộ đếm Phase 12 | Gọi hàm tổng hợp thuần với một batch có đủ `keep`, `drop`, `trim` và KB bypass | Summary báo đúng số query, quyết định, type và bucket độ dài trước–sau |
 
-### 10.2 Component và contract test chạy local
+### 10.2 Phạm vi test local
 
-Không xây dựng một integration test giả lập toàn bộ Kaggle Phase 12 trong local/CI.
-Phase này cần checkpoint Transformer thật, assertion head, KB artifacts, CUDA và
-vLLM Qwen; thay toàn bộ các dependency đó bằng mock sẽ chỉ kiểm tra orchestration
-chứ không chứng minh pipeline runtime thật hoạt động.
+Chỉ bổ sung unit test cho logic mới. Không viết component test, integration test hay
+một Phase 12 giả lập mới. Các unit test phải chạy được trên CPU, không tải checkpoint,
+không khởi tạo CUDA/vLLM và không truy cập mạng.
 
-Thay vào đó, test local được chia theo các ranh giới khả thi:
+Sau mỗi thay đổi, chạy unit test mục tiêu và các test hiện có liên quan đến file vừa
+sửa để kiểm tra hồi quy. Việc chạy test hiện có không làm mở rộng phạm vi thành một
+integration-test suite mới.
 
-1. Component test của `infer_document()` dùng fake NER, fake Qwen validator, fake KB
-   linker và fake assertion predictor nhưng chạy logic orchestration thật. Test đưa
-   vào các proposal mô phỏng nhiều window, rồi kiểm tra thứ tự merge → validate →
-   relink → assertion và raw offset cuối cùng.
-2. Contract test của Phase 12 patch các dependency nặng, tương tự test hiện có trong
-   `test_required_qwen_phase.py`. Test chỉ xác nhận toggle, bộ đếm, propagation lỗi,
-   cleanup và nguyên tắc không tạo ZIP khi validation thất bại.
-3. Packaging contract test tạo một thư mục output tạm với vài JSON đã hợp lệ, chạy
-   riêng logic đóng gói và kiểm tra member `output/<id>.json`, thứ tự, CRC và việc
-   không có file thừa. Test này không tuyên bố đã kiểm tra model inference.
-
-### 10.3 End-to-end smoke test trên Kaggle
+### 10.3 Smoke test do người dùng chạy trên Kaggle
 
 Kaggle Run All với GPU, Internet, dữ liệu attach và checkpoint/model thật là test
-end-to-end duy nhất. Bước này được thực hiện sau khi toàn bộ test local vượt qua và
-phải kiểm tra:
+runtime duy nhất. Sau khi nhận notebook đã sửa, người dùng thực hiện Run All và kiểm
+tra:
 
 - cả 13 phase hoàn tất;
 - Qwen entity validation có trạng thái `COMPLETED`;
@@ -258,10 +248,10 @@ phải kiểm tra:
 - không có offset error;
 - báo cáo độ dài span trước–sau và validation metrics được sinh ra.
 
-Smoke test Kaggle không chạy tự động trong local/CI vì phụ thuộc GPU T4, CUDA/vLLM,
-model tải từ Hugging Face và thời gian huấn luyện dài. Ngoài các test mới, toàn bộ
-test hiện có về offset, ZIP, Qwen bắt buộc, candidate, assertion và notebook contract
-phải tiếp tục vượt qua.
+Smoke test Kaggle không thuộc điều kiện hoàn thành local vì phụ thuộc GPU T4,
+CUDA/vLLM, model tải từ Hugging Face và thời gian huấn luyện dài. Nếu Run All lỗi,
+người dùng gửi lại cell output, stack trace và artifact liên quan; lỗi đó được xử lý
+ở vòng sửa tiếp theo.
 
 ## 11. Acceptance Criteria
 
@@ -277,9 +267,10 @@ The change is complete when all of the following hold:
 7. The Qwen validator passes deterministic contract tests for all decisions and
    failure modes.
 8. Phase 12 exposes complete before/after and Qwen decision diagnostics.
-9. The full test suite passes.
-10. A Kaggle Run All produces a structurally valid 100-record `output.zip` with zero
-    offset errors and a completed Qwen entity-validation status.
+9. All new unit tests and the existing tests related to changed modules pass.
+10. The updated notebook and Kaggle run instructions are delivered with the Phase 12
+    smoke-test checklist; successful Kaggle execution is verified by the user after
+    handoff and any runtime error is handled in a follow-up fix.
 
 Hidden leaderboard improvement is the intended outcome but cannot be asserted
 locally because hidden ground truth is unavailable. The new local acceptance gates
