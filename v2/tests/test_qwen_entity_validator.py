@@ -85,6 +85,36 @@ def test_trim_translates_relative_offsets_and_clears_metadata(fake_engine):
     assert result.entities[0].evidence == ["proposal_ner"]
 
 
+@pytest.mark.parametrize(
+    ("relative_start", "relative_end"),
+    [
+        (1, len(ner_entity().text)),
+        (0, len(ner_entity().text) - 1),
+    ],
+)
+def test_word_boundary_invalid_trim_preserves_original_entity(
+    fake_engine, relative_start, relative_end
+):
+    original = ner_entity()
+    response = json.dumps(
+        {
+            "action": "trim",
+            "relative_start": relative_start,
+            "relative_end": relative_end,
+            "entity_type": "DISEASE",
+        }
+    )
+
+    result = QwenEntityValidator(fake_engine([response])).validate(
+        (original,), RAW_TEXT
+    )
+
+    assert result.entities == (original,)
+    assert result.entities[0].position == original.position
+    assert result.entities[0].candidates == original.candidates
+    assert result.entities[0].assertions == original.assertions
+
+
 def test_prompt_json_examples_are_valid_under_the_runtime_parser():
     entity = ner_entity()
     prompt = QwenEntityValidator._build_prompt(RAW_TEXT, entity)
@@ -96,6 +126,10 @@ def test_prompt_json_examples_are_valid_under_the_runtime_parser():
     trim = decisions[-1]
     assert trim.relative_start == 0
     assert trim.relative_end < len(entity.text)
+    assert not (
+        entity.text[trim.relative_end - 1].isalnum()
+        and entity.text[trim.relative_end].isalnum()
+    )
 
 
 def test_guided_schema_requires_fields_for_each_action():

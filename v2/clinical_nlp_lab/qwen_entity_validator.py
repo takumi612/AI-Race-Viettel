@@ -238,16 +238,27 @@ class QwenEntityValidator:
 
     @staticmethod
     def _build_prompt(raw_text: str, entity: EntityAnnotation) -> str:
-        if len(entity.text) > 2:
+        right_trim_end = next(
+            (
+                index
+                for index in range(len(entity.text) - 1, 0, -1)
+                if not (
+                    entity.text[index - 1].isalnum()
+                    and entity.text[index].isalnum()
+                )
+            ),
+            None,
+        )
+        if right_trim_end is not None:
             trim_instruction = (
                 'Voi trim, vi du JSON hop le cho thuc the nay la '
                 '{"action":"trim","relative_start":0,'
-                f'"relative_end":{len(entity.text) - 1},'
+                f'"relative_end":{right_trim_end},'
                 '"entity_type":"DISEASE"}.'
             )
         else:
             trim_instruction = (
-                "Thuc the nay qua ngan de trim hai dau; chi duoc keep hoac drop."
+                "Khong co bien tu noi bo an toan; chi duoc keep hoac drop."
             )
         return (
             "<|im_start|>system\n"
@@ -261,7 +272,8 @@ class QwenEntityValidator:
             f'Van ban goc:\n"""{raw_text}"""\n\n'
             f"Thuc the: [{entity.text}]\n"
             f"Loai hien tai: {entity.type}\n"
-            "Voi trim, co the giu nguyen mot bien nhung ket qua phai ngan hon thuc the goc.\n"
+            "Voi trim, co the giu nguyen mot bien nhung ket qua phai ngan hon thuc the goc "
+            "va khong duoc cat giua chu cai hoac chu so.\n"
             'Tra ve {"action":"keep"} hoac {"action":"drop"}. '
             f"{trim_instruction}\n"
             "<|im_end|>\n<|im_start|>assistant\n"
@@ -300,6 +312,18 @@ class QwenEntityValidator:
             raise ValueError("trimmed entity cannot be whitespace only")
         if raw_text[absolute_start:absolute_end] != trimmed_text:
             raise ValueError("trimmed entity does not match raw-text offsets")
+        left_splits_word = (
+            absolute_start > 0
+            and raw_text[absolute_start - 1].isalnum()
+            and raw_text[absolute_start].isalnum()
+        )
+        right_splits_word = (
+            absolute_end < len(raw_text)
+            and raw_text[absolute_end - 1].isalnum()
+            and raw_text[absolute_end].isalnum()
+        )
+        if left_splits_word or right_splits_word:
+            return entity
         return replace(
             entity,
             text=trimmed_text,
