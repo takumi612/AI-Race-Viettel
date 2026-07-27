@@ -279,15 +279,18 @@ class TransformerNERDetector:
         chunk_entities: list[EntityAnnotation] = []
         for chunk_index in range(label_ids.shape[0]):
             chunk_offsets = [tuple(map(int, item)) for item in offsets[chunk_index].tolist()]
-            chunk_entities.extend(
-                bio_predictions_to_spans(
-                    label_ids[chunk_index].tolist(),
-                    chunk_offsets,
-                    self.id_to_label,
-                    raw_text,
-                    confidences[chunk_index].tolist(),
-                )
+            decoded = bio_predictions_to_spans(
+                label_ids[chunk_index].tolist(),
+                chunk_offsets,
+                self.id_to_label,
+                raw_text,
+                confidences[chunk_index].tolist(),
             )
+            for entity in decoded:
+                entity.evidence = sorted(
+                    set(entity.evidence + [f"transformer_window:{chunk_index}"])
+                )
+            chunk_entities.extend(decoded)
         merged = merge_chunk_predictions(chunk_entities, raw_text)
         return filter_entities_by_confidence(merged, self.confidence_threshold)
 
@@ -318,27 +321,91 @@ def resolve_overlaps(entities: Iterable[EntityAnnotation], raw_text: str) -> lis
 def merge_chunk_predictions(
     chunk_predictions: Iterable[EntityAnnotation], raw_text: str
 ) -> list[EntityAnnotation]:
-    predictions = sorted(
-        chunk_predictions,
-        key=lambda entity: (entity.type, entity.start, entity.end, -entity.confidence),
-    )
-    merged: list[EntityAnnotation] = []
+    predictions = list(chunk_predictions)
     for entity in predictions:
         entity.validate_offset(raw_text)
-        if merged and merged[-1].type == entity.type and spans_overlap(merged[-1], entity):
-            previous = merged[-1]
-            start = min(previous.start, entity.start)
-            end = max(previous.end, entity.end)
-            merged[-1] = replace(
-                previous,
-                text=raw_text[start:end],
-                position=(start, end),
-                confidence=max(previous.confidence, entity.confidence),
-                evidence=sorted(set(previous.evidence + entity.evidence + ["chunk_overlap_merge"])),
-            )
-        else:
-            merged.append(entity)
-    return resolve_overlaps(merged, raw_text)
+
+    exact_groups: dict[tuple[int, int, str], list[EntityAnnotation]] = defaultdict(list)
+    for entity in predictions:
+        exact_groups[(entity.start, entity.end, entity.type)].append(entity)
+
+    observed = [
+        _merge_identical_boundaries(group, raw_text)
+        for _, group in sorted(exact_groups.items())
+    ]
+    selected: list[EntityAnnotation] = []
+    for entity in sorted(observed, key=lambda item: (item.type, item.start, item.end)):
+        conflicts = [
+            existing
+            for existing in selected
+            if existing.type == entity.type and spans_overlap(existing, entity)
+        ]
+        if not conflicts:
+            selected.append(entity)
+            continue
+
+        winner = max([entity, *conflicts], key=_boundary_rank)
+        for conflict in conflicts:
+            if conflict is not winner and _near_equivalent(winner, conflict, raw_text):
+                winner = _combine_window_evidence(winner, conflict)
+        if entity is not winner and _near_equivalent(winner, entity, raw_text):
+            winner = _combine_window_evidence(winner, entity)
+        selected = [existing for existing in selected if existing not in conflicts]
+        selected.append(winner)
+    return resolve_overlaps(selected, raw_text)
+
+
+def _window_support(entity: EntityAnnotation) -> int:
+    return len(
+        {
+            item
+            for item in entity.evidence
+            if item.startswith("transformer_window:")
+        }
+    )
+
+
+def _boundary_rank(entity: EntityAnnotation) -> tuple[int, float, int, int, int]:
+    return (
+        _window_support(entity),
+        float(entity.confidence),
+        -(entity.end - entity.start),
+        -entity.start,
+        -entity.end,
+    )
+
+
+def _merge_identical_boundaries(
+    entities: list[EntityAnnotation], raw_text: str
+) -> EntityAnnotation:
+    selected = max(entities, key=_boundary_rank)
+    return replace(
+        selected,
+        text=raw_text[selected.start:selected.end],
+        confidence=max(entity.confidence for entity in entities),
+        evidence=sorted({item for entity in entities for item in entity.evidence}),
+    )
+
+
+def _combine_window_evidence(
+    selected: EntityAnnotation, supporting: EntityAnnotation
+) -> EntityAnnotation:
+    return replace(
+        selected,
+        evidence=sorted(set(selected.evidence + supporting.evidence)),
+    )
+
+
+def _near_equivalent(
+    left: EntityAnnotation, right: EntityAnnotation, raw_text: str
+) -> bool:
+    if abs(left.start - right.start) > 1 or abs(left.end - right.end) > 1:
+        return False
+    differing_text = (
+        raw_text[min(left.start, right.start):max(left.start, right.start)]
+        + raw_text[min(left.end, right.end):max(left.end, right.end)]
+    )
+    return not any(delimiter in differing_text for delimiter in ".;:\n\r")
 
 
 def refine_boundaries(entities: Iterable[EntityAnnotation], raw_text: str) -> list[EntityAnnotation]:
