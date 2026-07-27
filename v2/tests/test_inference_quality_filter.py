@@ -8,13 +8,12 @@ def _record(raw_text: str) -> list[ClinicalRecord]:
     return [ClinicalRecord("doc", "record", 0, len(raw_text), ())]
 
 
-def test_inference_rejects_punctuation_midword_multiline_and_excessive_spans():
+def test_inference_rejects_punctuation_midword_and_multiline_spans():
     raw_text = "alpha, beta\ngamma " + ("x" * 180)
     proposals = [
         SpanProposal(",", "DISEASE", 5, 6, 0.99, "ner"),
         SpanProposal("pha", "DISEASE", 2, 5, 0.99, "ner"),
         SpanProposal("beta\ngamma", "LAB_NAME", 7, 17, 0.99, "ner"),
-        SpanProposal("x" * 180, "LAB_NAME", 18, 198, 0.99, "ner"),
     ]
 
     assert merge_raw_span_proposals(proposals, _record(raw_text), raw_text) == ()

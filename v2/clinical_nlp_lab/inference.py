@@ -17,6 +17,7 @@ class SpanProposal:
     source: str
     ranked_candidates: tuple[dict[str, Any], ...] = ()
     candidate_ids: tuple[str, ...] = ()
+    support_count: int = 1
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,15 @@ def merge_raw_span_proposals(
             if rec.raw_start <= p.start and p.end <= rec.raw_end
         ]
         rec_proposals.sort(
-            key=lambda p: (-p.confidence, p.start, p.end - p.start, p.entity_type)
+            key=lambda p: (
+                -_proposal_rank(p)[0],
+                -_proposal_rank(p)[1],
+                -_proposal_rank(p)[2],
+                p.end - p.start,
+                p.start,
+                p.end,
+                p.entity_type,
+            )
         )
         selected: list[SpanProposal] = []
         for prop in rec_proposals:
@@ -86,7 +95,7 @@ def _is_valid_proposal_boundary(proposal: SpanProposal, raw_text: str) -> bool:
     text = proposal.text
     if not text.strip() or not any(character.isalnum() for character in text):
         return False
-    if "\n" in text or "\r" in text or len(text) > 160:
+    if "\n" in text or "\r" in text:
         return False
     if (
         proposal.start > 0
@@ -101,6 +110,20 @@ def _is_valid_proposal_boundary(proposal: SpanProposal, raw_text: str) -> bool:
     ):
         return False
     return True
+
+
+def _proposal_rank(proposal: SpanProposal) -> tuple[int, int, float, int]:
+    """Rank trusted overlapping proposals without synthesizing a wider span."""
+    exact_kb = int(
+        proposal.source == "kb_first"
+        and any(float(item.get("score", 0.0)) == 1.0 for item in proposal.ranked_candidates)
+    )
+    return (
+        exact_kb,
+        proposal.support_count,
+        proposal.confidence,
+        -(proposal.end - proposal.start),
+    )
 
 
 def _coerce_proposal(value: Any, source: str) -> SpanProposal:
@@ -131,6 +154,7 @@ def _coerce_proposal(value: Any, source: str) -> SpanProposal:
             source=str(value.get("source", source)),
             ranked_candidates=ranked_candidates,
             candidate_ids=tuple(str(item) for item in value.get("candidate_ids", ())),
+            support_count=int(value.get("support_count", 1)),
         )
     raise TypeError(f"Unsupported proposal type: {type(value).__name__}")
 
@@ -198,6 +222,36 @@ def _attach_ranked_candidates(
     )
 
 
+def _link_validated_entities(
+    entities: Sequence[EntityAnnotation],
+    linker: Any | None,
+    policy: Any | None,
+) -> tuple[EntityAnnotation, ...]:
+    """Attach candidates only after Qwen has finalized boundary and type."""
+    linked: list[EntityAnnotation] = []
+    for entity in entities:
+        proposal = SpanProposal(
+            text=entity.text,
+            entity_type=entity.type,
+            start=entity.start,
+            end=entity.end,
+            confidence=entity.confidence,
+            source="validated",
+            ranked_candidates=tuple(dict(item) for item in entity.ranked_candidates),
+            candidate_ids=tuple(entity.candidates),
+        )
+        proposal = _attach_ranked_candidates(proposal, linker)
+        proposal = _apply_candidate_policy(proposal, policy)
+        linked.append(
+            replace(
+                entity,
+                candidates=list(proposal.candidate_ids),
+                ranked_candidates=[dict(item) for item in proposal.ranked_candidates],
+            )
+        )
+    return tuple(linked)
+
+
 def _apply_assertions(
     entities: tuple[EntityAnnotation, ...],
     raw_text: str,
@@ -238,10 +292,6 @@ def infer_document(
         source_role="inference",
     )
     proposals = _call_ner(bundle, raw_text, config)
-    proposals = [
-        _attach_ranked_candidates(proposal, bundle.kb_linker)
-        for proposal in proposals
-    ]
 
     if config.enable_kb_recovery and bundle.kb_linker is not None:
         try:
@@ -250,8 +300,15 @@ def infer_document(
         except (AttributeError, TypeError, ValueError):
             pass
 
-    proposals = [_apply_candidate_policy(proposal, bundle.candidate_policy) for proposal in proposals]
     merged_entities = merge_raw_span_proposals(proposals, records, raw_text=raw_text)
+    if config.enable_qwen and bundle.qwen_reranker is not None and merged_entities:
+        merged_entities = tuple(bundle.qwen_reranker.validate_entities(merged_entities, raw_text))
+
+    merged_entities = _link_validated_entities(
+        merged_entities,
+        bundle.kb_linker,
+        bundle.candidate_policy,
+    )
     merged_entities = _apply_assertions(merged_entities, raw_text, bundle.assertion_model)
 
     if config.enable_qwen and bundle.qwen_reranker is not None:
