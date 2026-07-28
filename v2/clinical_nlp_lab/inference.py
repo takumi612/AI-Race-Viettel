@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Mapping, Sequence
 
+from .entity_span_policy import validate_entity_span
 from .records import ClinicalRecord, parse_document_records
 from .schema import ClinicalDocument, EntityAnnotation
 
@@ -92,24 +93,12 @@ def merge_raw_span_proposals(
 
 
 def _is_valid_proposal_boundary(proposal: SpanProposal, raw_text: str) -> bool:
-    text = proposal.text
-    if not text.strip() or not any(character.isalnum() for character in text):
-        return False
-    if "\n" in text or "\r" in text:
-        return False
-    if (
-        proposal.start > 0
-        and raw_text[proposal.start - 1].isalnum()
-        and raw_text[proposal.start].isalnum()
-    ):
-        return False
-    if (
-        proposal.end < len(raw_text)
-        and raw_text[proposal.end - 1].isalnum()
-        and raw_text[proposal.end].isalnum()
-    ):
-        return False
-    return True
+    return not validate_entity_span(
+        raw_text,
+        proposal.start,
+        proposal.end,
+        proposal.text,
+    )
 
 
 def _proposal_rank(proposal: SpanProposal) -> tuple[int, int, float, int]:

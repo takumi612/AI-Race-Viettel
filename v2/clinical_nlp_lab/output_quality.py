@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .data import load_input_documents
+from .entity_span_policy import (
+    SUSPICIOUS_GENERIC_SURFACES,
+    is_suspicious_generic_surface,
+    validate_entity_span,
+)
 from .schema import ClinicalDocument, EntityAnnotation
 
 
@@ -15,19 +20,8 @@ class OutputQualityError(ValueError):
     """Raised when inference output violates semantic safety gates."""
 
 
-_SUSPICIOUS_GENERIC_SURFACES = {
-    "bệnh",
-    "không",
-    "khoa",
-    "lúc",
-    "mang",
-    "phẫu",
-    "thể",
-    "thuật",
-    "tin",
-    "và",
-    "xét",
-}
+# Kept as a compatibility alias for existing diagnostics consumers.
+_SUSPICIOUS_GENERIC_SURFACES = SUSPICIOUS_GENERIC_SURFACES
 
 _CANDIDATE_ELIGIBLE_TYPES = {"DISEASE", "DRUG", "CHẨN_ĐOÁN", "THUỐC"}
 
@@ -40,6 +34,7 @@ def audit_output_documents(
     coverages: list[float] = []
     boundary_errors = 0
     punctuation_only = 0
+    whitespace_only = 0
     multiline = 0
     max_span_length = 0
     single_token_entities = 0
@@ -56,27 +51,28 @@ def audit_output_documents(
             max_span_length = max(max_span_length, entity.end - entity.start)
             if len(entity.text.split()) == 1:
                 single_token_entities += 1
-            if entity.text.strip().casefold() in _SUSPICIOUS_GENERIC_SURFACES:
+            if is_suspicious_generic_surface(entity.text):
                 suspicious_generic_spans += 1
             if entity.type in _CANDIDATE_ELIGIBLE_TYPES:
                 candidate_eligible += 1
                 candidate_linked += bool(entity.candidates)
-            if not any(character.isalnum() for character in entity.text):
+            violations = validate_entity_span(
+                document.raw_text,
+                entity.start,
+                entity.end,
+                entity.text,
+                max_length=160,
+            )
+            if "punctuation_only" in violations:
                 punctuation_only += 1
-            if "\n" in entity.text or "\r" in entity.text:
+            if "whitespace_only" in violations:
+                whitespace_only += 1
+            if "multiline" in violations:
                 multiline += 1
-            if (
-                entity.start > 0
-                and document.raw_text[entity.start - 1].isalnum()
-                and document.raw_text[entity.start].isalnum()
-            ):
-                boundary_errors += 1
-            if (
-                entity.end < len(document.raw_text)
-                and document.raw_text[entity.end - 1].isalnum()
-                and document.raw_text[entity.end].isalnum()
-            ):
-                boundary_errors += 1
+            boundary_errors += sum(
+                reason in {"left_word_split", "right_word_split"}
+                for reason in violations
+            )
 
         covered = 0
         current_start: int | None = None
@@ -105,6 +101,7 @@ def audit_output_documents(
         ),
         "boundary_error_count": boundary_errors,
         "punctuation_only_count": punctuation_only,
+        "whitespace_only_count": whitespace_only,
         "multiline_count": multiline,
         "max_span_length": max_span_length,
         "single_token_entity_count": single_token_entities,
@@ -128,6 +125,8 @@ def enforce_output_quality(report: dict[str, Any]) -> None:
         violations.append(f"boundary_errors={report['boundary_error_count']}")
     if int(report["punctuation_only_count"]) > 0:
         violations.append(f"punctuation_only={report['punctuation_only_count']}")
+    if int(report.get("whitespace_only_count", 0)) > 0:
+        violations.append(f"whitespace_only={report['whitespace_only_count']}")
     if int(report["multiline_count"]) > 0:
         violations.append(f"multiline={report['multiline_count']}")
     if int(report["max_span_length"]) > 160:

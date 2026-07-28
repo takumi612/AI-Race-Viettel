@@ -230,10 +230,30 @@ def test_whitespace_only_trim_is_rejected(fake_engine):
     original = EntityAnnotation(text="x   y", type="DISEASE", position=(0, 5))
     raw_text = "x   y"
 
-    with pytest.raises(ValueError, match="whitespace"):
-        QwenEntityValidator(fake_engine(['{"action":"trim","relative_start":1,"relative_end":4,"entity_type":"DISEASE"}'])).validate(
-            (original,), raw_text
+    result = QwenEntityValidator(
+        fake_engine(
+            ['{"action":"trim","relative_start":1,"relative_end":4,"entity_type":"DISEASE"}']
         )
+    ).validate((original,), raw_text)
+
+    assert result.entities == (original,)
+    assert result.counters.to_dict()["trim_fallback_reasons"] == {
+        "whitespace_only": 1
+    }
+
+
+def test_punctuation_only_trim_preserves_original_and_records_reason(fake_engine):
+    original = EntityAnnotation(text="pain - fever", type="SYMPTOM", position=(0, 12))
+    engine = fake_engine(
+        ['{"action":"trim","relative_start":5,"relative_end":6,"entity_type":"SYMPTOM"}']
+    )
+
+    result = QwenEntityValidator(engine).validate((original,), "pain - fever")
+
+    assert result.entities == (original,)
+    assert result.counters.to_dict()["trim_fallback_reasons"] == {
+        "punctuation_only": 1
+    }
 
 
 def test_response_count_mismatch_is_rejected(fake_engine):
@@ -384,6 +404,7 @@ def test_pipeline_writes_per_document_qwen_validation_counter_delta(tmp_path: Pa
         "after_length_buckets": {"1-50": 1},
         "max_before_length": 5,
         "max_after_length": 5,
+        "trim_fallback_reasons": {},
     }
 
 

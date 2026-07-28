@@ -6,8 +6,11 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
+from .entity_span_policy import (
+    is_suspicious_generic_surface,
+    validate_entity_span,
+)
 from .entity_types import ENTITY_TYPE_TO_ID
-from .output_quality import _SUSPICIOUS_GENERIC_SURFACES
 from .schema import EntityAnnotation
 from .vllm_compat import build_sampling_kwargs, iter_batches, parse_json_object
 
@@ -33,6 +36,7 @@ class EntityValidationCounters:
     after_length_buckets: Counter[str] = field(default_factory=Counter)
     max_before_length: int = 0
     max_after_length: int = 0
+    trim_fallback_reasons: Counter[str] = field(default_factory=Counter)
     _max_before_history: list[int] = field(default_factory=list, repr=False)
     _max_after_history: list[int] = field(default_factory=list, repr=False)
 
@@ -49,6 +53,7 @@ class EntityValidationCounters:
             "after_length_buckets": dict(sorted(self.after_length_buckets.items())),
             "max_before_length": self.max_before_length,
             "max_after_length": self.max_after_length,
+            "trim_fallback_reasons": dict(sorted(self.trim_fallback_reasons.items())),
         }
 
     def copy(self) -> "EntityValidationCounters":
@@ -64,6 +69,7 @@ class EntityValidationCounters:
             after_length_buckets=Counter(self.after_length_buckets),
             max_before_length=self.max_before_length,
             max_after_length=self.max_after_length,
+            trim_fallback_reasons=Counter(self.trim_fallback_reasons),
             _max_before_history=list(self._max_before_history),
             _max_after_history=list(self._max_after_history),
         )
@@ -80,6 +86,7 @@ class EntityValidationCounters:
         self.after_length_buckets.update(other.after_length_buckets)
         self.max_before_length = max(self.max_before_length, other.max_before_length)
         self.max_after_length = max(self.max_after_length, other.max_after_length)
+        self.trim_fallback_reasons.update(other.trim_fallback_reasons)
         self._max_before_history.extend(other._max_before_history or [other.max_before_length])
         self._max_after_history.extend(other._max_after_history or [other.max_after_length])
         return self
@@ -110,6 +117,9 @@ class EntityValidationCounters:
                 previous.max_after_length,
                 self._max_after_history,
                 previous._max_after_history,
+            ),
+            trim_fallback_reasons=_counter_delta(
+                self.trim_fallback_reasons, previous.trim_fallback_reasons
             ),
         )
 
@@ -309,23 +319,16 @@ class QwenEntityValidator:
         absolute_start = entity.start + decision.relative_start
         absolute_end = entity.start + decision.relative_end
         trimmed_text = entity.text[decision.relative_start : decision.relative_end]
-        if not trimmed_text.strip():
-            raise ValueError("trimmed entity cannot be whitespace only")
-        if raw_text[absolute_start:absolute_end] != trimmed_text:
-            raise ValueError("trimmed entity does not match raw-text offsets")
-        left_splits_word = (
-            absolute_start > 0
-            and raw_text[absolute_start - 1].isalnum()
-            and raw_text[absolute_start].isalnum()
+        violations = validate_entity_span(
+            raw_text,
+            absolute_start,
+            absolute_end,
+            trimmed_text,
+            max_length=160,
         )
-        right_splits_word = (
-            absolute_end < len(raw_text)
-            and raw_text[absolute_end - 1].isalnum()
-            and raw_text[absolute_end].isalnum()
-        )
-        if left_splits_word or right_splits_word:
+        if violations:
             return entity
-        if trimmed_text.strip().casefold() in _SUSPICIOUS_GENERIC_SURFACES:
+        if is_suspicious_generic_surface(trimmed_text):
             return entity
         return replace(
             entity,
@@ -338,6 +341,30 @@ class QwenEntityValidator:
             ranked_candidates=[],
         )
 
+    @staticmethod
+    def _trim_fallback_reasons(
+        entity: EntityAnnotation,
+        decision: EntityValidationDecision,
+        raw_text: str,
+    ) -> tuple[str, ...]:
+        assert decision.relative_start is not None
+        assert decision.relative_end is not None
+        absolute_start = entity.start + decision.relative_start
+        absolute_end = entity.start + decision.relative_end
+        trimmed_text = entity.text[decision.relative_start : decision.relative_end]
+        reasons = list(
+            validate_entity_span(
+                raw_text,
+                absolute_start,
+                absolute_end,
+                trimmed_text,
+                max_length=160,
+            )
+        )
+        if is_suspicious_generic_surface(trimmed_text):
+            reasons.append("suspicious_generic")
+        return tuple(reasons)
+
     def validate(
         self, entities: tuple[EntityAnnotation, ...], raw_text: str
     ) -> EntityValidationResult:
@@ -348,6 +375,13 @@ class QwenEntityValidator:
         resolved: dict[int, EntityAnnotation | None] = {}
         for index, entity in enumerate(entities):
             entity.validate_offset(raw_text)
+            original_violations = validate_entity_span(
+                raw_text, entity.start, entity.end, entity.text
+            )
+            if original_violations:
+                raise ValueError(
+                    "entity violates span policy: " + ", ".join(original_violations)
+                )
             self._record_before(counters, entity)
             if self._is_exact_kb(entity):
                 counters.kb_bypass += 1
@@ -395,6 +429,11 @@ class QwenEntityValidator:
                     counters.drop += 1
                 else:
                     counters.trim += 1
+                    fallback_reasons = self._trim_fallback_reasons(
+                        entity, decision, raw_text
+                    )
+                    if result is entity and fallback_reasons:
+                        counters.trim_fallback_reasons.update(fallback_reasons)
                 resolved[index] = result
 
         for index, entity in enumerate(entities):
