@@ -9,6 +9,7 @@ from typing import Any, Iterable
 
 from .data import load_input_documents
 from .entity_span_policy import (
+    OUTPUT_MAX_SPAN_LENGTH,
     SUSPICIOUS_GENERIC_SURFACES,
     is_suspicious_generic_surface,
     validate_entity_span,
@@ -61,7 +62,7 @@ def audit_output_documents(
                 entity.start,
                 entity.end,
                 entity.text,
-                max_length=160,
+                max_length=OUTPUT_MAX_SPAN_LENGTH,
             )
             if "punctuation_only" in violations:
                 punctuation_only += 1
@@ -129,7 +130,7 @@ def enforce_output_quality(report: dict[str, Any]) -> None:
         violations.append(f"whitespace_only={report['whitespace_only_count']}")
     if int(report["multiline_count"]) > 0:
         violations.append(f"multiline={report['multiline_count']}")
-    if int(report["max_span_length"]) > 160:
+    if int(report["max_span_length"]) > OUTPUT_MAX_SPAN_LENGTH:
         violations.append(f"max_span_length={report['max_span_length']}")
     generic_count = int(report.get("suspicious_generic_span_count", 0))
     entity_count = int(report["entity_count"])

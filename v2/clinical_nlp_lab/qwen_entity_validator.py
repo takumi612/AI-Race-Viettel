@@ -7,6 +7,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from .entity_span_policy import (
+    OUTPUT_MAX_SPAN_LENGTH,
     is_suspicious_generic_surface,
     validate_entity_span,
 )
@@ -324,7 +325,7 @@ class QwenEntityValidator:
             absolute_start,
             absolute_end,
             trimmed_text,
-            max_length=160,
+            max_length=OUTPUT_MAX_SPAN_LENGTH,
         )
         if violations:
             return entity
@@ -358,7 +359,7 @@ class QwenEntityValidator:
                 absolute_start,
                 absolute_end,
                 trimmed_text,
-                max_length=160,
+                max_length=OUTPUT_MAX_SPAN_LENGTH,
             )
         )
         if is_suspicious_generic_surface(trimmed_text):

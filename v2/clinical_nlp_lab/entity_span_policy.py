@@ -20,6 +20,7 @@ SUSPICIOUS_GENERIC_SURFACES = frozenset(
         "xét",
     }
 )
+OUTPUT_MAX_SPAN_LENGTH = 160
 
 _NO_ALPHANUMERIC = re.compile(r"^[\W_]*$", re.UNICODE)
 

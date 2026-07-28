@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Mapping, Sequence
 
-from .entity_span_policy import validate_entity_span
+from .entity_span_policy import OUTPUT_MAX_SPAN_LENGTH, validate_entity_span
 from .records import ClinicalRecord, parse_document_records
 from .schema import ClinicalDocument, EntityAnnotation
 
@@ -99,6 +99,23 @@ def _is_valid_proposal_boundary(proposal: SpanProposal, raw_text: str) -> bool:
         proposal.end,
         proposal.text,
     )
+
+
+def _filter_output_entities(
+    entities: Sequence[EntityAnnotation], raw_text: str
+) -> tuple[EntityAnnotation, ...]:
+    """Apply the publish contract after every producer and metadata refiner."""
+    valid: list[EntityAnnotation] = []
+    for entity in entities:
+        if not validate_entity_span(
+            raw_text,
+            entity.start,
+            entity.end,
+            entity.text,
+            max_length=OUTPUT_MAX_SPAN_LENGTH,
+        ):
+            valid.append(entity)
+    return tuple(valid)
 
 
 def _proposal_rank(proposal: SpanProposal) -> tuple[int, int, float, int]:
@@ -305,6 +322,7 @@ def infer_document(
         if refined is not None:
             merged_entities = tuple(refined)
 
+    merged_entities = _filter_output_entities(merged_entities, raw_text)
     for entity in merged_entities:
         entity.validate_offset(raw_text)
     return ClinicalDocument(document_id=document_id, raw_text=raw_text, entities=list(merged_entities))

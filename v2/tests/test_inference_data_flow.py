@@ -207,3 +207,21 @@ def test_exact_kb_proposal_beats_overlapping_transformer_proposal():
     assert [(entity.text, entity.position) for entity in merged] == [
         ("heart failure", (7, 20))
     ]
+
+
+def test_inference_drops_overlong_entity_before_publish():
+    raw_text = "disease " * 40
+    text = raw_text.rstrip()
+
+    class LongNER:
+        def propose(self, _raw_text, _config):
+            return [SpanProposal(text, "DISEASE", 0, len(text), 0.99, "ner")]
+
+    document = infer_document(
+        "305",
+        raw_text,
+        FinalModelBundle(ner_model=LongNER(), tokenizer=None),
+        InferenceConfig(enable_qwen=False, enable_kb_recovery=False),
+    )
+
+    assert document.entities == []
