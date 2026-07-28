@@ -18,14 +18,21 @@ def _payload(text: str, position: tuple[int, int]) -> list[dict[str, object]]:
     ]
 
 
-def test_submission_validation_rejects_punctuation_only_entity():
-    errors = validate_submission_payload(_payload("-", (5, 6)), "pain - fever")
-
-    assert any("punctuation_only" in error for error in errors)
-
-
-def test_submission_validation_rejects_multiline_entity():
+def test_submission_schema_does_not_apply_output_quality_policy():
     raw_text = "fever\ncough"
-    errors = validate_submission_payload(_payload(raw_text, (0, len(raw_text))), raw_text)
+    multiline = validate_submission_payload(
+        _payload(raw_text, (0, len(raw_text))), raw_text
+    )
+    long_text = "x" * 162
+    over_output_limit = validate_submission_payload(
+        _payload(long_text, (0, len(long_text))), long_text
+    )
 
-    assert any("multiline" in error for error in errors)
+    assert multiline == []
+    assert over_output_limit == []
+
+
+def test_submission_schema_still_rejects_offset_mismatch():
+    errors = validate_submission_payload(_payload("fever", (0, 5)), "cough")
+
+    assert any("Offset mismatch" in error for error in errors)

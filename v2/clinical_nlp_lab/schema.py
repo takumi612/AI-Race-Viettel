@@ -5,8 +5,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-from .entity_span_policy import validate_entity_span
-
 
 OFFICIAL_SCHEMA_KEYS = {
     "CHẨN_ĐOÁN": {"text", "type", "position", "assertions", "candidates"},
@@ -128,16 +126,6 @@ def validate_submission_payload(payload: Any, raw_text: str) -> list[str]:
             )
         try:
             entity = parse_entity(item, raw_text)
-            errors.extend(
-                f"Entity {index}: {reason}"
-                for reason in validate_entity_span(
-                    raw_text,
-                    entity.start,
-                    entity.end,
-                    entity.text,
-                    max_length=160,
-                )
-            )
             if "candidates" in expected_keys and not isinstance(item.get("candidates"), list):
                 errors.append(f"Entity {index} candidates must be a list")
             if "assertions" in expected_keys and not isinstance(item.get("assertions"), list):

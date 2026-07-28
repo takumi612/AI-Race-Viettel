@@ -5,6 +5,7 @@ from pathlib import Path
 from clinical_nlp_lab.orchestration import PHASES, RunConfig
 from clinical_nlp_lab.kaggle_phases import (
     _build_training_command,
+    _format_preflight_failure,
     _write_stage_input,
     build_kaggle_phase_runners,
 )
@@ -21,6 +22,23 @@ def test_builtin_kaggle_dispatcher_binds_all_thirteen_phases(tmp_path: Path):
     runners = build_kaggle_phase_runners(config)
     assert tuple(runners) == PHASES
     assert all(callable(runners[phase]) for phase in PHASES)
+
+
+def test_preflight_failure_message_exposes_error_codes_and_documents():
+    message = _format_preflight_failure(
+        [
+            {"code": "E_GT_SCHEMA", "document_id": "123"},
+            {"code": "E_GT_SCHEMA", "document_id": "139"},
+            {"code": "E_REPORT_CONFLICT", "conflict_count": 2},
+        ],
+        Path("/tmp/preflight_report.json"),
+    )
+
+    assert "3 errors" in message
+    assert "E_GT_SCHEMA(document_id=123)" in message
+    assert "E_GT_SCHEMA(document_id=139)" in message
+    assert "E_REPORT_CONFLICT" in message
+    assert "preflight_report.json" in message
 
 
 def test_phase_runner_context_is_explicitly_bound_to_run_paths(tmp_path: Path):

@@ -63,23 +63,23 @@
 - [ ] **Step 3: Refactor both consumers to aggregate shared violation codes while preserving report keys and thresholds.**
 - [ ] **Step 4: Run focused inference/output tests and confirm pass.**
 
-### Task 4: Enforce the policy at submission validation
+### Task 4: Preserve the schema/output-policy boundary
 
 **Files:**
-- Modify: `v2/clinical_nlp_lab/schema.py`
-- Modify: `v2/tests/test_schema.py`
+- Test: `v2/tests/test_schema_validation.py`
+- Test: `v2/tests/test_preflight.py`
 
-- [ ] **Step 1: Add failing tests for punctuation-only, multiline, word-split, and overlong submission entities.**
-- [ ] **Step 2: Run the focused schema tests and confirm failure.**
-- [ ] **Step 3: Add shared-policy errors to `validate_submission_payload()` without changing schema-key validation.**
-- [ ] **Step 4: Run the focused schema tests and confirm pass.**
+- [ ] **Step 1: Add a regression test proving schema validation accepts organizer multiline and 162-character entities while retaining exact-offset checks.**
+- [ ] **Step 2: Run the focused schema test and confirm it fails if output-only policy leaked into schema validation.**
+- [ ] **Step 3: Keep output-only policy out of `validate_submission_payload()` and enforce it in inference/output quality.**
+- [ ] **Step 4: Run schema and preflight tests and confirm pass.**
 
 ### Task 5: Full regression verification
 
 **Files:**
 - No additional production files.
 
-- [ ] **Step 1: Run `pytest v2/tests/test_entity_span_policy.py v2/tests/test_qwen_entity_validator.py v2/tests/test_output_quality_gate.py v2/tests/test_output_semantic_quality.py v2/tests/test_schema.py -q`.**
+- [ ] **Step 1: Run `pytest v2/tests/test_entity_span_policy.py v2/tests/test_qwen_entity_validator.py v2/tests/test_output_quality_gate.py v2/tests/test_output_semantic_quality.py v2/tests/test_schema_validation.py v2/tests/test_preflight.py -q`.**
 - [ ] **Step 2: Run `pytest v2/tests -q`.**
 - [ ] **Step 3: Run `python -m compileall v2/clinical_nlp_lab`.**
 - [ ] **Step 4: Inspect `git diff --check` and review changed files.**

@@ -87,6 +87,25 @@ def _hash_named_files(root: Path, names: tuple[str, ...]) -> str:
     return digest.hexdigest() if found else _hash_tree(root)
 
 
+def _format_preflight_failure(
+    errors: list[Mapping[str, Any]], report_path: Path
+) -> str:
+    details: list[str] = []
+    for error in errors:
+        code = str(error.get("code", "UNKNOWN"))
+        context = ", ".join(
+            f"{key}={error[key]}"
+            for key in ("document_id", "source_bucket", "conflict_count")
+            if key in error
+        )
+        details.append(f"{code}({context})" if context else code)
+    rendered = "; ".join(details)
+    return (
+        f"dataset preflight failed with {len(errors)} errors: {rendered}. "
+        f"Full report: {report_path}"
+    )
+
+
 def _phase_01_preflight(config: RunConfig, phase: str, context: Mapping[str, Any]) -> Mapping[str, Any]:
     if config.run_mode == "full" and config.fast_dev_run:
         raise ValueError("Cannot execute full production run when fast_dev_run is True. Set fast_dev_run=False in RunConfig.")
@@ -104,7 +123,7 @@ def _phase_01_preflight(config: RunConfig, phase: str, context: Mapping[str, Any
     report_path = _run_dir(context) / "artifacts" / "preflight_report.json"
     report = build_preflight_report(config.dataset_root, artifact_dir, runtime_config, report_path)
     if report["status"] != "PASS":
-        raise RuntimeError(f"dataset preflight failed with {len(report['errors'])} errors")
+        raise RuntimeError(_format_preflight_failure(report["errors"], report_path))
     return {
         "phase": phase,
         "status": report["status"],

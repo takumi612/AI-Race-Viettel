@@ -91,11 +91,13 @@ Explicit Qwen `drop` decisions continue to drop the entity. Malformed JSON,
 unsupported types, invalid relative ranges, and response-count mismatches remain
 hard Qwen contract errors.
 
-### 4.3 Submission validation
+### 4.3 Submission schema boundary
 
-Extend `validate_submission_payload()` to report shared hard-policy violations in
-addition to schema and offset errors. This makes invalid output fail before or
-during serialization, close to the producer.
+Keep `validate_submission_payload()` limited to the official schema, types, keys,
+and exact offsets. The preflight reuses this function for organizer ground truth,
+which legitimately contains multiline and 162-character entities. Output-only
+quality rules must therefore remain in inference mutation boundaries and the final
+output audit rather than changing the shared ground-truth schema contract.
 
 ### 4.4 Output quality
 
@@ -142,7 +144,8 @@ Add integration regressions proving that:
    `punctuation_only`;
 3. boundary-invalid and generic trims use the same fallback path;
 4. valid one-sided and two-sided trims still succeed;
-5. submission validation rejects every hard-policy violation;
+5. submission schema validation continues to accept valid organizer multiline and
+   over-160-character ground truth;
 6. the complete output-quality report retains its existing public keys.
 
 Run the focused entity-policy, Qwen-validator, inference, schema, and output-quality
