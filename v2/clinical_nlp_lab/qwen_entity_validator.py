@@ -7,6 +7,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from .entity_types import ENTITY_TYPE_TO_ID
+from .output_quality import _SUSPICIOUS_GENERIC_SURFACES
 from .schema import EntityAnnotation
 from .vllm_compat import build_sampling_kwargs, iter_batches, parse_json_object
 
