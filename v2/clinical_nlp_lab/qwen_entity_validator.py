@@ -324,6 +324,8 @@ class QwenEntityValidator:
         )
         if left_splits_word or right_splits_word:
             return entity
+        if trimmed_text.strip().casefold() in _SUSPICIOUS_GENERIC_SURFACES:
+            return entity
         return replace(
             entity,
             text=trimmed_text,
